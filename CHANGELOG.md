@@ -128,6 +128,10 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **A conversa reaberta volta com o mesmo visual.** A aparência sorteada vinha do processo, então `claude --resume`
+  (ou fechar e abrir a sessão) trazia o nome de volta, mas com outra cara. Agora a aparência fica guardada com o nome
+  da sessão em `names.json`, inclusive a escolhida no editor, que não se perde quando outro agente da sala salva o dele.
+
 - **Cache de sprites sem engasgo ao encher:** quando um cache de sprites (personagens, móveis, pisos, avatares) enche,
   ele agora descarta só a quarta parte mais antiga, em vez de zerar tudo e regenerar a tela toda de uma vez.
 - **Terminal mais leve, principalmente no celular.** O escritório continuava sendo desenhado atrás do terminal em tela
@@ -183,7 +187,7 @@ do meio (0.**3**.0).
   completas, com as quebras de linha (listas, parágrafos). E não só no cartão: o aviso “tem uma pergunta” (e a
   notificação do navegador), a linha do tempo da gaveta, os Detalhes da atividade e o terminal também trazem a
   pergunta inteira, sem “…”, no computador e no celular (um texto muito longo rola dentro do aviso). A linha curta do
-  feed diz só “Pergunta para você”, em vez de cortar a pergunta no meio.
+  feed diz só “Pergunta para você”, em vez de cortar a pergunta no meio. (Personagem: a aparência fica com a sessão, não com o processo)
 
 ## [1.0.3] - 2026-10-16
 
