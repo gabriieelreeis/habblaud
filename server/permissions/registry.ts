@@ -484,6 +484,7 @@ export class PermissionRegistry {
     this.pending.set(id, p);
 
     this.announce(target, info, desc.text);
+    if (info.plain && this.opts.refine) this.refine(p, info.plain);
     return { id, expiresAt: info.expiresAt + EXPIRY_GRACE_MS };
   }
 
@@ -541,8 +542,6 @@ export class PermissionRegistry {
       this.opts.office.noticePermission(target.id, `${text}${by}`);
     }
     this.opts.office.markDirty();
-    if (info.plain && this.opts.refine) this.refine(p, info.plain);
-    return { id, expiresAt: info.expiresAt + EXPIRY_GRACE_MS };
   }
 
   /** Troca o `what` da explicação pelo refinado quando ele chega, se o pedido ainda está em aberto. Nunca lança. */
