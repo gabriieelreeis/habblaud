@@ -72,6 +72,9 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Segurança:** pedidos que mudam o escritório (mensagens, novo agente, permissões) só são aceitos da própria
+  página do Habblaud; uma página aberta em outra porta do computador não passa mais.
+
 - **Entregas: o filtro de segredos só conhecia nomes em inglês e deixava passar nomes em português.** Arquivos como
   `credenciais.csv`, `chaves.csv`, `senhas.pdf`, `cofre.kdbx.png` e `api_key.txt` eram mostrados e lidos do disco
   como se não fossem segredo. Agora o nome é lido em português e em inglês, antes da extensão de ver, e esses
