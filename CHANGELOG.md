@@ -14,6 +14,8 @@ do meio (0.**3**.0).
 
 - **Escritório:** móveis do prédio e árvores, cercas e flores do lado de fora são pintados uma vez e reaproveitados
   a cada quadro, em vez de desenhados um a um: 72,8% → 58,5% de CPU a 30 quadros por segundo (medido com GPU).
+- **Escritório mais leve:** parado, o escritório é desenhado a 30 quadros por segundo (15 com a janela sem foco),
+  cerca de metade da CPU; arrastar, dar zoom e a câmera seguindo alguém continuam no ritmo do monitor.
 
 ### Adicionado
 
