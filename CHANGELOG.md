@@ -115,6 +115,13 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Terminal mais leve, principalmente no celular.** O escritório continuava sendo desenhado atrás do terminal em tela
+  cheia e ocupava o aparelho inteiro: a digitação chegava com atraso. Agora, com o terminal aberto numa tela de até
+  600 px, o desenho do escritório para e volta quando o terminal fecha; nas telas maiores, onde o escritório segue à
+  vista, ele é desenhado a 30 quadros por segundo enquanto o terminal está aberto. A rolagem do histórico ficou
+  fluida: o terminal não usa mais `backdrop-filter` (com o fundo quase opaco o desfoque não aparecia e era refeito a
+  cada quadro) e, no celular, fica opaco e sem sombra.
+
 - **Entregas: o cache dos arquivos deixou de expulsar tudo depois de algumas leituras.** Duas leituras do mesmo
   arquivo ao mesmo tempo (duas abas, ou a mesma imagem em dois lugares) somavam os bytes dele duas vezes no total do
   cache, sem devolver os da entrada substituída. O total passava do teto de 80 MB sem o cache ter 80 MB e, a partir
