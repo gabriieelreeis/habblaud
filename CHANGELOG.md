@@ -19,6 +19,10 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- **Economia de energia** (Configurações › Escritório, desligada por padrão): desenha o escritório em resolução menor
+  e deixa a tela ampliar. Em telas nítidas o desenho custa menos da metade da CPU (computador Retina: 36 → 9 ms por
+  quadro; celular: 17 → 7 ms); nomes e balões ficam um pouco menos nítidos.
+
 - **O cartão “Pede permissão” explica em linguagem simples o que o agente quer fazer, com um selo de risco.** Quem
   aprova pelo escritório nem sempre é programador: em vez de só `Write`, o caminho e o diff, o cartão agora diz “O
   agente quer gravar o arquivo estado.json no caderno interno do Claude Code (~/.claude).”, “O agente quer copiar o
