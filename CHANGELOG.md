@@ -124,6 +124,8 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Cache de sprites sem engasgo ao encher:** quando um cache de sprites (personagens, móveis, pisos, avatares) enche,
+  ele agora descarta só a quarta parte mais antiga, em vez de zerar tudo e regenerar a tela toda de uma vez.
 - **Terminal mais leve, principalmente no celular.** O escritório continuava sendo desenhado atrás do terminal em tela
   cheia e ocupava o aparelho inteiro: a digitação chegava com atraso. Agora, com o terminal aberto numa tela de até
   600 px, o desenho do escritório para e volta quando o terminal fecha; nas telas maiores, onde o escritório segue à
