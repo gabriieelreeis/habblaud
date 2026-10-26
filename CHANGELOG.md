@@ -12,6 +12,10 @@ do meio (0.**3**.0).
 
 ### Alterado
 
+- **Página abre mais leve:** o player do timelapse e a janela do Habblaud World passam a ser baixados só quando usados
+  (o timelapse na primeira abertura; a janela do World quando o servidor do mundo está configurado ou ao abri-la).
+  O pedaço principal do client (`app-*.js`) caiu de 718.878 bytes (236.489 com gzip) para 524.796 (173.383 com gzip); somando todo o JS carregado
+  na abertura da página, de 827.223 (277.827 com gzip) para 769.582 (261.916 com gzip).
 - **Escritório:** móveis do prédio e árvores, cercas e flores do lado de fora são pintados uma vez e reaproveitados
   a cada quadro, em vez de desenhados um a um: 72,8% → 58,5% de CPU a 30 quadros por segundo (medido com GPU).
 - **Escritório mais leve:** sem ninguém andando na tela, o escritório desenha a 10 quadros por segundo (5 sem foco)
