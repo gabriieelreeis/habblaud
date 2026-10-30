@@ -6,6 +6,7 @@ import { anchorRect, h, iconButton, setAttr, setHidden, setText } from './dom';
 import { ICONS } from './icons';
 import { notificationState, type Notifier } from './notify';
 import type { UiPrefs } from './prefs';
+import { PushSettingsGroup } from './settings-push';
 import { SoundSettingsGroup } from './settings-sound';
 import type { SoundControl } from './sound';
 import { AboutGroup } from './version';
@@ -93,6 +94,7 @@ export class SettingsPopover implements UiComponent {
   private language: ReturnType<typeof segmented<LanguageChoice>>;
   private soundGroup: SoundSettingsGroup;
   private permissionGroup: HTMLElement;
+  private pushGroup: PushSettingsGroup;
   private demoGroup: HTMLElement;
   /** Só na página do celular (porta remota com login): sair deste aparelho. */
   private remoteGroup: HTMLElement;
@@ -155,6 +157,9 @@ export class SettingsPopover implements UiComponent {
     );
     this.theme.row.append(h('span', { class: 'ui-set__hint', text: tr('Automático: Halloween em outubro e Natal de 1º de novembro a 26 de dezembro; no resto do ano, o visual original. Nenhum: sempre o original.') }));
     this.soundGroup = new SoundSettingsGroup(ctx, sound);
+    // Notificações com o Habblaud fechado (Web Push): a seção se esconde sozinha sem PushManager ou sem /api/push.
+    this.pushGroup = new PushSettingsGroup(ctx);
+    void this.pushGroup.load();
 
     // Nomes dos idiomas sempre na própria língua, para quem não entende o idioma atual achar o seu.
     this.language = segmented<LanguageChoice>(
@@ -229,6 +234,7 @@ export class SettingsPopover implements UiComponent {
       ),
       this.soundGroup.el,
       this.permissionGroup,
+      this.pushGroup.el,
       h('div', { class: 'ui-set-group' }, h('h3', { text: tr('Idioma') }), this.language.row),
       this.demoGroup,
       this.remoteGroup,
@@ -304,6 +310,7 @@ export class SettingsPopover implements UiComponent {
     this.language.set(savedLanguage());
     this.soundGroup.render();
     setHidden(this.permissionGroup, this.ctx.store.mock || !access().permissions);
+    this.pushGroup.render();
     setHidden(this.demoGroup, this.ctx.store.mock || access().remote);
     setHidden(this.remoteGroup, !access().remote);
     this.about.render();
