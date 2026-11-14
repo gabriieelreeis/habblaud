@@ -72,6 +72,11 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Entregas: o filtro de segredos só conhecia nomes em inglês e deixava passar nomes em português.** Arquivos como
+  `credenciais.csv`, `chaves.csv`, `senhas.pdf`, `cofre.kdbx.png` e `api_key.txt` eram mostrados e lidos do disco
+  como se não fossem segredo. Agora o nome é lido em português e em inglês, antes da extensão de ver, e esses
+  arquivos ficam de fora.
+
 - **Entregas do OpenCode aparecem na caixa de entrada.** A lista de entregas só lia os transcripts do Claude Code e do
   Codex; como o OpenCode guarda as conversas no serviço dele, o trabalho concluído por essas sessões nunca chegava à
   caixa. Agora a fonte do OpenCode também fornece as sessões recentes e as mensagens delas ao índice de entregas —
