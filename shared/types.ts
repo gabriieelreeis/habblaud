@@ -79,7 +79,10 @@ export interface Activity {
   icon: string;
   /** Texto curto em PT-BR (até ~46 caracteres). Ex.: "Editando App.tsx". */
   text: string;
-  /** Detalhe opcional (comando completo, caminho, consulta...), até ~300 caracteres. */
+  /**
+   * Detalhe opcional (comando completo, caminho, consulta...), até ~300 caracteres. Nas perguntas (com `questions`),
+   * as perguntas inteiras, com as quebras de linha.
+   */
   detail?: string;
   /** Nome bruto da ferramenta, quando houver. */
   tool?: string;
@@ -87,17 +90,21 @@ export interface Activity {
   at: number;
   durationMs?: number;
   error?: boolean;
-  /** Perguntas completas de um AskUserQuestion (kind 'ask'), para o escritório mostrar as opções. */
+  /**
+   * Perguntas completas de um AskUserQuestion (kind 'ask', ou o 'wait' do pedido no escritório), para o escritório
+   * mostrar as opções e a pergunta inteira.
+   */
   questions?: AskQuestion[];
 }
 
 /**
- * Uma pergunta do AskUserQuestion, já mascarada e cortada. Com o pedido no escritório (PermissionRequestInfo.questions),
- * dá para responder por lá; senão a resposta é dada no Claude Code.
+ * Uma pergunta do AskUserQuestion, já mascarada (e cortada só num teto generoso). Com o pedido no escritório
+ * (PermissionRequestInfo.questions), dá para responder por lá; senão a resposta é dada no Claude Code.
  */
 export interface AskQuestion {
   /** Posição da pergunta em `tool_input.questions` (entradas inválidas são puladas, então pode haver saltos). */
   index: number;
+  /** O texto inteiro, com as quebras de linha (a página mostra com `white-space: pre-wrap`). */
   question: string;
   header?: string;
   multiSelect?: boolean;
@@ -227,6 +234,20 @@ export interface RoomEffect {
 }
 
 /**
+ * Festa no escritório (POST /api/party; shared/party.ts): até `until`, todos os personagens presentes vão para a sala
+ * `roomId` comemorar e depois voltam cada um para a sua. Só visual: as sessões e os agentes não mudam (o `roomId` de
+ * cada agente continua o da sala dele).
+ */
+export interface OfficeParty {
+  /** Sala anfitriã. */
+  roomId: string;
+  /** Início (epoch ms, relógio do servidor): uma festa nova tem outro `at`. */
+  at: number;
+  /** Fim previsto (epoch ms, relógio do servidor). */
+  until: number;
+}
+
+/**
  * Verificação de versão nova: o servidor consulta a release mais recente do repositório no GitHub
  * (server/updates/checker.ts) e compara com a versão em uso.
  */
@@ -338,6 +359,8 @@ export interface OfficeSnapshot {
   ptys?: PtyInfo[];
   /** Contas do Claude detectadas (com uso de 5h/semanal quando disponível). */
   accounts: AccountInfo[];
+  /** Festa no escritório em andamento (POST /api/party). Ausente = nenhuma. */
+  party?: OfficeParty;
   meta: {
     demo: boolean;
     sources: SourceInfo[];
@@ -396,6 +419,11 @@ export interface AccessInfo {
    * com Host local. Ausente em servidores antigos.
    */
   world?: boolean;
+  /**
+   * Pode começar e encerrar a festa no escritório (POST/DELETE /api/party): porta local com Host local ou, pela porta
+   * remota, só com `party` em HABBLAUD_REMOTE_ALLOW. Ausente em servidores antigos.
+   */
+  party?: boolean;
 }
 
 export interface FeedItem {
