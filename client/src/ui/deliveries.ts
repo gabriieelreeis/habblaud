@@ -201,9 +201,8 @@ export class Deliveries implements UiComponent {
 
   render(): void {
     const store = this.ctx.store;
-    // Só na página do celular (porta remota com login e o terminal liberado): no computador o terminal e o histórico
-    // já mostram tudo, e a barra não ganha botão nem consulta nova sem configurar o acesso pelo celular.
-    const available = access().remote && access().terminal && !!store.snapshot?.meta.terminal && !store.mock && !store.replaying;
+    // Ajuste local (ReisCorp): Entregas também no computador (habblaud.localhost), não só na página do celular.
+    const available = access().terminal && !!store.snapshot?.meta.terminal && !store.mock && !store.replaying;
     if (available !== this.available) {
       this.available = available;
       setHidden(this.button, !available);
