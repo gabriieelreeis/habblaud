@@ -4253,7 +4253,6 @@
   }
 }
 
-/* Celular com Entregas e Novo agente: um ícone a mais que no computador não cabe numa linha; o timelapse sai (tecla L). */
 /* Celulares (até 480 px): os contadores não cabem ao lado da marca e do "⋮", então descem para a linha dos cartões
    (sem isso a barra passa da altura fixa). */
 @media (max-width: 480px) {
@@ -11889,5 +11888,18 @@ html.is-replay #world {
 
   .ui-topbar__more {
     display: inline-flex;
+  }
+
+  /* primeira linha: o painel lateral e a marca à esquerda, o "⋮" no canto; contadores e cartões descem para a segunda */
+  .ui-topbar__left {
+    flex: 1 0 calc(100% - 40px);
+    min-width: 0;
+  }
+
+  /* os outros popovers ocupam a largura toda no celular; o menu fica preso à direita, embaixo do "⋮" */
+  .ui-more {
+    left: auto !important;
+    right: var(--gap) !important;
+    width: min(280px, calc(100vw - 16px));
   }
 }
