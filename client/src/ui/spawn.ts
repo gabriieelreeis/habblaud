@@ -8,7 +8,7 @@ import { isDemoId } from '../../../shared/timeline';
 import type { OfficeSnapshot } from '../../../shared/types';
 import type { UiContext } from './context';
 import { DictationButton, dictationAvailable, insertDictation } from './dictation';
-import { h, iconButton, setHidden, setText } from './dom';
+import { anchorRect, h, iconButton, setHidden, setText } from './dom';
 import { ICONS } from './icons';
 
 export const SPAWN_PROMPT_MAX = 8_000;
@@ -223,7 +223,7 @@ export class SpawnPanel {
     void this.loadFolders();
     void this.checkDictation();
     if (!this.busy) setText(this.status, '');
-    const r = anchor.getBoundingClientRect();
+    const r = anchorRect(anchor);
     this.el.style.top = `${Math.round(r.bottom + 8)}px`;
     this.el.style.right = `${Math.max(8, Math.round(innerWidth - r.right - 4))}px`;
     if (typeof this.el.showPopover === 'function') this.el.showPopover();

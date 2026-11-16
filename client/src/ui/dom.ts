@@ -60,6 +60,17 @@ export function setStyleVar(el: HTMLElement, name: string, value: string): void 
   if (el.style.getPropertyValue(name) !== value) el.style.setProperty(name, value);
 }
 
+/**
+ * Retângulo para posicionar um popover embaixo do botão que o abriu. No celular os botões da barra ficam dentro do
+ * menu "⋮" (ui/topbar.ts, escondidos): aí vale o próprio botão do menu, para o painel abrir no canto certo.
+ */
+export function anchorRect(el: Element): DOMRect {
+  const r = el.getBoundingClientRect();
+  if (r.width || r.height) return r;
+  const more = document.querySelector('.ui-topbar__more');
+  return more ? more.getBoundingClientRect() : r;
+}
+
 export function setHidden(el: HTMLElement, hidden: boolean): void {
   if (el.hidden !== hidden) el.hidden = hidden;
 }

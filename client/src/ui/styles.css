@@ -4254,15 +4254,8 @@
 }
 
 /* Celular com Entregas e Novo agente: um ícone a mais que no computador não cabe numa linha; o timelapse sai (tecla L). */
-@media (max-width: 480px) {
-  .ui-topbar:has(.ui-btn-deliv:not([hidden])):has(.ui-btn-spawn:not([hidden])) .ui-btn-timelapse {
-    display: none;
-  }
-}
-
-/* Celulares (até 480 px): marca + 7 botões ocupam a primeira linha inteira, então os contadores descem para a linha dos
-   cartões. Sem isso, com dois contadores acesos, os botões da direita pulam para uma linha própria e a barra passa da
-   altura fixa. */
+/* Celulares (até 480 px): os contadores não cabem ao lado da marca e do "⋮", então descem para a linha dos cartões
+   (sem isso a barra passa da altura fixa). */
 @media (max-width: 480px) {
   .ui-counters {
     order: 9;
@@ -11804,5 +11797,97 @@ html.is-replay #world {
     width: 26px;
     height: 26px;
     line-height: 26px;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------------
+   Menu "⋮" da barra no celular (ui/topbar.ts): até 600 px os botões da direita não cabem numa linha (a festa foi a
+   gota d'água), então somem e o "⋮" abre a lista de todos, com o nome de cada um. Acima disso, o "⋮" não aparece.
+   ------------------------------------------------------------------------------------------------ */
+
+.ui-topbar__more {
+  display: none;
+  position: relative;
+}
+
+.ui-topbar__more-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--st-waiting);
+  box-shadow: 0 0 0 2px var(--ui-bg-solid);
+}
+
+.ui-topbar__more-dot[hidden] {
+  display: none;
+}
+
+.ui-more {
+  width: min(280px, calc(100vw - 16px));
+  padding: 6px;
+}
+
+.ui-more__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ui-text);
+  font: 14px/1.3 var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-more__item:hover,
+.ui-more__item:focus-visible {
+  background: var(--ui-bg-hover);
+  outline: none;
+}
+
+.ui-more__item.is-on {
+  color: var(--ui-accent);
+}
+
+.ui-more__icon {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--ui-muted);
+}
+
+.ui-more__item.is-on .ui-more__icon {
+  color: var(--ui-accent);
+}
+
+/* o selo do botão (ex.: "9+" das Entregas) aparece no item também, no canto do ícone */
+.ui-more__icon [class*='badge'] {
+  position: absolute;
+  top: -6px;
+  right: -10px;
+}
+
+.ui-more__label {
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  .ui-topbar__right .ui-btn-group {
+    display: none;
+  }
+
+  .ui-topbar__more {
+    display: inline-flex;
   }
 }
