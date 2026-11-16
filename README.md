@@ -561,6 +561,35 @@ and waits for the next request, give a new instruction or correct its course, wi
   Read the warning in [Privacy and security](#privacy-and-security).
   From the [phone with login](#phone-with-login-and-https-approving-requests), only with `messages` in `HABBLAUD_REMOTE_ALLOW`.
 - In demo mode, the made-up agents also receive messages (pretend ones).
+- **Images:** the clip next to the box attaches images, `Ctrl+V` pastes a screenshot and you can drag and drop them onto
+  the box (on the phone, the clip opens the gallery or the camera). Up to 6 per message, with thumbnails (the × removes
+  one); big ones are shrunk to 2000 px before sending. Habblaud saves them in `~/.habblaud/attachments` and the message
+  ends with their paths, which the agent opens with its read tool to see them; you can send images with no text.
+  `npm run mod:install` asks before adding the rule `Read(~/.habblaud/attachments/**)` (reading that folder only), so
+  the agent doesn't ask for permission for each image. In Docker, `npm run docker:up` mounts that folder **writable**
+  (the only writable mount). `HABBLAUD_MESSAGE_IMAGES=0` turns images off.
+
+### TV in the rooms (presentations)
+
+Each room has a TV on the wall. After a bigger task, click the room's TV and ask the agent for a **presentation**: it
+writes slides about the last task it completed (what was asked, what was done, before and after, decisions, risks and
+next steps) and the TV lights up when they're ready, with a 📺 notice. The presentation only starts when you click the
+TV: it opens on top of everything, in a TV frame, with the office blurred behind it.
+
+- **Watching:** arrows, space, a click or a swipe on the phone move between slides; ▶ (or `P`) plays them by itself
+  and any move pauses it; `Esc` turns the TV off. The list button shows the room's earlier presentations, newest first.
+  While a presentation is open, the room's characters gather in front of the TV to watch.
+- **The TV in the room:** dark with no presentation, static while the agent prepares one, lit and blinking with a new one
+  you haven't watched, and on standby with the ones you've already seen.
+- **Asking:** the request goes to the room's main agent through [messages from the office](#sending-messages) (the
+  `habblaud-mensagens` plugin); with more than one main agent in the room, you choose who makes it. From the phone,
+  only with `messages` in `HABBLAUD_REMOTE_ALLOW`; watching works on the phone too.
+- **Where they're saved:** in `~/.habblaud/apresentacoes/<room>/<date>-<title>/slides.md` (Markdown, slides separated by
+  `---`), outside the project. `npm run mod:install` asks before adding the rule
+  `Edit(~/.habblaud/apresentacoes/**)`, which lets agents write there (and only there) without asking for permission;
+  without it, you approve the write for each presentation. In Docker, `npm run docker:up` mounts the folder read-only.
+  The slides are drawn by Habblaud itself: no HTML from the agent runs on the page. `HABBLAUD_PRESENTATIONS=0` turns the
+  TVs off.
 
 ### Editing the character
 
@@ -727,6 +756,8 @@ Everything works without configuring anything. If you need to adjust something, 
 | `HABBLAUD_CLAUDE_BIN` | `claude` from PATH | The Claude Code executable that the interactive terminal and New agent run. |
 | `HABBLAUD_REMOTE_ALLOW` | `permissions` | What the [phone with login](#phone-with-login-and-https-approving-requests) can do: `permissions`, `messages`, `terminal`, `spawn` (comma-separated) or `none`. The office party always works, except with `none`. The other `HABBLAUD_REMOTE_*` are written by `npm run remote:setup`. |
 | `HABBLAUD_MENSAGENS` | on (with the terminal) | `0` turns off only messages from the office (the box in the terminal and in the agent's details). |
+| `HABBLAUD_PRESENTATIONS` | on | `0` turns off the [TV in the rooms](#tv-in-the-rooms-presentations) (presentations). |
+| `HABBLAUD_MESSAGE_IMAGES` | on | `0` turns off images in [messages from the office](#sending-messages). |
 | `HABBLAUD_CODEX` | on | `0` turns off Codex in the office. |
 | `HABBLAUD_CODEX_DIRS` | automatic detection | Codex folders, comma-separated (instead of `~/.codex*` and `CODEX_HOME`). |
 | `HABBLAUD_CODEX_BIN` | `codex` from PATH (on Windows, `codex.exe`) | The Codex binary that delivers the messages (`codex queue`), in Node mode or in `npm run codex:bridge`. |
@@ -898,6 +929,8 @@ mod/      o mod do Habblaud e os plugins de permissões e de mensagens (plugins 
 | `GET /api/health` | Health: version, demo, Docker, terminal, answering and sending messages from the office, sources and usage status of each account. |
 | `POST /api/demo` | `{"enabled": true \| false}` turns the simulated agents on or off. |
 | `POST /api/party` | Office party: `{"room": room, "seconds": 120}` (both optional; default: the room with the most agents, for 2 min). Every character goes to celebrate in that room and then goes back; visual only, the sessions don't change. `DELETE /api/party` ends it early. From local access or the phone with login (except with `none` in `HABBLAUD_REMOTE_ALLOW`). |
+| `/api/presentations…` | TV in the rooms: `GET ?room=` lists a room's presentations, `GET /:id` returns the Markdown, `GET /:id/image?src=` an image quoted in the slides, `POST /:id/seen` marks it as watched and `POST /request` `{roomId, agentId}` asks the main agent for one (through messages from the office; local access, or the phone with `messages`). |
+| `POST /api/messages/images` | Images in messages: `{name, type, data}` (base64, PNG/JPEG/GIF/WebP checked by their first bytes) returns an `id`; `POST /api/messages` with `images: [id…]` saves them in `~/.habblaud/attachments` and adds their paths to the end of the text. |
 | `POST /api/rooms/rename` | `{"id": sala, "name": nome}` renames the room (empty goes back to the folder name); the name is stored in `rooms.json`, in the data folder. Local access only. |
 | `GET /api/mod/summary` | For the Claude Code mod: version, how many agents, how many are working and who needs you (without the demo and, with `?account=&session=`, without its own session). |
 | `/api/permissions…` | Answering from the office: the permission hook registers the request (permission or question) and waits; the page fetches the details and decides or answers. Local access only. |

@@ -81,6 +81,11 @@ festa) ou 10 min. Push só avisa. O mesmo CI visto de novo em 2 min não repete 
 | `POST /api/demo` | `{enabled: boolean}` liga/desliga agentes simulados (misturados aos reais) |
 | `POST /api/party` | festa no escritório (`shared/party.ts`): `{room?: id ou nome, seconds?: 10..600}` (padrão: a sala com mais agentes, 120 s); `200 {ok, party: OfficeParty, room}` e o snapshot passa a levar `party` até o fim. Só visual: agentes e sessões não mudam. Porta local com `Host` local; pela remota, com qualquer `HABBLAUD_REMOTE_ALLOW` menos `none` |
 | `DELETE /api/party` | encerra a festa antes da hora: `{ok, ended}`; mesma trava |
+| `GET /api/presentations?room=<id>` | TV das salas (`presentations/store.ts`, `shared/presentation.ts`): `{presentations: PresentationSummary[], canRequest}`, a mais recente primeiro. Ver vale para quem vê o snapshot (celular incluído) |
+| `GET /api/presentations/:id` | `PresentationContent` (o resumo e o `markdown` dos slides) |
+| `GET /api/presentations/:id/image?src=` | imagem citada nos slides: relativa, dentro da pasta da apresentação; absoluta, pelo leitor das entregas (`deliveries/fetcher.ts`) |
+| `POST /api/presentations/:id/seen` | marca como assistida (`<dataDir>/presentations.json`): a TV sai do "nova" |
+| `POST /api/presentations/request` | `{roomId, agentId}`: manda ao agente principal o pedido (roteiro e formato) pelas mensagens do escritório e deixa a TV em "Preparando…" até os slides aparecerem; trava das mensagens (local, ou `messages` no `HABBLAUD_REMOTE_ALLOW`) |
 | `GET /api/mod/summary?account=&session=` | `ModSummary` para o mod do Claude Code: `{version, agents, working, waiting:[{id, name, room, account, waitingFor, since, answerable}]}`, sem o demo e sem a sessão de quem pergunta (ver abaixo) |
 | `GET /api/updates` | `{version, ...UpdateStatus}`: versão em uso e o resultado da verificação de versão nova (ver abaixo) |
 | `POST /api/updates/check` | "Verificar agora": consulta o GitHub (no máximo uma vez a cada 30 s) e devolve `{version, ...UpdateStatus}` |
@@ -89,7 +94,8 @@ festa) ou 10 min. Push só avisa. O mesmo CI visto de novo em 2 min não repete 
 | `GET /api/permissions/:id/wait` | (hook) long-poll de até 25 s (`?timeout=` em segundos): `{status: 'pending' \| 'decided' \| 'released', ...}` |
 | `GET /api/permissions/:id` | (página) detalhe do pedido com os argumentos (`PermissionRequestInfo` com `input`) |
 | `POST /api/permissions/:id/decision` | (página) `PermissionDecision`: `{behavior: 'allow' \| 'deny' \| 'terminal' \| 'answer', message?, interrupt?, suggestion?, answers?}` |
-| `POST /api/messages` | (página) `{agentId, text}`: manda uma mensagem a um agente principal; `201 OutboxMessage`; só com bind local (ver abaixo) |
+| `POST /api/messages` | (página) `{agentId, text, images?: id[]}`: manda uma mensagem a um agente principal; `201 OutboxMessage`; só com bind local (ver abaixo). Com `images`, o texto pode vir vazio: as imagens são gravadas em `~/.habblaud/attachments` e os caminhos vão no fim (`shared/messages.ts`, `messageWithImages`) |
+| `POST /api/messages/images` | (página) `{name, type, data (base64)}`: uma imagem para a próxima mensagem (`messages/images.ts`: só PNG/JPEG/GIF/WebP pelos primeiros bytes, até 15 MB, até 6 por mensagem); `201 {id}`. Desligada (`HABBLAUD_MESSAGE_IMAGES=0`, ou no Docker sem a montagem gravável): 404 |
 | `GET /api/messages/:id` | (página) situação da mensagem (`OutboxMessage`: `queued` \| `sent` \| `delivered` \| `failed`) |
 | `POST /api/mod/inbox` | (plugin `habblaud-mensagens`) `{session, account?}`: marca a presença da sessão e entrega `{messages: InboxMessage[]}` |
 | `POST /api/mod/inbox/ack` | (plugin) `{session, results: [{id, ok, error?}]}`: confirma cada mensagem entregue (ou a falha) |
