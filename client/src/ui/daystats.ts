@@ -576,7 +576,8 @@ export class DayPanel implements UiComponent {
       const acc = accounts.get(w.account);
       const chip = h('span', { class: 'ui-acc-chip', text: acc?.short ?? '?', title: acc?.name ?? w.account });
       setStyleVar(chip, '--acc', acc?.color ?? '#8b98b3');
-      if (this.isCodexAccount(w.account)) chip.dataset.provider = 'codex';
+      const tool = accountProvider(this.ctx.account(w.account), w.account);
+      if (tool !== 'claude') chip.dataset.provider = tool;
       list.append(
         h(
           'li',
@@ -618,7 +619,8 @@ export class DayPanel implements UiComponent {
     }
     const grid = h('div', { class: 'ui-day__accounts' });
     for (const a of cards) {
-      const chip = h('span', { class: 'ui-acc-chip ui-acc-chip--md', text: a.short, attrs: { 'aria-hidden': 'true', ...(a.codex ? { 'data-provider': 'codex' } : {}) } });
+      const tool = accountProvider(this.ctx.account(a.id), a.id);
+      const chip = h('span', { class: 'ui-acc-chip ui-acc-chip--md', text: a.short, attrs: { 'aria-hidden': 'true', ...(tool !== 'claude' ? { 'data-provider': tool } : {}) } });
       setStyleVar(chip, '--acc', a.color);
       const meter = h(
         'span',

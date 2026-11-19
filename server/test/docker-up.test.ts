@@ -7,6 +7,8 @@ import {
   CODEX_MOUNTED_SUBDIRS,
   codexAccountsPayload,
   codexDisabled,
+  CONTAINER_OPENCODE_FILE,
+  openCodeDisabled,
   copyVolumeArgs,
   type DockerState,
   envFileKeys,
@@ -145,6 +147,17 @@ describe('docker-up', () => {
     ]);
     // Sem Codex: nada de HABBLAUD_CODEX_DIRS.
     expect(renderOverride(claude)).not.toContain('HABBLAUD_CODEX_DIRS');
+    // OpenCode: só o arquivo do serviço, somente leitura, e o host do serviço visto do container.
+    const oc = renderOverride(claude, new Date(0), undefined, undefined, [], undefined, [], undefined, undefined, '/Users/fulano/.local/state/opencode/service.json');
+    expect(oc).toContain(`HABBLAUD_OPENCODE_SERVICE_FILE: "${CONTAINER_OPENCODE_FILE}"`);
+    expect(oc).toContain('HABBLAUD_OPENCODE_HOST: "host.docker.internal"');
+    expect(oc).toContain(`source: "/Users/fulano/.local/state/opencode/service.json"
+        target: "${CONTAINER_OPENCODE_FILE}"
+        read_only: true`);
+    for (const secret of ['opencode.db', 'auth.json', 'prompt-history']) expect(oc).not.toContain(secret);
+    expect(renderOverride(claude)).not.toContain('OPENCODE');
+    expect(openCodeDisabled({ HABBLAUD_OPENCODE: '0' })).toBe(true);
+    expect(openCodeDisabled({})).toBe(false);
     expect(codexDisabled({ HABBLAUD_CODEX: '0' })).toBe(true);
     expect(codexDisabled({ HABBLAUD_CODEX: 'off' })).toBe(true);
     expect(codexDisabled({ HABBLAUD_CODEX: '1' })).toBe(false);

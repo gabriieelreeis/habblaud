@@ -8,7 +8,9 @@ import {
   fallbackShort,
   hasCodexPermission,
   isCodex,
+  isOpenCode,
   looksLikeCodexId,
+  looksLikeOpenCodeId,
   providerOf,
   showsProviderTag,
 } from './provider';
@@ -69,6 +71,25 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(emptyOfficeHint([c, d, x])).toBe('Abra o Claude Code (atalhos c ou d) ou o Codex em qualquer projeto e veja seu agente chegar.');
     expect(emptyOfficeHint([x])).toBe('Abra o Claude Code ou o Codex em qualquer projeto e veja seu agente chegar.');
     expect(emptyOfficeHint([])).toBe('Abra o Claude Code em qualquer projeto e veja seu agente chegar.');
+  });
+
+  it('OpenCode: id, letra, selo, rótulo do chip e o escritório vazio', () => {
+    expect(isOpenCode({ provider: 'opencode' })).toBe(true);
+    expect(isCodex({ provider: 'opencode' })).toBe(false);
+    expect(looksLikeOpenCodeId('.opencode')).toBe(true);
+    expect(looksLikeOpenCodeId('demo:.opencode')).toBe(true);
+    expect(looksLikeOpenCodeId('.claude')).toBe(false);
+    expect(accountProvider(undefined, '.opencode')).toBe('opencode');
+    expect(fallbackShort('.opencode')).toBe('O');
+    expect(showsProviderTag('opencode', 'Conta O')).toBe(true);
+    expect(showsProviderTag('opencode', 'OpenCode')).toBe(false);
+    expect(accountChipLabel({ name: 'OpenCode', plan: 'Go', provider: 'opencode' }, '.opencode', 'opencode')).toBe('OpenCode · plano Go');
+    expect(accountChipLabel(undefined, '.opencode', 'opencode')).toBe('.opencode · OpenCode');
+    const c = { short: 'C' };
+    const x = { short: 'X', provider: 'codex' as const };
+    const o = { short: 'O', provider: 'opencode' as const };
+    expect(emptyOfficeHint([c, o])).toBe('Abra o Claude Code (atalho c) ou o OpenCode em qualquer projeto e veja seu agente chegar.');
+    expect(emptyOfficeHint([c, x, o])).toBe('Abra o Claude Code (atalho c), o Codex ou o OpenCode em qualquer projeto e veja seu agente chegar.');
   });
 
   it('relógio de 1 s enquanto há pedido do Codex esperando', () => {

@@ -108,6 +108,12 @@ type Item = Bubble | Label;
 const CODEX_CHIP_BG = '#161b26';
 /** Selo "CODEX" das etiquetas: discreto (vidro claro), sem a cor de ninguém. */
 const CODEX_BADGE = 'CODEX';
+const OPENCODE_BADGE = 'OPENCODE';
+
+/** Selo da ferramenta na etiqueta (fora do modo compacto): Codex e OpenCode; o Claude Code não tem. */
+function toolBadge(provider: string | undefined): string | undefined {
+  return provider === 'codex' ? CODEX_BADGE : provider === 'opencode' ? OPENCODE_BADGE : undefined;
+}
 
 /** Octógono "em degrau" (um quadrado de cantos cortados, como um pixel arredondado). */
 function steppedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, s: number): void {
@@ -124,13 +130,13 @@ function steppedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
 }
 
 /**
- * Bolinha de uma conta (placas e pílulas das salas): cheia no Claude Code; vazada (anel na cor da conta) no Codex,
- * como o chip dos painéis.
+ * Bolinha de uma conta (placas e pílulas das salas): cheia no Claude Code; vazada (anel na cor da conta) no Codex e no
+ * OpenCode, como o chip dos painéis.
  */
 function accountDot(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, acc: { color: string; provider?: string }): void {
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
-  if (acc.provider === 'codex') {
+  if (acc.provider === 'codex' || acc.provider === 'opencode') {
     ctx.fillStyle = CODEX_CHIP_BG;
     ctx.fill();
     ctx.lineWidth = Math.max(1.2, r * 0.55);
@@ -874,7 +880,7 @@ export class Overlay {
 
   // =================================================================== etiquetas
 
-  /** Larguras das partes da etiqueta. O selo "CODEX" (como o "SUB") só aparece fora do modo compacto. */
+  /** Larguras das partes da etiqueta. O selo da ferramenta ("CODEX", "OPENCODE"; como o "SUB") só aparece fora do modo compacto. */
   private labelWidth(l: Label): { nameW: number; chipW: number; badgeW: number; codexW: number } {
     const ch = l.ch;
     const acc = this.sim.accounts.get(ch.info.account);
@@ -882,7 +888,8 @@ export class Overlay {
     const chipW = acc ? 13 : 0;
     const visitor = ch === this.sim.visitor;
     const badgeW = visitor ? this.measure(BADGE_FONT, visitorBadge()) + 7 : ch.info.kind === 'sub' && !l.compact ? this.measure(BADGE_FONT, 'SUB') + 7 : 0;
-    const codexW = ch.info.provider === 'codex' && !l.compact ? this.measure(BADGE_FONT, CODEX_BADGE) + 7 : 0;
+    const tool = toolBadge(ch.info.provider);
+    const codexW = tool && !l.compact ? this.measure(BADGE_FONT, tool) + 7 : 0;
     return { nameW, chipW, badgeW, codexW };
   }
 
@@ -914,6 +921,7 @@ export class Overlay {
     const acc = this.sim.accounts.get(ch.info.account);
     const sub = ch.info.kind === 'sub';
     const codex = ch.info.provider === 'codex' || acc?.provider === 'codex';
+    const opencode = ch.info.provider === 'opencode' || acc?.provider === 'opencode';
     const { nameW, chipW, badgeW, codexW } = this.labelWidth(l);
     const { x, y, w, h } = l;
     const selected = sel.agent === ch.id;
@@ -922,7 +930,24 @@ export class Overlay {
     ctx.roundRect(x, y, w, h, 7.5);
     ctx.fill();
     let cx = x + 4;
-    if (acc && codex) {
+    if (acc && opencode) {
+      // OpenCode: chip vazado de cantos redondos (fundo escuro, borda e letra na cor da conta), como nos painéis.
+      ctx.beginPath();
+      ctx.roundRect(cx, y + h / 2 - 5, 10, 10, 3);
+      ctx.fillStyle = CODEX_CHIP_BG;
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = acc.color;
+      ctx.beginPath();
+      ctx.roundRect(cx + 0.5, y + h / 2 - 4.5, 9, 9, 2.5);
+      ctx.stroke();
+      ctx.font = CHIP_FONT;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = acc.color;
+      ctx.fillText(acc.short.slice(0, 1), cx + 5, y + h / 2 + 0.5);
+      ctx.textAlign = 'left';
+      cx += chipW;
+    } else if (acc && codex) {
       // Codex: chip vazado de cantos em degrau (fundo escuro, borda e letra na cor da conta), como nos painéis.
       steppedRect(ctx, cx, y + h / 2 - 5, 10, 10, 2);
       ctx.fillStyle = CODEX_CHIP_BG;
@@ -976,7 +1001,7 @@ export class Overlay {
       ctx.fill();
       ctx.font = BADGE_FONT;
       ctx.fillStyle = '#e8ecf5';
-      ctx.fillText(CODEX_BADGE, cx + 3.5, y + h / 2 + 0.5);
+      ctx.fillText(toolBadge(ch.info.provider) ?? CODEX_BADGE, cx + 3.5, y + h / 2 + 0.5);
     }
   }
 }

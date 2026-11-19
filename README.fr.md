@@ -673,6 +673,22 @@ seulement : Codex n'indique pas le coût). La pastille du compte Codex est évid
   personnage peut donc mettre un peu de temps à partir après la fermeture du terminal.
 - Les conversations du cloud de ChatGPT (sans fichier sur l'ordinateur) n'apparaissent pas. `HABBLAUD_CODEX=0` désactive Codex.
 
+### OpenCode
+
+Les sessions d’[OpenCode](https://opencode.ai) (2.0 ou plus récent : la TUI, `opencode run` et l’app de bureau, qui
+parlent toutes au **service en arrière-plan** d’OpenCode) apparaissent dans le même bureau : personnage dans la salle du
+projet, activité en direct, tâches, sous-agents (l’outil `task`) et le compte **OpenCode** dans la barre du haut.
+
+- **Rien à installer :** Habblaud trouve le service tout seul grâce au fichier qu’OpenCode écrit dans
+  `~/.local/state/opencode/service.json` (adresse et mot de passe du service local) et lit tout sur le service, sans
+  toucher à la base de données d’OpenCode. Avec **Docker**, `npm run docker:up` monte **seulement ce fichier** (lecture
+  seule) et le conteneur joint le service via `host.docker.internal`.
+- **Usage dans la barre du haut :** avec **OpenCode Go**, les barres de 5 heures et de la semaine (et le mois dans
+  l’infobulle). Sans Go, la carte indique **aucune limite indiquée** (jamais 0 %).
+- **Envoyer des messages :** la zone **Envoyer un message** met le texte dans la file de la session via le service.
+- Pas encore : le terminal, l’historique et l’approbation des permissions depuis le bureau. Les agents OpenCode ne
+  montent pas dans Habblaud World. `HABBLAUD_OPENCODE=0` désactive OpenCode.
+
 ### GitHub dans le bureau
 
 Ce que les agents font sur GitHub anime la salle du projet, sans token et sans accès à Internet : Habblaud lit dans les

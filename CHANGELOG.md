@@ -12,6 +12,18 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- **OpenCode no escritório.** As sessões do OpenCode (2.0 ou mais novo: TUI, `opencode run` e o app desktop) entram no
+  escritório como as do Claude Code e do Codex: personagem na sala do projeto, atividade ao vivo (lendo, editando,
+  rodando comandos...), tarefas, subagentes da ferramenta `task`, mão levantada quando ele pede permissão ou faz uma
+  pergunta, e "Concluiu em X" no fim de cada turno. A barra do topo ganha o cartão da conta **OpenCode** com o uso do
+  **OpenCode Go** (5 horas e semana nas barras, o mês na dica); sem o Go, o cartão diz "sem limites informados" em vez
+  de inventar um 0%. A caixa **Mandar mensagem** também funciona com eles: o texto entra na fila da sessão e vira o
+  próximo prompt quando o OpenCode terminar o que está fazendo. Não precisa instalar nada: o Habblaud fala com o serviço
+  em segundo plano do OpenCode (o endereço e a senha estão em `~/.local/state/opencode/service.json`), sem tocar no
+  banco de dados dele; no Docker, o `npm run docker:up` monta só esse arquivo, somente leitura. `HABBLAUD_OPENCODE=0`
+  desliga. Os agentes do OpenCode não sobem para o Habblaud World (o protocolo dele ainda não conhece o OpenCode), e o
+  terminal e o histórico do Habblaud ainda não mostram as conversas dele.
+
 - **Festa no escritório.** Um botão novo na barra do topo (e `POST /api/party`) chama todos os personagens presentes,
   principais e subagentes, para comemorar juntos numa sala: por padrão a que tem mais agentes, por 2 minutos (`room` e
   `seconds` escolhem outra sala e outra duração). Cada um vai até um lugar livre, dá pulinhos, ri e conversa debaixo

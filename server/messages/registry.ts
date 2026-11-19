@@ -17,6 +17,10 @@
 // auxiliar do host (npm run codex:bridge) busca em POST /api/codex/bridge/poll e confirma em
 // POST /api/codex/bridge/ack. Mesmos estados, prazos e limites; canMessage = há entregador (o binário no modo Node ou
 // o auxiliar visto há até PRESENCE_MS). `delivered` = entrou na fila da sessão (entra quando ela ficar ociosa).
+//
+// Agentes do OpenCode também não têm plugin: as mensagens vão pelo serviço local do OpenCode (opção `opencode.send`,
+// POST /api/session/<id>/prompt com `delivery: 'queue'`), uma por vez por agente, como no Codex. canMessage = o
+// serviço do OpenCode alcançável agora; `delivered` = entrou na fila da sessão.
 import { randomBytes } from 'node:crypto';
 import { truncate } from '../../shared/activity';
 import { describeMessage, MESSAGE_MAX } from '../../shared/messages';
@@ -53,6 +57,10 @@ export const ERR_CODEX_SLOW = tr('o Codex demorou demais com as mensagens anteri
 export const ERR_CODEX_NOT_CONFIRMED = tr('o auxiliar do Codex não confirmou a entrega');
 export const ERR_CODEX_HOME = tr('a pasta da conta do Codex deste agente é desconhecida');
 export const ERR_CODEX_REFUSED = tr('o codex queue não aceitou a mensagem');
+export const ERR_OPENCODE_UNAVAILABLE = tr('o serviço do OpenCode não está ao alcance agora (abra o OpenCode ou rode opencode service start)');
+export const ERR_OPENCODE_SLOW = tr('o OpenCode demorou demais com as mensagens anteriores a este agente');
+export const ERR_OPENCODE_NOT_CONFIRMED = tr('o serviço do OpenCode não confirmou a entrega');
+export const ERR_OPENCODE_REFUSED = tr('o serviço do OpenCode não aceitou a mensagem');
 
 const ERROR_MAX = 300;
 const ID_MAX = 300;
@@ -74,6 +82,14 @@ export interface CodexDeliveryOptions {
   homeOf: (account: string) => string | undefined;
 }
 
+/** Entregador do OpenCode (o serviço local dele). */
+export interface OpenCodeDeliveryOptions {
+  /** Põe o texto na fila da sessão (`sessionId` = AgentInfo.sessionId). */
+  send: (sessionId: string, text: string) => Promise<CodexQueueResult>;
+  /** O serviço está ao alcance agora. */
+  available: () => boolean;
+}
+
 export interface MessageRegistryOptions {
   office: OfficeLike;
   /** Agente do demo (Office.demoAgent): esses só existem no snapshot. */
@@ -82,6 +98,8 @@ export interface MessageRegistryOptions {
   demoDeliver?: (agentId: string, text: string) => boolean;
   /** Mensagens aos agentes do Codex; ausente = eles não recebem. */
   codex?: CodexDeliveryOptions;
+  /** Mensagens aos agentes do OpenCode; ausente = eles não recebem. */
+  opencode?: OpenCodeDeliveryOptions;
   now?: () => number;
   /** Intervalo do relógio interno (start). */
   tickMs?: number;
@@ -123,6 +141,8 @@ interface Entry {
   demo?: boolean;
   /** Mensagem a um agente do Codex: sai pelo entregador do Codex ('node' = o servidor rodou; 'bridge' = o auxiliar). */
   codex?: true;
+  /** Mensagem a um agente do OpenCode: sai pelo serviço do OpenCode. */
+  opencode?: true;
   via?: 'node' | 'bridge';
   /** Falhou por falta de confirmação: uma confirmação atrasada ainda corrige a situação. */
   late?: boolean;
@@ -152,7 +172,11 @@ const isFinal = (e: Entry) => e.msg.status === 'delivered' || e.msg.status === '
 function unavailableReason(a: AgentInfo, reachable: boolean): string | undefined {
   if (a.kind !== 'main') return tr('subagentes não recebem mensagens: mande para o agente principal');
   if (!present(a)) return tr('o agente já saiu do escritório');
-  if (!reachable) return a.provider === 'codex' ? ERR_CODEX_UNAVAILABLE : tr('a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install)');
+  if (!reachable) {
+    if (a.provider === 'codex') return ERR_CODEX_UNAVAILABLE;
+    if (a.provider === 'opencode') return ERR_OPENCODE_UNAVAILABLE;
+    return tr('a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install)');
+  }
   return undefined;
 }
 
@@ -234,12 +258,14 @@ export class MessageRegistry {
     const out = new Set<string>();
     for (const id of this.seen.keys()) if (this.canMessage(id)) out.add(id);
     if (this.codexAvailable()) for (const a of this.opts.office.list()) if (a.provider === 'codex' && a.kind === 'main' && present(a)) out.add(a.id);
+    if (this.opencodeAvailable()) for (const a of this.opts.office.list()) if (a.provider === 'opencode' && a.kind === 'main' && present(a)) out.add(a.id);
     return out;
   }
 
   canMessage(agentId: string): boolean {
     const a = this.opts.office.get(agentId);
     if (a?.provider === 'codex') return this.codexAvailable() && present(a) && a.kind === 'main';
+    if (a?.provider === 'opencode') return this.opencodeAvailable() && present(a) && a.kind === 'main';
     const at = this.seen.get(agentId);
     if (at === undefined || this.now() - at >= this.presenceMs) return false;
     return present(a) && a.kind === 'main';
@@ -249,6 +275,11 @@ export class MessageRegistry {
   codexAvailable(): boolean {
     const c = this.opts.codex;
     return !!c && (!!c.run || this.bridgeRecent());
+  }
+
+  /** Há como entregar ao OpenCode: o serviço dele ao alcance. */
+  opencodeAvailable(): boolean {
+    return !!this.opts.opencode?.available();
   }
 
   /**
@@ -273,9 +304,11 @@ export class MessageRegistry {
     const entry: Entry = { msg: { id, agentId, status: 'queued', createdAt: now, updatedAt: now }, text, activity: describeMessage(text, opts.images ?? 0), target: agent.sessionId };
     if (demo) entry.demo = true;
     else if (real?.provider === 'codex') entry.codex = true;
+    else if (real?.provider === 'opencode') entry.opencode = true;
     this.messages.set(id, entry);
     const out = { ...entry.msg };
     if (entry.codex) this.pumpCodex();
+    if (entry.opencode) this.pumpOpenCode();
     return { message: out };
   }
 
@@ -294,10 +327,10 @@ export class MessageRegistry {
     const session = shortStr(r?.session, ID_MAX);
     if (!r || !session) throw new InvalidRequest('esperado {session, account?}');
     const account = shortStr(r.account, ID_MAX);
-    // O plugin é do Claude Code: agentes do Codex nunca recebem por aqui.
+    // O plugin é do Claude Code: agentes do Codex e do OpenCode nunca recebem por aqui.
     const agent = this.opts.office
       .list()
-      .find((a) => a.kind === 'main' && a.provider !== 'codex' && a.sessionId === session && (!account || a.account === account) && present(a));
+      .find((a) => a.kind === 'main' && (a.provider ?? 'claude') === 'claude' && a.sessionId === session && (!account || a.account === account) && present(a));
     if (!agent) return [];
 
     const now = this.now();
@@ -309,7 +342,7 @@ export class MessageRegistry {
     const out: InboxMessage[] = [];
     for (const e of this.messages.values()) {
       if (out.length >= INBOX_BATCH) break;
-      if (e.demo || e.codex || e.msg.agentId !== agent.id || e.msg.status !== 'queued' || e.target !== session) continue;
+      if (e.demo || e.codex || e.opencode || e.msg.agentId !== agent.id || e.msg.status !== 'queued' || e.target !== session) continue;
       this.setStatus(e, 'sent', now);
       e.session = session;
       e.sentAt = now;
@@ -330,7 +363,7 @@ export class MessageRegistry {
     const now = this.now();
     for (const x of ackResults(r)) {
       const e = this.messages.get(x.id);
-      if (!e || e.demo || e.codex || e.session !== session) continue;
+      if (!e || e.demo || e.codex || e.opencode || e.session !== session) continue;
       if (e.msg.status !== 'sent' && !(e.msg.status === 'failed' && e.late)) continue;
       if (x.ok) this.finish(e, 'delivered', now);
       else this.fail(e, now, x.error ?? ERR_REFUSED);
@@ -407,9 +440,9 @@ export class MessageRegistry {
       if (!present(a)) this.fail(e, now, ERR_GONE);
       else if (e.msg.status === 'queued' && a.sessionId !== e.target) this.fail(e, now, ERR_SESSION_CHANGED);
       else if (e.msg.status === 'queued' && now - e.msg.createdAt >= this.queuedTimeoutMs) {
-        this.fail(e, now, !e.codex ? ERR_NOT_FETCHED : this.opts.codex?.run ? ERR_CODEX_SLOW : ERR_CODEX_NOT_FETCHED);
+        this.fail(e, now, e.opencode ? ERR_OPENCODE_SLOW : !e.codex ? ERR_NOT_FETCHED : this.opts.codex?.run ? ERR_CODEX_SLOW : ERR_CODEX_NOT_FETCHED);
       } else if (e.msg.status === 'sent' && now - (e.sentAt ?? now) >= this.sentTimeoutMs) {
-        this.fail(e, now, e.codex ? ERR_CODEX_NOT_CONFIRMED : ERR_NOT_CONFIRMED);
+        this.fail(e, now, e.opencode ? ERR_OPENCODE_NOT_CONFIRMED : e.codex ? ERR_CODEX_NOT_CONFIRMED : ERR_NOT_CONFIRMED);
         e.late = true;
       }
     }
@@ -425,6 +458,7 @@ export class MessageRegistry {
       if (!this.opts.codex?.run) this.opts.office.markDirty();
     }
     this.pumpCodex();
+    this.pumpOpenCode();
   }
 
   // ---------------------------------------------------------------- internos
@@ -476,6 +510,47 @@ export class MessageRegistry {
     if (r.ok) this.finish(e, 'delivered', now);
     else this.fail(e, now, truncate(r.error, ERROR_MAX) || ERR_CODEX_REFUSED);
     this.pumpCodex();
+  }
+
+  /** Manda pelo serviço do OpenCode a próxima mensagem de cada agente dele (uma por vez por agente, na ordem). */
+  private pumpOpenCode(): void {
+    const oc = this.opts.opencode;
+    if (!oc) return;
+    const busy = new Set<string>();
+    for (const e of this.messages.values()) if (e.opencode && e.msg.status === 'sent') busy.add(e.msg.agentId);
+    const now = this.now();
+    for (const e of this.messages.values()) {
+      if (!e.opencode || e.msg.status !== 'queued' || busy.has(e.msg.agentId)) continue;
+      // Fora do alcance: a mensagem espera na fila (e falha pelo prazo, se o serviço não voltar).
+      if (!oc.available()) return;
+      busy.add(e.msg.agentId);
+      const a = this.opts.office.get(e.msg.agentId);
+      if (!present(a)) {
+        this.fail(e, now, ERR_GONE);
+        continue;
+      }
+      if (a.sessionId !== e.target) {
+        this.fail(e, now, ERR_SESSION_CHANGED);
+        continue;
+      }
+      this.setStatus(e, 'sent', now);
+      e.sentAt = now;
+      e.via = 'node';
+      oc.send(a.sessionId, e.text).then(
+        (r) => this.openCodeDone(e, r),
+        (err: unknown) => this.openCodeDone(e, { ok: false, error: errMsg(err) }),
+      );
+    }
+  }
+
+  /** Fim de um envio pelo serviço do OpenCode. */
+  private openCodeDone(e: Entry, r: CodexQueueResult): void {
+    if (this.messages.get(e.msg.id) !== e) return;
+    if (e.msg.status !== 'sent' && !(e.msg.status === 'failed' && e.late)) return;
+    const now = this.now();
+    if (r.ok) this.finish(e, 'delivered', now);
+    else this.fail(e, now, truncate(r.error, ERROR_MAX) || ERR_OPENCODE_REFUSED);
+    this.pumpOpenCode();
   }
 
   private setStatus(e: Entry, status: OutboxMessage['status'], now: number): void {

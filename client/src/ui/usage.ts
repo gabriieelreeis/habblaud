@@ -7,21 +7,32 @@
 // Conta do Codex: os números vêm dos arquivos de sessão dele, que só se renovam enquanto alguma sessão roda; por isso
 // a idade ("há 12 min") fica sempre à mostra. Sem cota nem créditos ("sem cota") nunca vira 0%. Não há o que
 // instalar para o uso: "Como funciona" abre a ajuda na seção do Codex. Sem Opus/Sonnet nem e-mail (só o plano).
+// Conta do OpenCode: os números (5h, semana e, na dica, o mês) são do OpenCode Go, pedidos ao serviço local dele a cada
+// minuto. Sem o Go nem orçamento, o OpenCode não informa limite nenhum: "sem limites informados", nunca 0%.
 import type { AccountInfo } from '../../../shared/types';
 import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
-import { FIVE_HOURS_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
+import { FIVE_HOURS_MS, formatUSD, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
 import { ICONS } from './icons';
-import { isCodex } from './provider';
+import { isCodex, isOpenCode, isOtherTool, PROVIDER_NAME, providerOf } from './provider';
 import { usageRowFits } from './usage-row';
 import { createAccountChip, createProviderTag, updateAccountChip, updateProviderTag } from './widgets';
 import { tr } from '../../../shared/i18n';
+
+const MONTH_MS = 30 * 24 * 3600_000;
 
 export const SOURCE_LABEL: Record<NonNullable<AccountInfo['usage']>['source'], string> = {
   cache: tr('cache do /usage do Claude Code'),
   statusline: tr('ao vivo (statusline do Claude Code)'),
   codex: tr('arquivos do Codex'),
+  opencode: tr('serviço local do OpenCode'),
 };
+
+/** Orçamento do workspace do OpenCode: "$1,20 de $10,00 (12%)". */
+export function budgetText(b: NonNullable<NonNullable<AccountInfo['usage']>['budget']>): string {
+  const pct = Math.round((b.spent / b.limit) * 100);
+  return tr('{0} de {1} ({2}%)', [formatUSD(b.spent), formatUSD(b.limit), pct]);
+}
 
 /** Origem para mostrar: o arquivo ao vivo pode ter sido gravado pelo mod do Habblaud ou pelo tap. */
 export function sourceLabel(u: NonNullable<AccountInfo['usage']>): string {
@@ -151,8 +162,11 @@ export function createUsageSetup(): HTMLElement {
   );
 }
 
-/** ok/stale: números recentes/antigos; empty: sem números; noquota: Codex sem cota nem créditos (nunca 0%). */
-export type CardState = 'ok' | 'stale' | 'empty' | 'noquota';
+/**
+ * ok/stale: números recentes/antigos; empty: sem números; noquota: Codex sem cota nem créditos (nunca 0%); nolimits:
+ * o OpenCode não informou limite de janela (sem o Go: só os modelos grátis, créditos ou um orçamento em dólares).
+ */
+export type CardState = 'ok' | 'stale' | 'empty' | 'noquota' | 'nolimits';
 
 function hasWindows(a: Pick<AccountInfo, 'usage'>): boolean {
   return !!a.usage && !!(a.usage.fiveHour || a.usage.sevenDay);
@@ -162,6 +176,8 @@ function hasWindows(a: Pick<AccountInfo, 'usage'>): boolean {
 export function cardState(a: Pick<AccountInfo, 'usage' | 'usageStatus'>): CardState {
   // "Sem cota" vem antes: a leitura não traz janelas, mas não é "sem dados".
   if (a.usage?.noQuota) return 'noquota';
+  // OpenCode sem janelas de limite (com ou sem orçamento): a leitura existe, só não há barras para mostrar.
+  if (!hasWindows(a) && (a.usage?.noLimits || a.usage?.budget)) return 'nolimits';
   // Leitura sem nenhuma das janelas (ex.: cache do /usage sem números) vale como "sem dados".
   if (!hasWindows(a)) return 'empty';
   return a.usageStatus === 'ok' ? 'ok' : 'stale';
@@ -174,10 +190,10 @@ export function showsUsageAge(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'pr
   return state === 'stale' || (isCodex(a) && state !== 'empty');
 }
 
-/** Linha embaixo do nome: e-mail; no Codex (sem e-mail), o plano; nas outras, a pasta. */
-export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider'>): string {
+/** Linha embaixo do nome: e-mail; no Codex e no OpenCode (sem e-mail), o plano (ou o workspace); nas outras, a pasta. */
+export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider'> & { organization?: string }): string {
   if (a.email) return a.email;
-  if (isCodex(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Codex';
+  if (isOtherTool(a)) return a.plan ? tr('plano {0}', [a.plan]) : (isOpenCode(a) ? a.organization : undefined) ?? PROVIDER_NAME[providerOf(a)];
   return a.configDir;
 }
 
@@ -185,8 +201,26 @@ export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir
 export function usageMessage(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider'>): [string, string] {
   const state = cardState(a);
   if (state === 'noquota') return [tr('sem cota'), tr('sem cota')];
-  if (isCodex(a)) return [tr('sem dados ainda'), tr('sem dados')];
+  if (state === 'nolimits') {
+    const b = a.usage?.budget;
+    if (b) return [tr('orçamento: {0}', [budgetText(b)]), `${formatUSD(b.spent)}/${formatUSD(b.limit)}`];
+    return [tr('sem limites informados'), tr('sem limites')];
+  }
+  if (isOtherTool(a)) return [tr('sem dados ainda'), tr('sem dados')];
   return [tr('sem dados de uso'), tr('sem dados')];
+}
+
+/** Explicação do cartão de uma conta do OpenCode (dica); '' nas outras. */
+export function openCodeUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider'>, now: number): string {
+  if (!isOpenCode(a)) return '';
+  const state = cardState(a);
+  if (state === 'empty') return tr('Não precisa instalar nada: os números vêm do serviço do OpenCode assim que o Habblaud o alcança.');
+  if (state === 'nolimits')
+    return a.usage?.budget
+      ? tr('Sem o OpenCode Go, o limite desta conta é o orçamento do workspace (em dólares).')
+      : tr('O OpenCode não informou limites para esta conta (sem o OpenCode Go). Os modelos grátis têm um limite próprio, que o serviço do OpenCode não mostra.');
+  if (state === 'stale') return tr('Números antigos ({0}): o serviço do OpenCode não respondeu desde então.', [a.usage ? relativeTime(a.usage.fetchedAt, now) : '']);
+  return tr('Limites do OpenCode Go (5 h, semana e mês), lidos do serviço local do OpenCode a cada minuto.');
 }
 
 /** Explicação do cartão de uma conta do Codex (dica); '' nas outras. */
@@ -337,12 +371,14 @@ export class UsageCards {
     const r = this.refs.get(card)!;
     const now = this.ctx.now();
     const codex = isCodex(a);
+    const opencode = isOpenCode(a);
+    const provider = providerOf(a);
     updateAccountChip(r.chip, a);
     setStyleVar(card, '--acc', a.color);
     setText(r.name, a.name);
-    updateProviderTag(r.prov, codex ? 'codex' : 'claude', a.name);
+    updateProviderTag(r.prov, provider, a.name);
     setText(r.email, usageSubtitle(a));
-    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : '']));
+    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, provider !== 'claude' && !a.name.includes(PROVIDER_NAME[provider]) ? ` (${PROVIDER_NAME[provider]})` : '']));
 
     const usage = a.usage;
     const state = cardState(a);
@@ -380,10 +416,11 @@ export class UsageCards {
     const [msgLong, msgShort] = usageMessage(a);
     setText(r.msgLong, msgLong);
     setText(r.msgShort, msgShort);
-    setHidden(r.msg, state !== 'empty' && state !== 'noquota');
-    setHidden(r.how, state === 'noquota');
-    r.msg.classList.toggle('is-noquota', state === 'noquota');
-    setTitle(r.msg, state === 'noquota' ? codexUsageNote(a, now) : '');
+    setHidden(r.msg, state !== 'empty' && state !== 'noquota' && state !== 'nolimits');
+    // OpenCode: nada a instalar nem ajuda própria; a explicação fica na dica do cartão.
+    setHidden(r.how, state === 'noquota' || state === 'nolimits' || opencode);
+    r.msg.classList.toggle('is-noquota', state === 'noquota' || state === 'nolimits');
+    setTitle(r.msg, state === 'noquota' ? codexUsageNote(a, now) : state === 'nolimits' ? openCodeUsageNote(a, now) : '');
     setText(r.howLong, codex ? tr('Como funciona') : tr('Como ativar'));
     setText(r.howShort, codex ? tr('Saber') : tr('Ativar'));
     r.how.dataset.help = codex ? 'codex' : 'usage';
@@ -393,30 +430,48 @@ export class UsageCards {
 
   private updateTip(r: CardRefs, a: AccountInfo, state: CardState, five: UsageWindowView | null, week: UsageWindowView | null, now: number): void {
     const codex = isCodex(a);
-    setText(r.tipTitle, `${a.name}${codex && !/codex/i.test(a.name) ? ' · Codex' : ''}${a.plan ? tr(' · plano {0}', [a.plan]) : ''}`);
+    const opencode = isOpenCode(a);
+    const provider = providerOf(a);
+    const other = provider !== 'claude';
+    const toolName = PROVIDER_NAME[provider];
+    setText(r.tipTitle, `${a.name}${other && !a.name.toLowerCase().includes(toolName.toLowerCase()) ? ` · ${toolName}` : ''}${a.plan ? tr(' · plano {0}', [a.plan]) : ''}`);
     const rows: [string, string][] = [];
-    if (codex) rows.push([tr('Ferramenta'), 'Codex']);
+    if (other) rows.push([tr('Ferramenta'), toolName]);
     if (a.email) rows.push(['E-mail', a.email]);
-    if (a.organization) rows.push([tr('Organização'), a.organization]);
+    if (a.organization) rows.push([opencode ? tr('Workspace') : tr('Organização'), a.organization]);
     if (a.plan) rows.push([tr('Plano'), a.plan]);
-    rows.push([tr('Pasta'), a.configDir]);
+    rows.push([opencode ? tr('Serviço') : tr('Pasta'), a.configDir]);
     rows.push([tr('Sessões abertas'), String(a.sessions)]);
     const u = a.usage;
     if (u && (u.fiveHour || u.sevenDay)) {
       rows.push([tr('Sessão de 5 h'), five?.summary ?? '—']);
       rows.push([tr('Semana'), week?.summary ?? '—']);
-      // Opus e Sonnet são janelas do Claude: no Codex não existem.
-      const opus = codex ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);
-      const sonnet = codex ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);
+      // Opus e Sonnet são janelas do Claude: no Codex e no OpenCode não existem.
+      const opus = other ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);
+      const sonnet = other ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);
       if (opus) rows.push([tr('Opus (semana)'), opus.summary]);
       if (sonnet) rows.push([tr('Sonnet (semana)'), sonnet.summary]);
     }
+    // Mês (OpenCode Go) e orçamento do workspace (OpenCode): só na dica.
+    const month = u ? usageWindowView(u.monthly, u.fetchedAt, now, MONTH_MS) : null;
+    if (month) rows.push([tr('Mês'), month.summary]);
+    if (u?.budget) rows.push([tr('Orçamento'), budgetText(u.budget)]);
     if (u && state === 'noquota') rows.push([tr('Cota'), tr('sem cota nem créditos agora')]);
-    if (u && (state !== 'empty' || codex)) {
+    if (u && state === 'nolimits' && !u.budget) rows.push([tr('Limites'), tr('nenhum informado')]);
+    if (u && (state !== 'empty' || other)) {
       rows.push([tr('Origem'), sourceLabel(u)]);
       rows.push([tr('Atualizado'), relativeTime(u.fetchedAt, now)]);
     }
     syncRows(r.tipRows, rows);
+
+    // OpenCode: a explicação dele, sem o passo a passo do Claude Code (não há o que instalar para o uso).
+    if (opencode) {
+      const note = openCodeUsageNote(a, now);
+      setText(r.tipNote, note);
+      setHidden(r.tipNote, !note);
+      setHidden(r.tipSetup, true);
+      return;
+    }
 
     // Codex: a explicação dele, sem o passo a passo do Claude Code (não há o que instalar para o uso).
     if (codex) {
