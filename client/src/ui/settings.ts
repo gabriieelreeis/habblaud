@@ -2,7 +2,7 @@
 // janela própria (ui/world/world-dialog.ts); daqui só sai a dica do tema em Aparência, que também vai para o prédio.
 import { access, remoteLogout } from '../net/access';
 import type { UiComponent, UiContext } from './context';
-import { h, iconButton, setAttr, setHidden, setText } from './dom';
+import { anchorRect, h, iconButton, setAttr, setHidden, setText } from './dom';
 import { ICONS } from './icons';
 import { notificationState, type Notifier } from './notify';
 import type { UiPrefs } from './prefs';
@@ -236,7 +236,7 @@ export class SettingsPopover implements UiComponent {
   toggle(anchor: HTMLElement): void {
     this.anchor = anchor;
     if (this.isOpen) return this.hide();
-    const r = anchor.getBoundingClientRect();
+    const r = anchorRect(anchor);
     this.el.style.top = `${Math.round(r.bottom + 8)}px`;
     this.el.style.right = `${Math.max(8, Math.round(innerWidth - r.right - 4))}px`;
     if (typeof this.el.showPopover === 'function') this.el.showPopover();

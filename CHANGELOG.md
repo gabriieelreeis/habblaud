@@ -41,6 +41,11 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Celular: a barra do topo voltou a caber numa linha, com o menu "⋮".** Com o botão da festa, os botões da direita
+  passaram do espaço e a barra quebrou em duas linhas, cortando os cartões de uso. Até 600 px de largura, os botões
+  agora ficam num menu: o "⋮" no canto direito abre a lista de todos (Visão geral, Meu dia, festa, Entregas, Novo
+  agente, Timelapse, Habblaud World, Configurações, Ajuda), cada um com o nome, e ganha uma bolinha quando algum deles
+  tem novidade (ex.: Entregas novas). Os painéis abertos pelo menu aparecem embaixo do "⋮".
 - **Perguntas dos agentes chegam inteiras ao escritório.** No cartão “Pergunta para você” e no alerta da gaveta, a
   pergunta do AskUserQuestion parava em 300 caracteres com “…” (e as opções, em 80 e 200), juntando as linhas numa
   só, e era preciso abrir o terminal para ler o resto. Agora a pergunta e a descrição de cada opção aparecem

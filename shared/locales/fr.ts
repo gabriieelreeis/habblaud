@@ -3406,4 +3406,6 @@ export const FR: Readonly<Record<string, string>> = {
   "não deu para gravar as imagens no computador": "impossible d'enregistrer les images sur l'ordinateur",
   "não deu para reduzir a imagem": "impossible de réduire l'image",
   "só imagens (PNG, JPEG, GIF ou WebP)": "images seulement (PNG, JPEG, GIF ou WebP)",
+  // menu "⋮" da barra no celular (client/src/ui/topbar.ts)
+  "Mais opções": "Plus d'options",
 };

@@ -9,7 +9,7 @@ import type { DeliveryAttachment, DeliveryInfo } from '../../../shared/types';
 import { access } from '../net/access';
 import { createAvatar } from './avatar';
 import type { UiComponent, UiContext } from './context';
-import { h, iconButton, setHidden, setText } from './dom';
+import { anchorRect, h, iconButton, setHidden, setText } from './dom';
 import { formatDuration, relativeTime } from './format';
 import { ICONS } from './icons';
 import { renderMarkdown } from './markdown';
@@ -274,7 +274,7 @@ export class Deliveries implements UiComponent {
     if (this.panelOpen) return this.hidePanel();
     const prevSeen = this.seenAt;
     this.renderList(prevSeen);
-    const r = this.button.getBoundingClientRect();
+    const r = anchorRect(this.button);
     this.panel.style.top = `${Math.round(r.bottom + 8)}px`;
     this.panel.style.right = `${Math.max(8, Math.round(innerWidth - r.right - 4))}px`;
     if (typeof this.panel.showPopover === 'function') this.panel.showPopover();

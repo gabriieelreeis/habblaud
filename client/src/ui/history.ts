@@ -7,7 +7,7 @@
 import { access } from '../net/access';
 import type { RecentSession } from '../../../shared/types';
 import type { UiComponent, UiContext } from './context';
-import { h, iconButton, setAttr, setHidden, setText, setTitle } from './dom';
+import { anchorRect, h, iconButton, setAttr, setHidden, setText, setTitle } from './dom';
 import { calendarDayDiff, formatClock, formatDateTime, normalizeSearch, plural, shortPath } from './format';
 import { ICONS } from './icons';
 import { isCodex } from './provider';
@@ -217,7 +217,7 @@ export class HistoryPopover implements UiComponent {
     }
     // O clique que fechou o popover (fora dele, no próprio botão) não o reabre.
     if (performance.now() - this.closedAt < REOPEN_GUARD_MS) return;
-    const r = this.button.getBoundingClientRect();
+    const r = anchorRect(this.button);
     this.el.style.top = `${Math.round(r.bottom + 8)}px`;
     this.el.style.right = `${Math.max(8, Math.round(innerWidth - r.right - 4))}px`;
     if (typeof this.el.showPopover === 'function') this.el.showPopover();

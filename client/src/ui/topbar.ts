@@ -4,7 +4,7 @@ import { SpawnPanel } from './spawn';
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText, setTitle, setVariant } from './dom';
 import { formatDuration, formatInt } from './format';
-import { FALLBACK_MARK, ICONS } from './icons';
+import { FALLBACK_MARK, ICONS, pixelIcon } from './icons';
 import { computeCounters, shellLine, shellWaitIn, shellWaitingAgents, waitingAgents, type Counters } from './model';
 import { TIMELAPSE_ICONS } from './timelapse';
 import { focusPermission, nextPermissionAgent, permissionAgents } from './permission';
@@ -28,6 +28,9 @@ const COUNTERS: { key: Exclude<keyof Counters, 'shells'>; singular: string; plur
   { key: 'waiting', singular: tr('precisa de você'), plural: tr('precisam de você'), hint: tr('Agentes esperando sua resposta no terminal') },
 ];
 const WAITING_HINT = COUNTERS.find((c) => c.key === 'waiting')!.hint;
+
+/** Três pontinhos em pé (menu "Mais opções" do celular). */
+const MORE_ICON = pixelIcon(['...##...', '...##...', '........', '...##...', '...##...', '........', '...##...', '...##...']);
 
 export class TopBar implements UiComponent {
   readonly el: HTMLElement;
@@ -53,6 +56,15 @@ export class TopBar implements UiComponent {
   private readonly spawnPanel: SpawnPanel;
   /** Grupo dos botões de painéis (feed, Habblaud World, configurações, ajuda); o histórico entra aqui (ui/index.ts). */
   readonly panelGroup: HTMLElement;
+  /**
+   * Celular (até 600 px): os botões da direita não cabem numa linha, então somem e o "⋮" abre um menu com todos eles,
+   * cada um com o nome. Os itens são montados na hora de abrir, a partir dos botões de verdade (que continuam fazendo o
+   * trabalho: o item só clica neles), então botões que entram depois (festa, Meu dia, Entregas...) aparecem sozinhos.
+   */
+  private readonly overviewBtn: HTMLButtonElement;
+  private readonly moreBtn: HTMLButtonElement;
+  private readonly moreDot: HTMLElement;
+  private readonly moreMenu: HTMLElement;
 
   constructor(private ctx: UiContext) {
     // Marca: usa o logo do projeto se existir; senão, o prédio em pixels.
@@ -118,10 +130,11 @@ export class TopBar implements UiComponent {
     this.spawnBtn.hidden = true;
     this.version = new VersionChip(ctx, this.settingsBtn);
     this.status = h('div', { class: 'ui-topbar__status' }, this.pill, this.version.el, this.demoBadge);
+    this.overviewBtn = iconButton(ICONS.overview, tr('Visão geral (O)'), () => ctx.camera('overview'));
     const viewGroup = h(
       'div',
       { class: 'ui-btn-group', role: 'group', attrs: { 'aria-label': tr('Câmera') } },
-      iconButton(ICONS.overview, tr('Visão geral (O)'), () => ctx.camera('overview')),
+      this.overviewBtn,
       iconButton(ICONS.zoomOut, tr('Afastar (−)'), () => ctx.camera('zoomOut')),
       iconButton(ICONS.zoomIn, tr('Aproximar (+)'), () => ctx.camera('zoomIn')),
     );
@@ -136,6 +149,16 @@ export class TopBar implements UiComponent {
       iconButton(ICONS.help, tr('Ajuda (?)'), () => ctx.openHelp()),
     );
     this.panelGroup = panelGroup;
+
+    this.moreDot = h('span', { class: 'ui-topbar__more-dot', hidden: true, attrs: { 'aria-hidden': 'true' } });
+    this.moreBtn = iconButton(MORE_ICON, tr('Mais opções'), () => this.toggleMore(), 'ui-topbar__more');
+    this.moreBtn.setAttribute('aria-haspopup', 'menu');
+    this.moreBtn.setAttribute('aria-expanded', 'false');
+    this.moreBtn.append(this.moreDot);
+    this.moreMenu = h('div', { class: 'ui-popover ui-more', role: 'menu', tabIndex: -1, attrs: { popover: 'auto', 'aria-label': tr('Mais opções') } });
+    this.moreMenu.addEventListener('toggle', () => setAttr(this.moreBtn, 'aria-expanded', String(this.moreOpen)));
+    this.moreMenu.addEventListener('keydown', (e) => this.onMoreKey(e));
+    ctx.root.append(this.moreMenu);
 
     this.el = h(
       'header',
@@ -153,8 +176,75 @@ export class TopBar implements UiComponent {
       ),
       counterWrap,
       this.usage.el,
-      h('div', { class: 'ui-topbar__right' }, viewGroup, panelGroup),
+      h('div', { class: 'ui-topbar__right' }, viewGroup, panelGroup, this.moreBtn),
     );
+  }
+
+  // ---------------------------------------------------------------- menu "⋮" (celular)
+
+  private get moreOpen(): boolean {
+    try {
+      return this.moreMenu.matches(':popover-open');
+    } catch {
+      return this.moreMenu.classList.contains('is-open');
+    }
+  }
+
+  private hideMore(): void {
+    if (typeof this.moreMenu.hidePopover === 'function' && this.moreOpen) this.moreMenu.hidePopover();
+    this.moreMenu.classList.remove('is-open');
+    setAttr(this.moreBtn, 'aria-expanded', 'false');
+  }
+
+  /** Os botões que o menu mostra: Visão geral e os painéis visíveis (os escondidos, ou sem uso aqui, ficam de fora). */
+  private moreButtons(): HTMLButtonElement[] {
+    const all = [this.overviewBtn, ...Array.from(this.panelGroup.children)];
+    return all.filter((b): b is HTMLButtonElement => b instanceof HTMLButtonElement && !b.hidden && getComputedStyle(b).display !== 'none');
+  }
+
+  private toggleMore(): void {
+    if (this.moreOpen) return this.hideMore();
+    const items = this.moreButtons().map((btn) => {
+      const icon = h('span', { class: 'ui-more__icon', attrs: { 'aria-hidden': 'true' } });
+      icon.innerHTML = btn.innerHTML;
+      const label = btn.getAttribute('aria-label') || btn.title || '';
+      const item = h(
+        'button',
+        { class: `ui-more__item${btn.getAttribute('aria-pressed') === 'true' ? ' is-on' : ''}`, type: 'button', role: 'menuitem' },
+        icon,
+        h('span', { class: 'ui-more__label', text: label }),
+      );
+      item.addEventListener('click', () => {
+        this.hideMore();
+        // o botão de verdade faz o trabalho (e abre o painel dele no canto do "⋮": dom.ts, anchorRect)
+        btn.click();
+      });
+      return item;
+    });
+    this.moreMenu.replaceChildren(...items);
+    const r = this.moreBtn.getBoundingClientRect();
+    this.moreMenu.style.top = `${Math.round(r.bottom + 8)}px`;
+    this.moreMenu.style.right = `${Math.max(8, Math.round(innerWidth - r.right - 4))}px`;
+    if (typeof this.moreMenu.showPopover === 'function') this.moreMenu.showPopover();
+    else this.moreMenu.classList.add('is-open');
+    setAttr(this.moreBtn, 'aria-expanded', 'true');
+    (items[0] as HTMLElement | undefined)?.focus({ preventScroll: true });
+  }
+
+  /** Setas, Home e End andam pelos itens do menu (Esc fecha: é um popover). */
+  private onMoreKey(e: KeyboardEvent): void {
+    const items = Array.from(this.moreMenu.querySelectorAll<HTMLElement>('.ui-more__item'));
+    if (!items.length) return;
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    let next = -1;
+    if (e.key === 'ArrowDown') next = (i + 1) % items.length;
+    else if (e.key === 'ArrowUp') next = (i - 1 + items.length) % items.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = items.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    items[next].focus();
   }
 
   /** Acrescenta um selo à linha de status da marca, depois da versão (ex.: o chip do Habblaud World). */
@@ -175,6 +265,7 @@ export class TopBar implements UiComponent {
   render(): void {
     const { store } = this.ctx;
     const snap = store.snapshot;
+    setHidden(this.moreDot, !this.panelGroup.querySelector('[class*="badge"]:not([hidden])'));
 
     // Conexão.
     const conn = store.connection;
