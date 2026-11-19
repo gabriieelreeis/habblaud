@@ -16,6 +16,10 @@
 //    sessions/, archived_sessions/ e thread-writer-locks/ de cada uma, somente leitura, em /codex/<conta>/... —
 //    nunca auth.json, config.toml, shell_snapshots/, history.jsonl, logs nem os SQLite. Vão em HABBLAUD_CODEX_DIRS
 //    e, com `provider: 'codex'` e a pasta do HOST (onde o `codex queue` roda), em HABBLAUD_ACCOUNTS.
+//    OpenCode (v2+; HABBLAUD_OPENCODE=0 desliga): SOMENTE o arquivo de estado do serviço dele
+//    (~/.local/state/opencode/service.json: endereço e senha do serviço local), somente leitura, em
+//    /opencode/service.json, com HABBLAUD_OPENCODE_HOST=host.docker.internal (o container fala com o serviço do
+//    computador) — nunca o banco SQLite, o auth.json nem o histórico de prompts do OpenCode.
 // 3. Migra o que sobrou do nome antigo (CodeTown, até a 0.3.2): ~/.codetown vira ~/.habblaud, o container
 //    `codetown` e a rede codetown_default saem e, se o volume novo ainda não existe, os dados de
 //    codetown_codetown-data são copiados para ele (o antigo fica, para apagar à mão). Avisa de CODETOWN_*
@@ -40,6 +44,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { AccountInfo, SourceInfo } from '../shared/types';
 import { codexDirsRefused, detectAccounts, discoverClaudeDirs, type DetectedAccount } from '../server/accounts/detect';
 import { detectCodexAccounts, discoverCodexDirs } from '../server/sources/codex/accounts';
+import { serviceFile as openCodeServiceFile } from '../server/sources/opencode/service';
 import { describeStateMigration, LEGACY_NAME, legacyEnvWarning, migrateLegacyStateDir } from '../server/legacy';
 import { makeClaudeRunner, MIN_CLAUDE_VERSION, readPackageVersion, updateInstalledMods, type ModUpdateResult } from './mod-install';
 import { tr } from '../shared/i18n';
@@ -190,6 +195,16 @@ export interface AccountPayload {
 }
 
 /** Caminho real de uma pasta existente, ou undefined. */
+/** Caminho real de um arquivo que existe (undefined se não existe ou não é arquivo). */
+function realFile(p: string): string | undefined {
+  try {
+    const real = realpathSync(p);
+    return statSync(real).isFile() ? real : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function realDir(p: string): string | undefined {
   try {
     const real = realpathSync(p);
@@ -246,6 +261,15 @@ export function codexAccountsPayload(mounts: AccountMount[]): AccountPayload[] {
     if (a.plan) p.plan = a.plan;
     return p;
   });
+}
+
+/** Onde o arquivo do serviço do OpenCode fica no container. */
+export const CONTAINER_OPENCODE_FILE = '/opencode/service.json';
+
+/** HABBLAUD_OPENCODE desligado (0, false, off, no) no ambiente de quem roda o docker:up. */
+export function openCodeDisabled(env: NodeJS.ProcessEnv): boolean {
+  const v = env.HABBLAUD_OPENCODE?.trim();
+  return !!v && !/^(1|true|yes|sim|on)$/i.test(v);
 }
 
 /** HABBLAUD_CODEX desligado (0, false, off, no) no ambiente de quem roda o docker:up. */
@@ -316,7 +340,7 @@ export function hostTimeZone(env: NodeJS.ProcessEnv = process.env): string | und
 /**
  * `usageDir`: pasta do host com o uso capturado pelo tap de statusline (já existente; caminho real),
  * montada somente leitura em /usage. `timeZone`: fuso do host, repassado como TZ. `codex`: montagens das contas do
- * Codex (planCodexMounts).
+ * Codex (planCodexMounts). `opencodeFile`: o arquivo de estado do serviço do OpenCode no host (só ele é montado).
  */
 export function renderOverride(
   mounts: AccountMount[],
@@ -328,6 +352,7 @@ export function renderOverride(
   extraPorts: string[] = [],
   presentationsDir?: string,
   attachmentsDir?: string,
+  opencodeFile?: string,
 ): string {
   const env: Array<[string, string]> = [
     ['HABBLAUD_CLAUDE_DIRS', mounts.map((m) => m.mountDir).join(',')],
@@ -340,12 +365,16 @@ export function renderOverride(
   if (presentationsDir) env.push(['HABBLAUD_PRESENTATIONS_DIR', CONTAINER_PRESENTATIONS_DIR], ['HABBLAUD_PRESENTATIONS_HOST_DIR', presentationsDir]);
   // Imagens das mensagens: o container grava na montagem e manda ao agente o caminho do host.
   if (attachmentsDir) env.push(['HABBLAUD_MESSAGE_IMAGES_DIR', CONTAINER_ATTACHMENTS_DIR], ['HABBLAUD_MESSAGE_IMAGES_HOST_DIR', attachmentsDir]);
+  // OpenCode: o endereço do arquivo (127.0.0.1) vale no computador; no container, o mesmo serviço é o host.docker.internal.
+  if (opencodeFile)
+    env.push(['HABBLAUD_OPENCODE_SERVICE_FILE', CONTAINER_OPENCODE_FILE], ['HABBLAUD_OPENCODE_HOST', 'host.docker.internal'], ['HABBLAUD_OPENCODE_HOST_FILE', opencodeFile]);
   const lines = [
     `# Gerado por scripts/docker-up.ts em ${generatedAt.toISOString()} — não edite: é recriado a cada \`npm run docker:up\`.`,
     '# Contém caminhos do host e e-mails das contas: fica fora do git e com permissão 600.',
     `# Montagens: SOMENTE <conta>/projects, <conta>/sessions, a pasta do uso do statusline${presentationsDir ? ' e a das apresentações' : ''}, todas somente leitura.`,
     ...(attachmentsDir ? ['# Gravável: SÓ a pasta dos anexos (as imagens das mensagens pelo escritório).'] : []),
     ...(codex.length ? ['# Codex: SOMENTE <pasta>/sessions, <pasta>/archived_sessions e <pasta>/thread-writer-locks, somente leitura.'] : []),
+    ...(opencodeFile ? ['# OpenCode: SOMENTE o arquivo do serviço local (endereço e senha), somente leitura.'] : []),
     'services:',
     `  ${SERVICE}:`,
     '    environment:',
@@ -357,6 +386,7 @@ export function renderOverride(
   if (usageDir) binds.push({ source: usageDir, target: CONTAINER_USAGE_DIR });
   if (presentationsDir) binds.push({ source: presentationsDir, target: CONTAINER_PRESENTATIONS_DIR });
   if (attachmentsDir) binds.push({ source: attachmentsDir, target: CONTAINER_ATTACHMENTS_DIR, writable: true });
+  if (opencodeFile) binds.push({ source: opencodeFile, target: CONTAINER_OPENCODE_FILE });
   // Acesso remoto: SÓ a pasta do certificado do servidor (a chave da CA fica no host).
   if (remoteTlsDir) binds.push({ source: remoteTlsDir, target: CONTAINER_REMOTE_TLS_DIR });
   if (binds.length) {
@@ -758,6 +788,9 @@ async function up(opts: Options, port: number): Promise<void> {
     }
   }
 
+  const opencodeFile = openCodeDisabled(process.env) ? undefined : realFile(openCodeServiceFile(process.env, HOME));
+  if (opencodeFile) say(tr('OpenCode: monta só o arquivo do serviço ({0}), somente leitura; o container fala com o serviço pelo host.docker.internal.', [tildify(opencodeFile)]));
+
   migrateStateDir();
   const usageDir = ensureUsageDir();
   if (usageDir) say(tr('Uso ao vivo (mod ou tap de statusline): monta {0} em {1}, somente leitura.', [tildify(USAGE_DIR), CONTAINER_USAGE_DIR]));
@@ -768,7 +801,7 @@ async function up(opts: Options, port: number): Promise<void> {
   const remoteTlsDir = prepareRemoteTls();
   const remotePorts = remoteTlsDir || remoteInsecure() ? remotePortsToPublish() : [];
   const tmp = `${OVERRIDE_FILE}.tmp`;
-  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts, remoteTlsDir, remotePorts, presentationsDir, attachmentsDir), { mode: 0o600 });
+  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts, remoteTlsDir, remotePorts, presentationsDir, attachmentsDir, opencodeFile), { mode: 0o600 });
   chmodSync(tmp, 0o600);
   renameSync(tmp, OVERRIDE_FILE);
   say(tr('docker-compose.override.yml gerado.'));
@@ -795,6 +828,14 @@ async function up(opts: Options, port: number): Promise<void> {
     const usage = health.accounts?.find((a) => a.id === m.account.id)?.usageStatus;
     const state = src.ok ? plural(src.sessions, tr('sessão aberta'), tr('sessões abertas')) : tr('erro ao ler ({0})', [src.error ?? tr('desconhecido')]);
     say(`  Codex ${m.account.short} (${m.account.id}): ${state}${usage ? ` · ${USAGE_STATUS[usage]}` : ''}`);
+  }
+  if (opencodeFile) {
+    const src = health.sources?.find((s) => s.provider === 'opencode');
+    if (src) {
+      const usage = health.accounts?.find((a) => a.id === src.label)?.usageStatus;
+      const state = src.ok ? plural(src.sessions, tr('sessão aberta'), tr('sessões abertas')) : tr('erro ao ler ({0})', [src.error ?? tr('desconhecido')]);
+      say(`  OpenCode: ${state}${usage ? ` · ${USAGE_STATUS[usage]}` : ''}`);
+    }
   }
   for (const line of modHint(updateMods(dirs, accounts))) say(line);
   // Com a cópia falha, os dados só existem no volume antigo: nada de sugerir apagá-lo.

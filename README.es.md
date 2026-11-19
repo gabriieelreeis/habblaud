@@ -672,6 +672,22 @@ chip de la cuenta de Codex es hueco y lleva el sello **CODEX**.
 - Las conversaciones en la nube de ChatGPT (sin archivo en la computadora) no aparecen. `HABBLAUD_CODEX=0` desactiva
   Codex.
 
+### OpenCode
+
+Las sesiones de [OpenCode](https://opencode.ai) (2.0 o más nuevo: la TUI, `opencode run` y la app de escritorio, que
+hablan todas con el **servicio en segundo plano** de OpenCode) aparecen en la misma oficina: personaje en la sala del
+proyecto, actividad en vivo, tareas, subagentes (la herramienta `task`) y la cuenta **OpenCode** en la barra superior.
+
+- **Sin instalar nada:** Habblaud encuentra el servicio solo, por el archivo que OpenCode escribe en
+  `~/.local/state/opencode/service.json` (dirección y contraseña del servicio local), y lee todo del propio servicio, sin
+  tocar la base de datos de OpenCode. En **Docker**, `npm run docker:up` monta **solo ese archivo** (solo lectura) y el
+  contenedor habla con el servicio por `host.docker.internal`.
+- **Uso en la barra superior:** con **OpenCode Go**, las barras de 5 horas y de la semana (y el mes en la ayuda). Sin Go,
+  la tarjeta dice **sin límites informados** (nunca 0%).
+- **Enviar mensajes:** la caja **Enviar mensaje** pone el texto en la cola de la sesión a través del servicio.
+- Todavía no: la terminal, el historial y aprobar permisos desde la oficina. Los agentes de OpenCode no suben a Habblaud
+  World. `HABBLAUD_OPENCODE=0` apaga OpenCode.
+
 ### GitHub en la oficina
 
 Lo que los agentes hacen en GitHub anima la sala del proyecto, sin token y sin acceder a internet: Habblaud lee en

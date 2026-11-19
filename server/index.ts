@@ -37,6 +37,8 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
+import { openCodeConfigured } from './sources/opencode/service';
+import { OpenCodeSource } from './sources/opencode/source';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
 import { getLocale, tr } from '../shared/i18n';
@@ -144,6 +146,10 @@ if (codex) agents.add(codex);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
+// OpenCode (v2+): pelo serviço em segundo plano dele (sources/opencode/), quando ele existe nesta máquina (ou
+// HABBLAUD_OPENCODE_URL); HABBLAUD_OPENCODE=0 desliga. Uma conta só, com o uso do OpenCode Go no topo.
+const opencode = config.opencode && openCodeConfigured(process.env, config.home) ? new OpenCodeSource({ accounts, office, env: process.env, home: config.home }) : undefined;
+if (opencode) agents.add(opencode);
 late.office = office;
 late.agents = agents;
 // Página que pode responder pelo escritório: Host local na porta local; na remota, só com permissions liberado.
@@ -277,6 +283,8 @@ const messages = config.messages
         run: codexBin ? createCodexQueueRunner(codexBin) : undefined,
         homeOf: (account) => accounts.entriesOf('codex').find((e) => e.id === account)?.detected.configDir,
       },
+      // OpenCode: pelo serviço local dele (alcançável também de dentro do Docker).
+      opencode: opencode ? { send: (sid, text) => opencode.sendPrompt(sid, text), available: () => opencode.isReachable() } : undefined,
     })
   : undefined;
 late.messages = messages;
@@ -523,6 +531,12 @@ server.listen(config.port, config.host, () => {
     }
   } else {
     log.info(tr('   Codex: {0}.', [config.codex ? tr('nenhuma pasta do Codex encontrada (defina HABBLAUD_CODEX_DIRS)') : tr('desligado (HABBLAUD_CODEX=0)')]));
+  }
+  if (opencode) {
+    const src = opencode.sources()[0];
+    log.info(tr('   OpenCode: {0} sessão(ões) aberta(s) · uso: {1} · {2}', [src?.sessions ?? 0, accounts.usageView(opencode.accountId).status, src?.error ?? src?.path ?? '']));
+  } else {
+    log.info(tr('   OpenCode: {0}.', [config.opencode ? tr('serviço do OpenCode não encontrado (OpenCode 2 ou mais novo; defina HABBLAUD_OPENCODE_URL)') : tr('desligado (HABBLAUD_OPENCODE=0)')]));
   }
   if (office.isDemo()) log.info(tr('   Modo demonstração ligado (agentes simulados misturados aos reais).'));
   if (config.terminal) log.info(tr('   Terminal: ligado (acesso só local).'));

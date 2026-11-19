@@ -365,6 +365,22 @@
   --step: 3px;
 }
 
+/* Conta do OpenCode: também vazado (fundo escuro, letra na cor da conta), mas de cantos redondos e borda dupla (uma
+   linha da cor da conta e outra escura por dentro): distinto do Codex sem logotipo nenhum. */
+.ui-acc-chip[data-provider='opencode'] {
+  border-radius: 4px;
+  background: #121722;
+  color: var(--acc);
+  box-shadow:
+    inset 0 0 0 1px var(--acc),
+    inset 0 0 0 2px #121722,
+    inset 0 0 0 3px color-mix(in srgb, var(--acc) 45%, transparent);
+}
+
+.ui-acc-chip--lg[data-provider='opencode'] {
+  border-radius: 6px;
+}
+
 /* Selo de texto "Codex" ao lado do nome da conta (fonte do sistema: na Pixelify o "C" parece "O"). */
 .ui-prov {
   display: inline-flex;

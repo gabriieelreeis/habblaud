@@ -549,8 +549,8 @@ class AgentView {
     updateAccountChip(this.accChip, account, a.account, a.provider);
     setText(this.accName, account?.name ?? a.account);
     updateProviderTag(this.accProv, provider, account?.name ?? '');
-    // E-mail (Claude Code) ou, no Codex (sem e-mail), o plano.
-    const accSub = account?.email ?? (codex && account?.plan ? tr('plano {0}', [account.plan]) : '');
+    // E-mail (Claude Code) ou, no Codex e no OpenCode (sem e-mail), o plano.
+    const accSub = account?.email ?? (provider !== 'claude' && account?.plan ? tr('plano {0}', [account.plan]) : '');
     setText(this.accEmail, accSub);
     setHidden(this.accEmail, !accSub);
     setText(this.roomName, room?.name ?? a.roomId);
@@ -697,7 +697,9 @@ class AgentView {
 
   private renderTerminalButton(live: boolean, provider = providerOf(this.last)): void {
     const router = this.ctx.terminals;
-    const available = (router ? router.available : !!this.ctx.store.snapshot?.meta.terminal) && access().terminal;
+    // OpenCode: a conversa fica no serviço dele (não num arquivo que o terminal do Habblaud lê).
+    const opencode = provider === 'opencode';
+    const available = (router ? router.available : !!this.ctx.store.snapshot?.meta.terminal) && access().terminal && !opencode;
     const open = (router ? router.openAgentId : this.terminal.agentId) === this.id;
     // Interativo: o Claude Code roda aqui (pty) ou roda noutro terminal e dá para assumir pela janela.
     const readOnly = !!this.ctx.store.snapshot?.meta.terminal;
@@ -716,7 +718,9 @@ class AgentView {
       open
         ? tr('Fechar o terminal (T)')
         : !available
-          ? this.ctx.store.replaying
+          ? opencode
+            ? tr('A conversa do OpenCode fica no próprio OpenCode (TUI ou app): o terminal do Habblaud ainda não a mostra.')
+            : this.ctx.store.replaying
             ? tr('Sem terminal no timelapse: a conversa é a de agora, não a do momento reproduzido.')
             : this.ctx.store.snapshot?.meta.terminal && access().remote
               ? tr('O terminal não está liberado no acesso remoto (HABBLAUD_REMOTE_ALLOW).')
@@ -751,7 +755,9 @@ class AgentView {
     st.set('branch', a.gitBranch ?? null);
     // Codex: a política de aprovação (quando o servidor a manda) no lugar do modo de permissão do Claude Code.
     st.label('perm', codex ? tr('Aprovações') : tr('Permissões'));
-    st.set('perm', a.kind !== 'main' ? null : codex ? (a.permissionMode ? codexApprovalLabel(a.permissionMode) : null) : permissionLabel(a.permissionMode));
+    // OpenCode: as permissões são regras por ferramenta no próprio OpenCode, sem um modo para mostrar aqui.
+    const opencode = providerOf(a) === 'opencode';
+    st.set('perm', a.kind !== 'main' || opencode ? null : codex ? (a.permissionMode ? codexApprovalLabel(a.permissionMode) : null) : permissionLabel(a.permissionMode));
 
     setText(this.sessionValue, a.sessionId);
     setTitle(this.sessionValue, a.sessionId);

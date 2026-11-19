@@ -635,6 +635,30 @@ chip da conta do Codex é vazado e leva o selo **CODEX**.
   pouco para ir embora depois que você fecha o terminal.
 - Conversas da nuvem do ChatGPT (sem arquivo no computador) não aparecem. `HABBLAUD_CODEX=0` desliga o Codex.
 
+### OpenCode
+
+As sessões do [OpenCode](https://opencode.ai) (2.0 ou mais novo: a TUI, o `opencode run` e o app desktop, que falam
+todos com o **serviço em segundo plano** do OpenCode) aparecem no mesmo escritório: personagem na sala do projeto,
+atividade ao vivo, tarefas, subagentes (a ferramenta `task`) e a conta **OpenCode** na barra do topo. O chip da conta
+do OpenCode é vazado, de cantos redondos, com o selo **OPENCODE**.
+
+- **Sem instalar nada:** o Habblaud acha o serviço sozinho pelo arquivo que o OpenCode grava em
+  `~/.local/state/opencode/service.json` (endereço e senha do serviço local) e lê tudo do próprio serviço — sessões,
+  mensagens, eventos ao vivo e limites de uso —, sem tocar no banco de dados do OpenCode. Com o Habblaud no **Docker**,
+  o `npm run docker:up` monta **só esse arquivo** (somente leitura) e o container fala com o serviço pelo
+  `host.docker.internal`.
+- **Quem fica no escritório:** a sessão que está rodando, esperando você (uma permissão ou uma pergunta) ou que teve
+  atividade nos últimos 30 minutos. A sessão de um subagente aparece enquanto trabalha e entrega ao terminar.
+- **Uso na barra do topo:** com o **OpenCode Go**, as barras de 5 horas e da semana (e o mês na dica), lidas do serviço
+  a cada minuto. Sem o Go, o cartão diz **sem limites informados** (nunca 0%): o limite próprio dos modelos grátis o
+  OpenCode não mostra; havendo um orçamento em dólares no workspace, ele aparece no lugar.
+- **Mandar mensagens:** a caixa **Mandar mensagem** põe o texto na fila da sessão pelo serviço (vira o próximo prompt
+  quando o OpenCode terminar o que está fazendo) — no modo Node e no Docker.
+- Ainda não: o terminal e o histórico do Habblaud e aprovar permissões pelo escritório (responda no próprio OpenCode). Os
+  agentes do OpenCode não sobem para o Habblaud World (o protocolo dele ainda não conhece o OpenCode).
+  `HABBLAUD_OPENCODE=0` desliga o OpenCode; `HABBLAUD_OPENCODE_URL` (+ `HABBLAUD_OPENCODE_PASSWORD`) aponta para um
+  serviço em outro lugar.
+
 ### GitHub no escritório
 
 O que os agentes fazem no GitHub anima a sala do projeto, sem token e sem acessar a internet: o Habblaud lê nos
