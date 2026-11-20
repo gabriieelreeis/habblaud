@@ -198,7 +198,7 @@ if (worldUplink && worldSocial) {
 // Terminal: só existe com bind local (ver terminalOffReason em config.ts).
 // Cada agente com o parser da ferramenta dele (o do Claude Code por padrão).
 const terminals = config.terminal
-  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id) })
+  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id), remoteFor: (id) => opencode?.conversation(id) })
   : undefined;
 // Histórico do terminal (sessões recentes, abertas ou encerradas, de todas as ferramentas): mesma trava.
 const history = config.terminal
@@ -252,6 +252,8 @@ const permissions = config.terminal
     })
   : undefined;
 late.permissions = permissions;
+// OpenCode: os pedidos ficam no serviço dele (sem hook); a fonte os registra aqui e manda a resposta de volta.
+opencode?.setPermissionSink(permissions ? { add: (r) => permissions.registerExternal(r), remove: (key) => permissions.releaseExternal(key) } : undefined);
 // Mensagens pelo escritório (plugin habblaud-mensagens): entram na sessão como se você as tivesse digitado, então
 // seguem a mesma trava (e HABBLAUD_MENSAGENS=0 desliga só elas). Ao Codex vão por `codex queue` (messages/codex.ts):
 // fora do Docker o próprio servidor roda o comando (HABBLAUD_CODEX_BIN ou `codex` do PATH); no Docker, o auxiliar do

@@ -3398,7 +3398,6 @@ export const EN: Readonly<Record<string, string>> = {
   "Na fila: entregando ao OpenCode…": "Queued: delivering to OpenCode…",
   "Entregue ✓ na fila da sessão: entra quando o OpenCode terminar o que está fazendo": "Delivered ✓ to the session queue: goes in when OpenCode finishes what it's doing",
   "sem notícia da entrega: confira no OpenCode": "no news about delivery: check in OpenCode",
-  "A conversa do OpenCode fica no próprio OpenCode (TUI ou app): o terminal do Habblaud ainda não a mostra.": "OpenCode's conversation lives in OpenCode itself (TUI or app): Habblaud's terminal doesn't show it yet.",
   "Abra o Claude Code{0}, o Codex ou o OpenCode em qualquer projeto e veja seu agente chegar.": "Open Claude Code{0}, Codex or OpenCode in any project and watch your agent arrive.",
   "Abra o Claude Code{0} ou o OpenCode em qualquer projeto e veja seu agente chegar.": "Open Claude Code{0} or OpenCode in any project and watch your agent arrive.",
   "serviço local do OpenCode": "local OpenCode service",
@@ -3447,4 +3446,18 @@ export const EN: Readonly<Record<string, string>> = {
   "OpenCode: evento ignorado ({0}).": "OpenCode: event ignored ({0}).",
   "OpenCode: limites de uso indisponíveis ({0}).": "OpenCode: usage limits unavailable ({0}).",
   "OpenCode: monta só o arquivo do serviço ({0}), somente leitura; o container fala com o serviço pelo host.docker.internal.": "OpenCode: mounts only the service file ({0}), read-only; the container talks to the service through host.docker.internal.",
+
+  // server/sources/opencode (permissões e terminal) e client/src/ui/permission.ts
+  "guardado no OpenCode": "saved in OpenCode",
+  "O pedido também aparece no OpenCode (TUI ou app): vale a primeira resposta.": "The request also shows up in OpenCode (TUI or app): the first answer wins.",
+  "não foi possível ler a conversa: {0}": "couldn't read the conversation: {0}",
+  "o OpenCode não recebeu a resposta ({0}); responda no próprio OpenCode": "OpenCode didn't receive the answer ({0}); answer in OpenCode itself",
+  "o OpenCode não aceita interromper nem \"responder no terminal\" pelo Habblaud: aprove, recuse (com um motivo, se quiser) ou responda no próprio OpenCode": "OpenCode doesn't accept interrupting or \"answer in the terminal\" from Habblaud: approve, deny (with a reason, if you like) or answer in OpenCode itself",
+  "Pasta externa": "External folder",
+  "Acessar uma pasta fora do projeto": "Access a folder outside the project",
+  "Usar {0}": "Use {0}",
+  "resposta que o OpenCode não aceita": "an answer OpenCode doesn't accept",
+  "o pedido não está mais aberto no OpenCode (já foi respondido?)": "the request is no longer open in OpenCode (already answered?)",
+  "Interrompido": "Interrupted",
+  "A execução falhou": "The run failed",
 };

@@ -43,6 +43,8 @@ services:
       HABBLAUD_CODEX: ${HABBLAUD_CODEX:-}
       # 0 desliga as sessões do OpenCode no escritório (o docker:up monta só o arquivo do serviço local dele).
       HABBLAUD_OPENCODE: ${HABBLAUD_OPENCODE:-}
+      # Sessões do OpenCode sempre no escritório com o serviço no ar (ids ses_..., separados por vírgula).
+      HABBLAUD_OPENCODE_PINNED: ${HABBLAUD_OPENCODE_PINNED:-}
       # 1 liga o Novo agente pelo escritório (no Docker, quem começa a sessão é o auxiliar do host, npm run
       # codex:bridge; o terminal interativo em si não roda no container).
       HABBLAUD_PTY: ${HABBLAUD_PTY:-}

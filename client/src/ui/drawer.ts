@@ -697,9 +697,8 @@ class AgentView {
 
   private renderTerminalButton(live: boolean, provider = providerOf(this.last)): void {
     const router = this.ctx.terminals;
-    // OpenCode: a conversa fica no serviço dele (não num arquivo que o terminal do Habblaud lê).
-    const opencode = provider === 'opencode';
-    const available = (router ? router.available : !!this.ctx.store.snapshot?.meta.terminal) && access().terminal && !opencode;
+    // OpenCode: a conversa vem do serviço dele (o servidor relê as mensagens da sessão), não de um arquivo.
+    const available = (router ? router.available : !!this.ctx.store.snapshot?.meta.terminal) && access().terminal;
     const open = (router ? router.openAgentId : this.terminal.agentId) === this.id;
     // Interativo: o Claude Code roda aqui (pty) ou roda noutro terminal e dá para assumir pela janela.
     const readOnly = !!this.ctx.store.snapshot?.meta.terminal;
@@ -718,9 +717,7 @@ class AgentView {
       open
         ? tr('Fechar o terminal (T)')
         : !available
-          ? opencode
-            ? tr('A conversa do OpenCode fica no próprio OpenCode (TUI ou app): o terminal do Habblaud ainda não a mostra.')
-            : this.ctx.store.replaying
+          ? this.ctx.store.replaying
             ? tr('Sem terminal no timelapse: a conversa é a de agora, não a do momento reproduzido.')
             : this.ctx.store.snapshot?.meta.terminal && access().remote
               ? tr('O terminal não está liberado no acesso remoto (HABBLAUD_REMOTE_ALLOW).')
@@ -729,7 +726,7 @@ class AgentView {
             ? tr('O agente já saiu do escritório.')
             : kind === 'ao vivo'
               ? tr('Ver a conversa desta sessão como no {0}, ao vivo{1} (T)', [
-                  provider === 'codex' ? 'Codex' : tr('terminal do Claude Code'),
+                  provider === 'codex' ? 'Codex' : provider === 'opencode' ? 'OpenCode' : tr('terminal do Claude Code'),
                   this.pty.enabled && ptyControllable(this.last) ? tr('; "Assumir daqui" continua nela aqui') : '',
                 ])
               : kind === 'interativo'

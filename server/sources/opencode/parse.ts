@@ -109,13 +109,13 @@ export function sessionBusy(s: OcSession): boolean {
 
 // ------------------------------------------------------------------ ferramentas
 
-function patchFiles(patch: string): string[] {
+export function patchFiles(patch: string): string[] {
   const out: string[] = [];
   for (const m of patch.slice(0, 200_000).matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)) out.push(m[1].trim());
   return out;
 }
 
-function fileOf(input: Rec): string | undefined {
+export function fileOf(input: Rec): string | undefined {
   return str(input.filePath) ?? str(input.file_path) ?? str(input.path);
 }
 

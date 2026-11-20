@@ -648,14 +648,21 @@ do OpenCode é vazado, de cantos redondos, com o selo **OPENCODE**.
   o `npm run docker:up` monta **só esse arquivo** (somente leitura) e o container fala com o serviço pelo
   `host.docker.internal`.
 - **Quem fica no escritório:** a sessão que está rodando, esperando você (uma permissão ou uma pergunta) ou que teve
-  atividade nos últimos 30 minutos. A sessão de um subagente aparece enquanto trabalha e entrega ao terminar.
+  atividade nos últimos 30 minutos. A sessão de um subagente aparece enquanto trabalha e entrega ao terminar. As
+  **sessões fixas** (`HABBLAUD_OPENCODE_PINNED`: ids `ses_...` separados por vírgula) ficam no escritório o tempo todo
+  com o serviço no ar, paradas ou não, como um colega fixo.
 - **Uso na barra do topo:** com o **OpenCode Go**, as barras de 5 horas e da semana (e o mês na dica), lidas do serviço
   a cada minuto. Sem o Go, o cartão diz **sem limites informados** (nunca 0%): o limite próprio dos modelos grátis o
   OpenCode não mostra; havendo um orçamento em dólares no workspace, ele aparece no lugar.
 - **Mandar mensagens:** a caixa **Mandar mensagem** põe o texto na fila da sessão pelo serviço (vira o próximo prompt
   quando o OpenCode terminar o que está fazendo) — no modo Node e no Docker.
-- Ainda não: o terminal e o histórico do Habblaud e aprovar permissões pelo escritório (responda no próprio OpenCode). Os
-  agentes do OpenCode não sobem para o Habblaud World (o protocolo dele ainda não conhece o OpenCode).
+- **Aprovar permissões:** os pedidos de permissão do OpenCode aparecem no cartão do agente como os do Claude Code:
+  **Aprovar**, **Recusar** (com motivo, se quiser) e **sempre permitir** com a regra que o próprio OpenCode guardaria
+  (ex.: `bash(git push *)`). O pedido continua no OpenCode (TUI ou app): vale a primeira resposta. Sem "interromper" e
+  sem "Responder no terminal".
+- **Terminal:** **Abrir terminal** mostra a conversa da sessão ao vivo (pedidos, raciocínio, ferramentas e resultados),
+  lida do serviço a cada 1,5 s, com a caixa de mensagem embaixo — no modo Node, no Docker e no celular.
+- Ainda não: o histórico das sessões encerradas e o terminal interativo. Os agentes do OpenCode não sobem para o Habblaud World (o protocolo dele ainda não conhece o OpenCode).
   `HABBLAUD_OPENCODE=0` desliga o OpenCode; `HABBLAUD_OPENCODE_URL` (+ `HABBLAUD_OPENCODE_PASSWORD`) aponta para um
   serviço em outro lugar.
 

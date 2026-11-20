@@ -3,6 +3,7 @@
 //
 //   POST /api/permissions                 (hook)    registra o pedido: 201 {id, expiresAt} ou 200 {skip}
 //                                                   (o hook do Codex manda também provider: "codex", account e codexHome)
+//                                                   (os do OpenCode não passam por aqui: a fonte dele os registra)
 //   GET  /api/permissions/:id/wait        (hook)    long-poll: {status: pending | decided | released}
 //   GET  /api/permissions/:id             (página)  detalhe com os argumentos (comando, diff...)
 //   POST /api/permissions/:id/decision    (página)  {behavior: allow | deny | terminal | answer, message?, answers?, ...}
@@ -61,7 +62,11 @@ export function createPermissionRoutes(registry: PermissionRegistry): (req: Inco
     if (!d) {
       throw new HttpError(400, 'esperado {behavior: "allow" | "deny" | "terminal", message?, interrupt?, suggestion?} ou {behavior: "answer", answers: [{question, options?, other?}]}');
     }
-    switch (registry.decide(id, d)) {
+    // Pedido do OpenCode: a decisão vai ao serviço dele antes de responder (decideAsync espera).
+    const provider = registry.detail(id)?.provider;
+    const r = await registry.decideAsync(id, d);
+    if (typeof r === 'object') return sendJson(res, 502, { error: tr('o OpenCode não recebeu a resposta ({0}); responda no próprio OpenCode', [r.error]) });
+    switch (r) {
       case 'ok':
         return sendJson(res, 200, { ok: true });
       case 'not-found':
@@ -73,6 +78,7 @@ export function createPermissionRoutes(registry: PermissionRegistry): (req: Inco
       case 'invalid-answer':
         return sendJson(res, 400, { error: tr('resposta que não serve para este pedido: pergunta se responde com "answer" (cada pergunta uma vez, com as opções dela); os outros pedidos, com "allow" ou "deny"') });
       case 'unsupported':
+        if (provider === 'opencode') return sendJson(res, 400, { error: tr('o OpenCode não aceita interromper nem "responder no terminal" pelo Habblaud: aprove, recuse (com um motivo, se quiser) ou responda no próprio OpenCode') });
         return sendJson(res, 400, { error: tr('o Codex não aceita interromper nem "sempre permitir" pelo Habblaud: aprove, recuse (com um motivo, se quiser) ou responda no terminal') });
     }
   };

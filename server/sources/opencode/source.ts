@@ -6,12 +6,18 @@
 // - uma sessão principal (sem `parentID`) entra quando está rodando (/api/session/active), tem um pedido pendente
 //   (permissão ou pergunta) ou teve atividade nos últimos PRESENCE_MS; arquivada sai. Fica parada mais que isso, sai
 //   (volta no primeiro sinal de vida);
+// - uma sessão fixa (HABBLAUD_OPENCODE_PINNED: ids separados por vírgula ou espaço) fica no escritório o tempo todo
+//   enquanto o serviço estiver no ar, parada ou não (como um colega fixo); arquivada, sai;
 // - uma sessão filha (a ferramenta `task` cria uma por subagente) entra como subagente do pai enquanto roda e entrega
 //   ao terminar.
 // Status: rodando = 'working'; pedido de permissão ou pergunta pendente = 'waiting'; senão 'idle'. Os eventos ao vivo
 // (SSE /api/event) mudam o status na hora; as atividades saem das mensagens da sessão, relidas (as últimas
 // MESSAGE_WINDOW) logo depois de cada evento que importa. Um ciclo de releitura geral (POLL_MS, ou FALLBACK_POLL_MS
 // sem o stream) corrige o que um evento perdido deixou para trás.
+//
+// Permissões: cada pedido pendente (a lista da sessão e o evento permission.asked) vai ao registro do escritório
+// (permissions/registry.ts, registerExternal) enquanto a sessão está no escritório, e a decisão de lá volta ao serviço
+// (replyPermission: once, always ou reject). Respondido na TUI ou no app, o pedido some daqui também.
 //
 // Boot assíncrono, com beginBoot/endBoot em par (num `finally`) e tempo-limite curto: com o serviço fora do ar a fonte
 // só registra o erro (aparece em meta.sources) e tenta de novo no próximo ciclo.
@@ -21,12 +27,22 @@ import type { AccountEntry, AccountsService } from '../../accounts/service';
 import { errMsg, log } from '../../log';
 import type { Office, TranscriptSummary } from '../../model/office';
 import type { AgentSource } from '../source';
+import type { ExternalRequest } from '../../permissions/registry';
+import type { PermissionDecision } from '../../../shared/types';
+import { parsePermission, permissionReply, permissionView, type OcPermission } from './permission';
+import { conversationOf } from './terminal';
+import type { TerminalEntry } from '../../../shared/types';
 import { isSessionId, parseSession, parseUsageLimits, readMessages, sessionBusy, type OcSession } from './parse';
-import { getJson, postJson, resolveEndpoint, serviceFile, streamEvents, type FetchLike, type OpenCodeEndpoint, type OpenCodeEvent } from './service';
+import { getJson, OpenCodeHttpError, postJson, resolveEndpoint, serviceFile, streamEvents, type FetchLike, type OpenCodeEndpoint, type OpenCodeEvent } from './service';
 import { tr } from '../../../shared/i18n';
 
 /** Sessão principal parada há mais que isto (sem rodar nem pedido pendente) sai do escritório. */
 export const PRESENCE_MS = 30 * 60_000;
+/** Sessões fixas (sempre no escritório com o serviço no ar), da variável HABBLAUD_OPENCODE_PINNED. */
+export function pinnedSessions(env: NodeJS.ProcessEnv): Set<string> {
+  return new Set((env.HABBLAUD_OPENCODE_PINNED ?? '').split(/[\s,;]+/).filter(isSessionId));
+}
+
 /** Releitura geral (sessões, quem roda, pedidos pendentes) com o stream de eventos ligado. */
 export const POLL_MS = 15_000;
 /** Releitura geral sem o stream (serviço fora do ar, reconectando). */
@@ -37,6 +53,8 @@ export const LIMITS_MS = 60_000;
 export const MESSAGE_WINDOW = 30;
 /** Mensagens lidas ao uma sessão entrar no escritório (histórico). */
 const BOOT_WINDOW = 60;
+/** Mensagens lidas para o terminal do Habblaud (as mais novas). */
+export const CONVERSATION_WINDOW = 120;
 /** Sessões listadas a cada releitura geral (as de atividade mais recente). */
 const LIST_LIMIT = 60;
 /** Um evento de até este tempo atrás vence a releitura geral (que pode ter saído antes dele). */
@@ -69,6 +87,14 @@ const ACTIVITY_EVENTS = new Set([
 /** Eventos que mudam QUAIS sessões existem (relê a lista). */
 const LIST_EVENTS = new Set(['session.created', 'session.archived', 'session.unarchived', 'session.deleted', 'session.moved', 'session.forked']);
 
+/** Onde os pedidos de permissão do OpenCode aparecem (o registro do escritório). */
+export interface OpenCodePermissionSink {
+  /** Registra (ou acha) o pedido; undefined = não deu agora (tenta de novo na próxima mudança). */
+  add(req: ExternalRequest): string | undefined;
+  /** O pedido sumiu do OpenCode (respondido lá, execução encerrada, sessão fora). */
+  remove(key: string): void;
+}
+
 export interface OpenCodeSourceOptions {
   accounts: AccountsService;
   office: Office;
@@ -93,6 +119,10 @@ interface Tracker {
   /** Pedidos de permissão e perguntas pendentes (ids). */
   permissions: Set<string>;
   forms: Set<string>;
+  /** Os pedidos de permissão pendentes, inteiros (para o cartão do escritório). */
+  permReqs: Map<string, OcPermission>;
+  /** Pedidos já levados ao registro do escritório. */
+  published: Set<string>;
   /** Ids das atividades já levadas ao escritório. */
   seen: Set<string>;
   /** Ids das chamadas de ferramenta vistas (o número de ferramentas usadas). */
@@ -155,12 +185,15 @@ export class OpenCodeSource implements AgentSource {
   private readonly env: NodeJS.ProcessEnv;
   private readonly home: string | undefined;
   private readonly displayDir: string;
+  private permissionSink?: OpenCodePermissionSink;
+  private readonly pinned: Set<string>;
 
   constructor(private readonly opts: OpenCodeSourceOptions) {
     this.now = opts.now ?? Date.now;
     this.fetchFn = opts.fetch ?? (fetch as unknown as FetchLike);
     this.env = opts.env ?? process.env;
     this.home = opts.home;
+    this.pinned = pinnedSessions(this.env);
     // No Docker, o caminho do arquivo do serviço no computador (o montado não diz nada a quem lê).
     this.displayDir = str(this.env.HABBLAUD_OPENCODE_HOST_FILE) ?? (str(this.env.HABBLAUD_OPENCODE_URL) ? 'OpenCode' : serviceFile(this.env, this.home ?? this.env.HOME ?? ''));
     this.register();
@@ -240,6 +273,56 @@ export class OpenCodeSource implements AgentSource {
     } catch (err) {
       return { ok: false, error: errMsg(err) };
     }
+  }
+
+  /**
+   * Conversa de um agente do OpenCode para o terminal do Habblaud (undefined = não é desta fonte): uma função que lê
+   * as mensagens mais novas da sessão no serviço e devolve a conversa (lança se o serviço não respondeu).
+   */
+  conversation(agentId: string): { read: () => Promise<{ entries: TerminalEntry[]; truncated: boolean }> } | undefined {
+    let t: Tracker | undefined;
+    for (const x of this.sessions.values()) if (x.key === agentId && x.inOffice) t = x;
+    if (!t) return undefined;
+    const sid = t.sid;
+    const cwd = t.info.directory ?? (t.info.parentId ? this.sessions.get(t.info.parentId)?.info.directory : undefined);
+    return {
+      read: async () => {
+        if (!this.endpoint && !this.resolve()) throw new Error(this.error ?? tr('serviço do OpenCode desconhecido'));
+        const msgs = await this.messages(sid, CONVERSATION_WINDOW);
+        return { entries: conversationOf(msgs, cwd), truncated: msgs.length >= CONVERSATION_WINDOW };
+      },
+    };
+  }
+
+  /** Liga os pedidos de permissão ao registro do escritório (criado depois da fonte). */
+  setPermissionSink(sink: OpenCodePermissionSink | undefined): void {
+    this.permissionSink = sink;
+    for (const t of this.sessions.values()) this.publishPermissions(t);
+  }
+
+  /**
+   * Resposta do escritório a um pedido de permissão: `once`, `always` ou `reject` no serviço. Lança se não chegou lá
+   * (o cartão mostra o erro e o pedido continua aberto).
+   */
+  async replyPermission(sessionId: string, requestId: string, d: PermissionDecision): Promise<void> {
+    const body = permissionReply(d);
+    if (!body) throw new Error(tr('resposta que o OpenCode não aceita'));
+    if (!isSessionId(sessionId)) throw new Error(tr('sessão do OpenCode inválida'));
+    const ep = this.endpoint ?? this.resolve();
+    if (!ep) throw new Error(this.error ?? tr('serviço do OpenCode desconhecido'));
+    try {
+      await postJson(this.fetchFn, ep, `/api/session/${sessionId}/permission/${encodeURIComponent(requestId)}/reply`, body);
+    } catch (err) {
+      if (err instanceof OpenCodeHttpError && err.status === 404) throw new Error(tr('o pedido não está mais aberto no OpenCode (já foi respondido?)'));
+      throw err;
+    }
+    const t = this.sessions.get(sessionId);
+    if (!t) return;
+    t.permReqs.delete(requestId);
+    t.permissions.delete(requestId);
+    t.published.delete(requestId);
+    t.runningAt = this.now();
+    this.settle(t);
   }
 
   /** Serviço alcançado e stream de eventos ligado (testes e /api/health). */
@@ -324,8 +407,8 @@ export class OpenCodeSource implements AgentSource {
     const now = this.now();
     const seen = new Set<string>();
     const parsed = (Array.isArray(list?.data) ? list.data : []).map(parseSession).filter((s): s is OcSession => !!s);
-    // Uma sessão rodando fora das listadas (lista cortada): busca sozinha.
-    for (const sid of running) {
+    // Uma sessão rodando ou fixa fora das listadas (lista cortada): busca sozinha.
+    for (const sid of new Set([...running, ...this.pinned])) {
       if (parsed.some((s) => s.id === sid)) continue;
       try {
         const one = parseSession((await this.get<{ data?: unknown }>(`/api/session/${sid}`, timeout))?.data);
@@ -369,6 +452,8 @@ export class OpenCodeSource implements AgentSource {
       running,
       permissions: new Set(),
       forms: new Set(),
+      permReqs: new Map(),
+      published: new Set(),
       seen: new Set(),
       tools: new Set(),
       subagents: new Set(),
@@ -390,6 +475,8 @@ export class OpenCodeSource implements AgentSource {
       if (this.now() - t.runningAt > EVENT_TRUST_MS) {
         t.permissions = ids(perms);
         t.forms = ids(forms);
+        const reqs = (Array.isArray(perms?.data) ? perms.data : []).map(parsePermission).filter((p): p is OcPermission => !!p && t.permissions.has(p.id));
+        t.permReqs = new Map(reqs.map((p) => [p.id, p]));
       }
     } catch {
       // versão sem as rotas ou serviço ocupado: fica com o que os eventos disseram
@@ -407,6 +494,7 @@ export class OpenCodeSource implements AgentSource {
       return t.inOffice || t.running || pending;
     }
     if (!t.info.directory) return false;
+    if (this.pinned.has(t.sid)) return true;
     return t.running || pending || now - Math.max(t.lastSignalAt, t.info.updatedAt) < PRESENCE_MS;
   }
 
@@ -461,6 +549,7 @@ export class OpenCodeSource implements AgentSource {
     }
     if (reading) this.applyReading(t, reading, false);
     this.applySummary(t);
+    this.publishPermissions(t);
   }
 
   /** Sai do escritório: principal encerra; subagente entrega. */
@@ -477,10 +566,38 @@ export class OpenCodeSource implements AgentSource {
       t.subDone = true;
     } else this.opts.office.closeMain(t.key);
     t.inOffice = false;
+    this.publishPermissions(t);
+  }
+
+  /**
+   * Leva ao registro do escritório os pedidos de permissão pendentes da sessão (só com ela no escritório) e solta os
+   * que sumiram.
+   */
+  private publishPermissions(t: Tracker): void {
+    const sink = this.permissionSink;
+    if (!sink) return;
+    const live = t.inOffice ? t.permReqs : new Map<string, OcPermission>();
+    for (const key of [...t.published]) {
+      if (live.has(key)) continue;
+      sink.remove(key);
+      t.published.delete(key);
+    }
+    for (const [key, req] of live) {
+      if (t.published.has(key)) continue;
+      const cwd = t.info.directory ?? (t.info.parentId ? this.sessions.get(t.info.parentId)?.info.directory : undefined);
+      const id = sink.add({ provider: 'opencode', key, agentId: t.key, view: permissionView(req, cwd), deliver: (d) => this.replyPermission(req.sessionId, key, d) });
+      if (id) t.published.add(key);
+    }
+  }
+
+  /** Leva o status e os pedidos de permissão ao escritório. */
+  private settle(t: Tracker): void {
+    this.settleStatus(t);
+    this.publishPermissions(t);
   }
 
   /** Leva o status ao escritório (o subagente entrega ao ficar ocioso). */
-  private settle(t: Tracker): void {
+  private settleStatus(t: Tracker): void {
     if (!t.inOffice) return;
     const office = this.opts.office;
     if (!office.has(t.key)) {
@@ -648,6 +765,7 @@ export class OpenCodeSource implements AgentSource {
         t.runningAt = this.now();
         // Uma pergunta ou permissão sem resposta morre com a execução.
         t.permissions.clear();
+        t.permReqs.clear();
         t.forms.clear();
         this.settle(t);
         this.kickSession(t);
@@ -656,6 +774,8 @@ export class OpenCodeSource implements AgentSource {
         const id = str(d.id) ?? str(d.requestID) ?? `perm:${at}`;
         if (!t) return this.kickList();
         t.permissions.add(id);
+        const req = parsePermission({ ...d, sessionID: d.sessionID ?? sid });
+        if (req) t.permReqs.set(req.id, req);
         t.runningAt = this.now();
         if (!t.inOffice) return this.kickList();
         this.settle(t);
@@ -664,8 +784,13 @@ export class OpenCodeSource implements AgentSource {
       case 'permission.replied': {
         if (!t) return;
         const id = str(d.requestID) ?? str(d.permissionID) ?? str(d.id);
-        if (id && t.permissions.has(id)) t.permissions.delete(id);
-        else t.permissions.clear();
+        if (id && t.permissions.has(id)) {
+          t.permissions.delete(id);
+          t.permReqs.delete(id);
+        } else {
+          t.permissions.clear();
+          t.permReqs.clear();
+        }
         t.runningAt = this.now();
         this.settle(t);
         this.kickSession(t);

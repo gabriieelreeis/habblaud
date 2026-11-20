@@ -685,7 +685,12 @@ proyecto, actividad en vivo, tareas, subagentes (la herramienta `task`) y la cue
 - **Uso en la barra superior:** con **OpenCode Go**, las barras de 5 horas y de la semana (y el mes en la ayuda). Sin Go,
   la tarjeta dice **sin límites informados** (nunca 0%).
 - **Enviar mensajes:** la caja **Enviar mensaje** pone el texto en la cola de la sesión a través del servicio.
-- Todavía no: la terminal, el historial y aprobar permisos desde la oficina. Los agentes de OpenCode no suben a Habblaud
+- **Aprobar permisos:** las solicitudes de OpenCode aparecen en la tarjeta del agente: **Aprobar**, **Rechazar** y
+  **permitir siempre** con la regla que OpenCode guardaría. La solicitud sigue en OpenCode: vale la primera respuesta.
+- **Terminal:** **Abrir terminal** muestra la conversación de la sesión en vivo, con la caja de mensaje abajo.
+- **Sesiones fijas:** `HABBLAUD_OPENCODE_PINNED` (ids `ses_...` separados por comas) las deja en la oficina mientras el
+  servicio esté activo.
+- Todavía no: el historial y la terminal interactiva. Los agentes de OpenCode no suben a Habblaud
   World. `HABBLAUD_OPENCODE=0` apaga OpenCode.
 
 ### GitHub en la oficina
