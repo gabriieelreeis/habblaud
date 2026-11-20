@@ -128,7 +128,8 @@ export interface ExternalRequest {
   agentId: string;
   /** Pedido de um subagente que o Habblaud não mostra: o tipo dele. */
   subagent?: string;
-  view: Pick<PermissionRequestInfo, 'tool' | 'title' | 'text' | 'icon' | 'input' | 'inputKind' | 'suggestions'>;
+  /** Pergunta (tool = AskUserQuestion, com `questions`): responde-se com `answer`; recusar a cancela. */
+  view: Pick<PermissionRequestInfo, 'tool' | 'title' | 'text' | 'icon' | 'input' | 'inputKind' | 'suggestions' | 'questions'>;
   deliver: (d: PermissionDecision) => Promise<void>;
 }
 
@@ -481,6 +482,7 @@ export class PermissionRegistry {
     if (v.input) info.input = v.input;
     if (v.inputKind) info.inputKind = v.inputKind;
     if (v.suggestions?.length) info.suggestions = v.suggestions;
+    if (v.questions?.length) info.questions = v.questions;
     if (req.subagent) info.subagent = req.subagent;
     this.pending.set(id, { info, agentId: req.agentId, sessionId: '', signature: '', lastScanAt: 0, waiters: new Set(), idleSince: now, external: { key: req.key, deliver: req.deliver } });
     this.announce({ id: req.agentId, subagent: req.subagent }, info, v.text);
@@ -603,16 +605,20 @@ export class PermissionRegistry {
     if (p.outcome || p.external.delivering) return 'conflict';
     const problem = this.check(p, d);
     if (problem) return problem;
+    // Pergunta: cada uma respondida uma vez, com as opções dela (o OpenCode confere de novo os valores).
+    const answers = d.behavior === 'answer' ? checkAnswers(p.info.questions ?? [], d.answers) : undefined;
+    if (d.behavior === 'answer' && !answers) return 'invalid-answer';
     p.external.delivering = true;
     try {
-      await p.external.deliver(d);
+      await p.external.deliver(answers ? { behavior: 'answer', answers } : d);
     } catch (err) {
       return { error: errMsg(err) };
     } finally {
       p.external.delivering = false;
     }
     if (p.outcome) return 'conflict';
-    this.settle(p, d);
+    if (answers) this.answered(p, answers);
+    else this.settle(p, d);
     return 'ok';
   }
 
@@ -649,10 +655,16 @@ export class PermissionRegistry {
     const questions = p.info.questions ?? [];
     const answers = checkAnswers(questions, raw);
     if (!answers || answers.some((a) => !fitsFormat(p.askFormat?.[a.question], a))) return 'invalid-answer';
+    this.answered(p, answers);
+    return 'ok';
+  }
+
+  /** Respostas aceitas: entrega a quem espera e anota na linha do tempo. */
+  private answered(p: Pending, answers: PermissionAnswer[]): void {
+    const questions = p.info.questions ?? [];
     this.resolve(p, { status: 'decided', behavior: 'answer', answers });
     const act: Activity = { id: `${p.agentId}#perm-answer:${p.info.id}`, at: this.now(), kind: 'other', icon: '💬', text: tr('Respondido no Habblaud'), detail: answerSummary(questions, answers), tool: 'PermissionRequest' };
     this.opts.office.addActivity(p.agentId, act, false);
-    return 'ok';
   }
 
   /** Relógio: expiração, órfãos, agente que saiu, resposta no terminal e limpeza das decisões entregues. */

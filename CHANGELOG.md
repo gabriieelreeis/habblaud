@@ -23,10 +23,11 @@ do meio (0.**3**.0).
   banco de dados dele; no Docker, o `npm run docker:up` monta só esse arquivo, somente leitura. `HABBLAUD_OPENCODE=0`
   desliga. Os agentes do OpenCode não sobem para o Habblaud World (o protocolo dele ainda não conhece o OpenCode), e o
   histórico do Habblaud ainda não mostra as sessões encerradas dele.
-- **OpenCode: aprovar permissões, terminal e sessões fixas.** Os pedidos de permissão do OpenCode aparecem no cartão do
-  agente como os do Claude Code: **Aprovar**, **Recusar** (com motivo) e **sempre permitir** com a regra que o próprio
-  OpenCode guardaria (ex.: `bash(git push *)`), sem precisar abrir um terminal. O pedido continua no OpenCode (TUI ou
-  app) e vale a primeira resposta. **Abrir terminal** passa a funcionar nos agentes do OpenCode: a conversa da sessão
+- **OpenCode: aprovar permissões, responder perguntas, terminal e sessões fixas.** Os pedidos de permissão do OpenCode
+  aparecem no cartão do agente como os do Claude Code: **Aprovar**, **Recusar** (com motivo) e **sempre permitir** com a
+  regra que o próprio OpenCode guardaria (ex.: `bash(git push *)`), sem precisar abrir um terminal. As perguntas dele
+  (a ferramenta `question`) também se respondem por ali, com as opções e o "Outro"; recusar cancela a pergunta. O pedido
+  continua no OpenCode (TUI ou app) e vale a primeira resposta. **Abrir terminal** passa a funcionar nos agentes do OpenCode: a conversa da sessão
   ao vivo (pedidos, raciocínio, ferramentas e resultados), lida do serviço dele, com a caixa de mensagem embaixo, também
   no Docker e no celular. E `HABBLAUD_OPENCODE_PINNED` (ids `ses_...` separados por vírgula) deixa sessões fixas no
   escritório o tempo todo com o serviço no ar, em vez de saírem depois de 30 minutos paradas.

@@ -658,7 +658,8 @@ do OpenCode é vazado, de cantos redondos, com o selo **OPENCODE**.
   quando o OpenCode terminar o que está fazendo) — no modo Node e no Docker.
 - **Aprovar permissões:** os pedidos de permissão do OpenCode aparecem no cartão do agente como os do Claude Code:
   **Aprovar**, **Recusar** (com motivo, se quiser) e **sempre permitir** com a regra que o próprio OpenCode guardaria
-  (ex.: `bash(git push *)`). O pedido continua no OpenCode (TUI ou app): vale a primeira resposta. Sem "interromper" e
+  (ex.: `bash(git push *)`). As perguntas dele (a ferramenta `question`) também se respondem ali, com as opções e o
+  "Outro"; recusar cancela a pergunta. O pedido continua no OpenCode (TUI ou app): vale a primeira resposta. Sem "interromper" e
   sem "Responder no terminal".
 - **Terminal:** **Abrir terminal** mostra a conversa da sessão ao vivo (pedidos, raciocínio, ferramentas e resultados),
   lida do serviço a cada 1,5 s, com a caixa de mensagem embaixo — no modo Node, no Docker e no celular.

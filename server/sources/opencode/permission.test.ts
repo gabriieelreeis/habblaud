@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OPENCODE_DESTINATION, parsePermission, permissionReply, permissionView } from './permission';
+import { formReply, OPENCODE_DESTINATION, parseForm, parsePermission, permissionReply, permissionView } from './permission';
 
 const SES = 'ses_main0000000000000000001';
 
@@ -47,5 +47,29 @@ describe('pedidos de permissão do OpenCode', () => {
     expect(permissionReply({ behavior: 'deny' })).toEqual({ decision: 'reject' });
     expect(permissionReply({ behavior: 'deny', message: 'use pnpm' })).toEqual({ decision: 'reject', message: 'use pnpm' });
     expect(permissionReply({ behavior: 'terminal' })).toBeUndefined();
+  });
+});
+
+describe('perguntas do OpenCode (formulários)', () => {
+  const field = (over: Record<string, unknown> = {}) => ({ key: 'q0', title: 'Banco', description: 'Qual banco?', type: 'string', options: [{ value: 'pg', label: 'Postgres' }, { value: 'redis', label: 'Redis' }], ...over });
+
+  it('parseForm: escolha única e várias viram perguntas; campo que o cartão não mostra deixa a pergunta só no OpenCode', () => {
+    const f = parseForm({ id: 'frm_1', sessionID: SES, title: 'Questions', fields: [field(), field({ key: 'q1', type: 'multiselect', description: 'Testes?', title: undefined, custom: true })] })!;
+    expect(f.questions).toEqual([
+      { index: 0, question: 'Qual banco?', header: 'Banco', options: [{ index: 0, label: 'Postgres' }, { index: 1, label: 'Redis' }] },
+      { index: 1, question: 'Testes?', multiSelect: true, options: [{ index: 0, label: 'Postgres' }, { index: 1, label: 'Redis' }] },
+    ]);
+    expect(parseForm({ id: 'frm_2', sessionID: SES, fields: [{ key: 'n', type: 'number' }] })).toBeUndefined();
+    expect(parseForm({ id: 'frm_3', sessionID: SES, fields: [{ key: 'u', type: 'external', url: 'https://x' }] })).toBeUndefined();
+    expect(parseForm({ id: 'frm_4', sessionID: SES, fields: [] })).toBeUndefined();
+  });
+
+  it('formReply: o valor da opção (ou o texto livre) de cada campo; várias = lista', () => {
+    const f = parseForm({ id: 'frm_1', sessionID: SES, fields: [field(), field({ key: 'q1', type: 'multiselect', custom: true })] })!;
+    expect(formReply(f, [{ question: 0, options: [1] }, { question: 1, options: [0], other: 'MySQL' }])).toEqual({ answer: { q0: 'redis', q1: ['pg', 'MySQL'] } });
+    expect(formReply(f, [{ question: 0, options: [1] }])).toBeUndefined();
+    expect(formReply(f, [{ question: 0, options: [9] }, { question: 1, options: [0] }])).toBeUndefined();
+    const fixo = parseForm({ id: 'frm_5', sessionID: SES, fields: [field({ custom: false })] })!;
+    expect(formReply(fixo, [{ question: 0, other: 'outro' }])).toBeUndefined();
   });
 });

@@ -11,9 +11,9 @@
 //
 // Privacidade: a senha só vai no cabeçalho Authorization (Basic, usuário "opencode"), nunca em log, URL ou resposta.
 // O Habblaud só LÊ (GET), com duas exceções pedidas pelo próprio usuário: a mensagem que ele escreve a um agente pelo
-// escritório vai para a fila da sessão (POST /api/session/<id>/prompt) e a resposta dele a um pedido de permissão vai
-// para o pedido (POST /api/session/<id>/permission/<pedido>/reply; o "sempre" faz o OpenCode guardar a regra). Nada é
-// apagado.
+// escritório vai para a fila da sessão (POST /api/session/<id>/prompt) e a resposta dele a um pedido de permissão ou
+// a uma pergunta vai para o pedido (POST .../permission/<pedido>/reply, onde o "sempre" faz o OpenCode guardar a regra;
+// POST .../form/<pergunta>/reply, ou DELETE .../form/<pergunta> para recusar). Nada mais é apagado.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -126,14 +126,17 @@ export async function getJson(fetchFn: FetchLike, ep: OpenCodeEndpoint, path: st
   }
 }
 
-/** POST de um JSON ao serviço (com tempo-limite). Lança OpenCodeHttpError (409 = a sessão não aceitou agora). */
-export async function postJson(fetchFn: FetchLike, ep: OpenCodeEndpoint, path: string, body: unknown, timeoutMs = 15_000): Promise<unknown> {
+/**
+ * POST de um JSON ao serviço (com tempo-limite; `method` DELETE manda sem corpo). Lança OpenCodeHttpError (409 = a
+ * sessão não aceitou agora).
+ */
+export async function postJson(fetchFn: FetchLike, ep: OpenCodeEndpoint, path: string, body: unknown, timeoutMs = 15_000, method: 'POST' | 'DELETE' = 'POST'): Promise<unknown> {
   let res;
   try {
     res = await fetchFn(`${ep.url}${path}`, {
-      method: 'POST',
-      headers: { ...headers(ep), 'content-type': 'application/json' },
-      body: JSON.stringify(body),
+      method,
+      headers: method === 'POST' ? { ...headers(ep), 'content-type': 'application/json' } : headers(ep),
+      ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {

@@ -351,7 +351,7 @@ export class PermissionCard {
     }
     setText(this.title, ask ? (p.questions!.length > 1 ? tr('Perguntas para você') : tr('Pergunta para você')) : tr('Pede permissão'));
     const by = p.subagent ? tr(' · subagente {0}', [p.subagent]) : '';
-    setText(this.what, ask ? tr('Aqui ou no terminal: vale a primeira resposta{0}', [by]) :`${p.icon} ${p.text}${by}`);
+    setText(this.what, ask ? (p.provider === 'opencode' ? tr('Aqui ou no OpenCode: vale a primeira resposta{0}', [by]) : tr('Aqui ou no terminal: vale a primeira resposta{0}', [by])) : `${p.icon} ${p.text}${by}`);
     setHidden(this.timer, !opts.expires);
     setText(this.timer, opts.expires ? expiryText(p.expiresAt, now, opts.seconds) : '');
     setTitle(
