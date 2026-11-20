@@ -15,6 +15,12 @@
 // conta no corpo). Diferenças: o agente casa pelo thread (agent_id ?? session_id) entre os agentes do Codex; sem
 // sugestões nem perguntas; recusar só com motivo (sem interromper); sem a busca da resposta no transcript (no Codex o
 // terminal só pede a aprovação depois que o hook termina, então ela nunca é respondida lá enquanto ele espera).
+//
+// O OpenCode não tem hook: o próprio serviço dele guarda o pedido até alguém responder (a TUI, o app ou o Habblaud). A
+// fonte do OpenCode (sources/opencode/source.ts) registra cada pedido com registerExternal e o solta com
+// releaseExternal quando ele some de lá; a decisão da página vai ao serviço por `deliver` (decideAsync), sem espera
+// de hook nem prazo de devolução. Sem interromper nem "responder no terminal" (o pedido continua no OpenCode de
+// qualquer jeito); o "sempre" é o `always` dele.
 import { randomBytes } from 'node:crypto';
 import { askDetail, describeTool, maskSecrets, truncate } from '../../shared/activity';
 import { ANSWER_OTHER_MAX, answerSummary, ASK_TOOL, checkAnswers } from '../../shared/answers';
@@ -112,6 +118,20 @@ export type WaitResult =
  */
 export type DecideResult = 'ok' | 'not-found' | 'conflict' | 'invalid' | 'invalid-answer' | 'unsupported';
 
+/**
+ * Pedido guardado pela própria ferramenta (OpenCode), registrado pela fonte dela. `key` é o id do pedido lá (o mesmo
+ * pedido nunca entra duas vezes); `deliver` leva a decisão até ela e lança se não deu.
+ */
+export interface ExternalRequest {
+  provider: 'opencode';
+  key: string;
+  agentId: string;
+  /** Pedido de um subagente que o Habblaud não mostra: o tipo dele. */
+  subagent?: string;
+  view: Pick<PermissionRequestInfo, 'tool' | 'title' | 'text' | 'icon' | 'input' | 'inputKind' | 'suggestions'>;
+  deliver: (d: PermissionDecision) => Promise<void>;
+}
+
 /** Erro de validação do corpo vindo do hook (vira 400). */
 export class InvalidRequest extends Error {}
 
@@ -132,6 +152,8 @@ interface Pending {
   info: PermissionRequestInfo;
   /** Pedido do Codex (sem a busca da resposta no transcript). */
   codex?: boolean;
+  /** Pedido guardado pela própria ferramenta (OpenCode): sem hook; a decisão vai por `deliver`. */
+  external?: { key: string; deliver: ExternalRequest['deliver']; delivering?: boolean };
   /** Pergunta (AskUserQuestion): o formato de `tool_input.questions`, por posição (undefined = entrada inválida). */
   askFormat?: Array<AskFormat | undefined>;
   agentId: string;
@@ -171,9 +193,14 @@ function isQuestion(info: { tool: string; provider?: string }): boolean {
   return info.tool === ASK_TOOL && info.provider !== 'codex';
 }
 
-/** O Codex não aceita interromper nem "sempre permitir" (o hook dele só aprova ou recusa com motivo). */
-function unsupportedByCodex(info: PermissionRequestInfo, d: PermissionDecision): boolean {
-  return info.provider === 'codex' && (d.interrupt === true || d.suggestion !== undefined);
+/**
+ * O Codex não aceita interromper nem "sempre permitir" (o hook dele só aprova ou recusa com motivo); o OpenCode não
+ * aceita interromper nem "responder no terminal" (o pedido segue no OpenCode até alguém responder).
+ */
+function unsupportedByTool(info: PermissionRequestInfo, d: PermissionDecision): boolean {
+  if (info.provider === 'codex') return d.interrupt === true || d.suggestion !== undefined;
+  if (info.provider === 'opencode') return d.interrupt === true || d.behavior === 'terminal';
+  return false;
 }
 
 /**
@@ -433,6 +460,48 @@ export class PermissionRegistry {
     if (ask) p.askFormat = askFormat(req.input.questions);
     this.pending.set(id, p);
 
+    this.announce(target, info, desc.text);
+    return { id, expiresAt: info.expiresAt + EXPIRY_GRACE_MS };
+  }
+
+  /**
+   * Registra um pedido guardado pela própria ferramenta (OpenCode). Devolve o id no Habblaud (o mesmo, se `key` já
+   * estava registrada) ou undefined (agente fora do escritório ou pedidos demais). Não depende de página aberta: o
+   * pedido não sai do lugar de lá, então vale a primeira resposta, aqui ou na ferramenta.
+   */
+  registerExternal(req: ExternalRequest): string | undefined {
+    for (const p of this.pending.values()) if (p.external?.key === req.key) return p.info.id;
+    if (!present(this.opts.office.get(req.agentId))) return undefined;
+    if (this.size >= this.maxPending) return undefined;
+    const now = this.now();
+    const id = `p-${now.toString(36)}-${++this.seq}-${randomBytes(9).toString('base64url')}`;
+    const v = req.view;
+    // Sem prazo de devolução: o pedido fica até ser respondido (aqui ou lá) ou sumir de lá.
+    const info: PermissionRequestInfo = { id, provider: req.provider, tool: v.tool, title: v.title, text: v.text, icon: v.icon, createdAt: now, expiresAt: now + MAX_TIMEOUT_MS };
+    if (v.input) info.input = v.input;
+    if (v.inputKind) info.inputKind = v.inputKind;
+    if (v.suggestions?.length) info.suggestions = v.suggestions;
+    if (req.subagent) info.subagent = req.subagent;
+    this.pending.set(id, { info, agentId: req.agentId, sessionId: '', signature: '', lastScanAt: 0, waiters: new Set(), idleSince: now, external: { key: req.key, deliver: req.deliver } });
+    this.announce({ id: req.agentId, subagent: req.subagent }, info, v.text);
+    return id;
+  }
+
+  /**
+   * O pedido `key` sumiu da ferramenta (respondido lá, a execução acabou ou a sessão saiu): some do escritório. Não
+   * mexe num pedido cuja decisão daqui está a caminho (quem responde é decideAsync).
+   */
+  releaseExternal(key: string, reason: ReleaseReason = 'answered'): void {
+    for (const p of this.pending.values()) {
+      if (p.external?.key !== key) continue;
+      if (!p.outcome && !p.external.delivering) this.release(p, reason);
+    }
+  }
+
+  /** Atividade na linha do tempo e o aviso "pede permissão" (ou "tem uma pergunta") de um pedido novo. */
+  private announce(target: { id: string; subagent?: string }, info: PermissionRequestInfo, text: string): void {
+    const now = info.createdAt;
+    const id = info.id;
     const by = target.subagent ? tr(' (subagente {0})', [target.subagent]) : '';
     const first = info.questions?.[0]?.question;
     if (first) {
@@ -444,11 +513,10 @@ export class PermissionRegistry {
       this.opts.office.addActivity(target.id, { id: `${target.id}#perm:${id}`, at: now, kind: 'wait', icon: '❓', text: label, detail: all, questions: qs, tool: 'PermissionRequest' }, false);
       this.opts.office.noticePermission(target.id, `${all}${by}`, 'question');
     } else {
-      this.opts.office.addActivity(target.id, { id: `${target.id}#perm:${id}`, at: now, kind: 'wait', icon: '🔐', text: truncate(tr('Pede permissão: {0}', [desc.text]), 46), detail: view.title, tool: 'PermissionRequest' }, false);
-      this.opts.office.noticePermission(target.id, `${desc.text}${by}`);
+      this.opts.office.addActivity(target.id, { id: `${target.id}#perm:${id}`, at: now, kind: 'wait', icon: '🔐', text: truncate(tr('Pede permissão: {0}', [text]), 46), detail: info.title, tool: 'PermissionRequest' }, false);
+      this.opts.office.noticePermission(target.id, `${text}${by}`);
     }
     this.opts.office.markDirty();
-    return { id, expiresAt: info.expiresAt + EXPIRY_GRACE_MS };
   }
 
   /** Detalhe completo de um pedido em aberto (com os argumentos), ou undefined. */
@@ -507,19 +575,59 @@ export class PermissionRegistry {
     const p = this.pending.get(id);
     if (!p) {
       const demo = this.opts.demoDetail?.(id);
-      if (demo && unsupportedByCodex(demo, d)) return 'unsupported';
+      if (demo && unsupportedByTool(demo, d)) return 'unsupported';
       if (demo && (wrongKind(demo, d) || (d.behavior === 'answer' && !checkAnswers(demo.questions ?? [], d.answers)))) return 'invalid-answer';
       return this.opts.demoDecide?.(id, d) ? 'ok' : 'not-found';
     }
-    if (p.outcome) return 'conflict';
-    if (unsupportedByCodex(p.info, d)) return 'unsupported';
-    if (d.suggestion !== undefined && !p.info.suggestions?.some((s) => s.index === d.suggestion)) return 'invalid';
+    if (p.outcome || p.external?.delivering) return 'conflict';
+    const problem = this.check(p, d);
+    if (problem) return problem;
+    // Pedido do OpenCode: a decisão precisa chegar ao serviço dele antes (decideAsync).
+    if (p.external) return 'unsupported';
     if (d.behavior === 'terminal') {
       this.release(p, 'terminal');
       return 'ok';
     }
-    if (wrongKind(p.info, d)) return 'invalid-answer';
     if (d.behavior === 'answer') return this.answer(p, d.answers);
+    this.settle(p, d);
+    return 'ok';
+  }
+
+  /**
+   * decide, também para os pedidos guardados pela própria ferramenta (OpenCode): a decisão vai ao serviço dela e só
+   * depois o pedido sai do escritório. `{error}` = não chegou lá (o pedido continua aberto aqui).
+   */
+  async decideAsync(id: string, d: PermissionDecision): Promise<DecideResult | { error: string }> {
+    const p = this.pending.get(id);
+    if (!p?.external) return this.decide(id, d);
+    if (p.outcome || p.external.delivering) return 'conflict';
+    const problem = this.check(p, d);
+    if (problem) return problem;
+    p.external.delivering = true;
+    try {
+      await p.external.deliver(d);
+    } catch (err) {
+      return { error: errMsg(err) };
+    } finally {
+      p.external.delivering = false;
+    }
+    if (p.outcome) return 'conflict';
+    this.settle(p, d);
+    return 'ok';
+  }
+
+  /** O que impede a decisão `d` neste pedido (undefined = nada). */
+  private check(p: Pending, d: PermissionDecision): DecideResult | undefined {
+    if (unsupportedByTool(p.info, d)) return 'unsupported';
+    if (d.suggestion !== undefined && !p.info.suggestions?.some((s) => s.index === d.suggestion)) return 'invalid';
+    if (d.behavior !== 'terminal' && wrongKind(p.info, d)) return 'invalid-answer';
+    return undefined;
+  }
+
+  /** Aprovação ou recusa decidida: entrega a quem espera e anota na linha do tempo. */
+  private settle(p: Pending, d: PermissionDecision): void {
+    if (d.behavior !== 'allow' && d.behavior !== 'deny') return;
+    const id = p.info.id;
     const outcome: WaitResult = { status: 'decided', behavior: d.behavior };
     if (d.message) outcome.message = d.message;
     if (d.interrupt) outcome.interrupt = true;
@@ -531,7 +639,6 @@ export class PermissionRegistry {
         ? { id: `${p.agentId}#perm-ok:${id}`, at: now, kind: 'other', icon: '✅', text: d.suggestion !== undefined ? tr('Aprovado no Habblaud (sempre permitir)') : tr('Aprovado no Habblaud'), detail: p.info.title, tool: 'PermissionRequest' }
         : { id: `${p.agentId}#perm-no:${id}`, at: now, kind: 'wait', icon: '🚫', text: tr('Recusado no Habblaud'), detail: d.message ? `${p.info.title} — ${d.message}` : p.info.title, tool: 'PermissionRequest' };
     this.opts.office.addActivity(p.agentId, act, false);
-    return 'ok';
   }
 
   /**
@@ -559,11 +666,12 @@ export class PermissionRegistry {
         continue;
       }
       if (now >= p.info.expiresAt + EXPIRY_GRACE_MS) this.release(p, 'expired');
-      else if (!p.waiters.size && now - p.idleSince >= this.orphanMs) this.release(p, 'orphan');
+      // OpenCode: sem hook esperando (o pedido fica no serviço dele até alguém responder ou ele sumir de lá).
+      else if (!p.external && !p.waiters.size && now - p.idleSince >= this.orphanMs) this.release(p, 'orphan');
       else if (!present(this.opts.office.get(p.agentId))) this.release(p, 'gone');
-      else if (unwatched && p.info.expiresAt - p.info.createdAt > DEFAULT_TIMEOUT_MS) this.release(p, 'unwatched');
+      else if (unwatched && !p.external && p.info.expiresAt - p.info.createdAt > DEFAULT_TIMEOUT_MS) this.release(p, 'unwatched');
       // No Codex o terminal só pede a aprovação depois que o hook termina: não há resposta dada lá para procurar.
-      else if (p.codex) continue;
+      else if (p.codex || p.external) continue;
       else if (now - p.lastScanAt >= SCAN_EVERY_MS && this.answeredInTerminal(p, now)) this.release(p, 'answered');
       else if (this.leftWaiting(p, now)) this.release(p, 'answered');
     }

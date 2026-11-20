@@ -10,8 +10,10 @@
 // o endereço do arquivo (127.0.0.1) troca de host para o container alcançar o serviço do computador.
 //
 // Privacidade: a senha só vai no cabeçalho Authorization (Basic, usuário "opencode"), nunca em log, URL ou resposta.
-// O Habblaud só LÊ (GET), com uma exceção pedida pelo próprio usuário: a mensagem que ele escreve a um agente pelo
-// escritório vai para a fila da sessão (POST /api/session/<id>/prompt, postJson). Nada é apagado nem configurado.
+// O Habblaud só LÊ (GET), com duas exceções pedidas pelo próprio usuário: a mensagem que ele escreve a um agente pelo
+// escritório vai para a fila da sessão (POST /api/session/<id>/prompt) e a resposta dele a um pedido de permissão vai
+// para o pedido (POST /api/session/<id>/permission/<pedido>/reply; o "sempre" faz o OpenCode guardar a regra). Nada é
+// apagado.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';

@@ -651,14 +651,21 @@ rounded corners and carries the **OPENCODE** tag.
   **Docker**, `npm run docker:up` mounts **only that file** (read-only) and the container reaches the service through
   `host.docker.internal`.
 - **Who's in the office:** a session that is running, waiting on you (a permission or a question) or that had activity in
-  the last 30 minutes. A subagent session shows up while it works and delivers when it finishes.
+  the last 30 minutes. A subagent session shows up while it works and delivers when it finishes. **Pinned sessions**
+  (`HABBLAUD_OPENCODE_PINNED`: `ses_...` ids separated by commas) stay in the office the whole time the service is up,
+  idle or not, like a permanent coworker.
 - **Usage in the top bar:** with **OpenCode Go**, the 5-hour and weekly bars (and the month in the tooltip), read from the
   service every minute. Without Go, the card says **no limits reported** (never 0%): the free models' own limit isn't
   exposed by OpenCode; a workspace budget in dollars shows up instead when there is one.
 - **Sending messages:** the **Send message** box puts the text in the session's queue through the service (it becomes the
   next prompt when OpenCode finishes what it's doing) — in Node mode and in Docker alike.
-- Not yet: Habblaud's terminal, history and approving permissions from the office (answer in OpenCode itself). OpenCode
-  agents don't go up to Habblaud World (its protocol doesn't know OpenCode yet). `HABBLAUD_OPENCODE=0` turns OpenCode
+- **Approving permissions:** OpenCode's permission requests show up on the agent's card like Claude Code's: **Approve**,
+  **Deny** (with a reason, if you like) and **always allow** with the rule OpenCode itself would save (e.g.
+  `bash(git push *)`). The request stays in OpenCode too (TUI or app): the first answer wins. No "interrupt" and no
+  "answer in the terminal".
+- **Terminal:** **Open terminal** shows the session's conversation live (prompts, reasoning, tools and results), read
+  from the service every 1.5 s, with the message box at the bottom — in Node mode, in Docker and on the phone.
+- Not yet: the history of past sessions and the interactive terminal. OpenCode agents don't go up to Habblaud World (its protocol doesn't know OpenCode yet). `HABBLAUD_OPENCODE=0` turns OpenCode
   off; `HABBLAUD_OPENCODE_URL` (+ `HABBLAUD_OPENCODE_PASSWORD`) points to a service somewhere else.
 
 ### GitHub in the office

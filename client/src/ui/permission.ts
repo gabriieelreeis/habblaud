@@ -6,6 +6,9 @@
 // Pedido do Codex (`provider: 'codex'`): o hook dele só espera alguns segundos e o terminal só mostra a aprovação
 // depois que você responder aqui ou o prazo acabar; não há "sempre permitir" nem "interromper", e recusar pede um
 // motivo. O Codex nunca pergunta pelo escritório (sem cartão de pergunta).
+// Pedido do OpenCode (`provider: 'opencode'`): o próprio OpenCode guarda o pedido (também na TUI e no app) até alguém
+// responder, então não há prazo nem "Responder no terminal"; o "sempre permitir" é o `always` dele, e não há
+// "interromper".
 import { access, isLoopbackHostname } from '../net/access';
 import { ANSWER_OTHER_MAX, ASK_TOOL, checkAnswers } from '../../../shared/answers';
 import type { AgentInfo, AskQuestion, PermissionAnswer, PermissionDecision, PermissionRequestInfo, PermissionSuggestionInfo } from '../../../shared/types';
@@ -26,6 +29,7 @@ const DESTINATIONS: Record<string, string> = {
   localSettings: tr('neste projeto, só para você'),
   projectSettings: tr('neste projeto, para todos (versionado)'),
   userSettings: tr('em todos os projetos'),
+  opencode: tr('guardado no OpenCode'),
 };
 
 /** Onde a regra "sempre permitir" fica guardada, em português. */
@@ -47,6 +51,9 @@ export function expiryText(expiresAt: number, now: number, seconds = false): str
 /** Aviso do cartão de um pedido do Codex. */
 export const CODEX_PERMISSION_NOTE = tr('No Codex, a aprovação só aparece no terminal depois que você responder aqui ou o prazo acabar.');
 
+/** Aviso do cartão de um pedido do OpenCode. */
+export const OPENCODE_PERMISSION_NOTE = tr('O pedido também aparece no OpenCode (TUI ou app): vale a primeira resposta.');
+
 /** O que o cartão oferece para um pedido (muda com a ferramenta). */
 export interface PermissionOptions {
   /** "Aprovar e não perguntar de novo" (as sugestões do Claude Code). */
@@ -59,10 +66,15 @@ export interface PermissionOptions {
   seconds: boolean;
   /** Aviso curto embaixo da prévia ('' = nenhum). */
   note: string;
+  /** "Responder no terminal" (devolver o pedido). */
+  terminal: boolean;
+  /** O prazo em que o pedido volta ao terminal. */
+  expires: boolean;
 }
 
 export function permissionOptions(p: Pick<PermissionRequestInfo, 'provider' | 'suggestions'>, agent: Pick<AgentInfo, 'kind' | 'background'>): PermissionOptions {
-  if (p.provider === 'codex') return { always: false, interrupt: false, reasonRequired: true, seconds: true, note: CODEX_PERMISSION_NOTE };
+  if (p.provider === 'codex') return { always: false, interrupt: false, reasonRequired: true, seconds: true, note: CODEX_PERMISSION_NOTE, terminal: true, expires: true };
+  if (p.provider === 'opencode') return { always: !!p.suggestions?.length, interrupt: false, reasonRequired: false, seconds: false, note: OPENCODE_PERMISSION_NOTE, terminal: false, expires: false };
   // Subagente em segundo plano: o Claude Code só mostra o diálogo depois que o hook responde.
   const blocking = agent.kind === 'sub' && !!agent.background;
   return {
@@ -71,6 +83,8 @@ export function permissionOptions(p: Pick<PermissionRequestInfo, 'provider' | 's
     reasonRequired: false,
     seconds: false,
     note: blocking ? tr('Este subagente roda em segundo plano: o terminal só mostra o pedido depois que você responder aqui ou escolher “Responder no terminal”.') : '',
+    terminal: true,
+    expires: true,
   };
 }
 
@@ -214,7 +228,7 @@ export class PermissionCard {
   private interruptRow: HTMLElement;
   private denySubmit: HTMLButtonElement;
   /** O que o cartão oferece para o pedido atual (Claude Code ou Codex). */
-  private opts: PermissionOptions = { always: false, interrupt: true, reasonRequired: false, seconds: false, note: '' };
+  private opts: PermissionOptions = { always: false, interrupt: true, reasonRequired: false, seconds: false, note: '', terminal: true, expires: true };
   private status: HTMLElement;
   private remote: HTMLElement;
   /** Perguntas do AskUserQuestion, montadas uma vez por pedido (a seleção sobrevive aos snapshots). */
@@ -338,10 +352,13 @@ export class PermissionCard {
     setText(this.title, ask ? (p.questions!.length > 1 ? tr('Perguntas para você') : tr('Pergunta para você')) : tr('Pede permissão'));
     const by = p.subagent ? tr(' · subagente {0}', [p.subagent]) : '';
     setText(this.what, ask ? tr('Aqui ou no terminal: vale a primeira resposta{0}', [by]) :`${p.icon} ${p.text}${by}`);
-    setText(this.timer, expiryText(p.expiresAt, now, opts.seconds));
+    setHidden(this.timer, !opts.expires);
+    setText(this.timer, opts.expires ? expiryText(p.expiresAt, now, opts.seconds) : '');
     setTitle(
       this.timer,
-      codex
+      !opts.expires
+        ? ''
+        : codex
         ? tr('Pedido feito às {0}. Sem resposta aqui até {1}, o Codex segue sem a decisão do escritório e pede a aprovação no terminal.', [formatClock(p.createdAt), formatClock(p.expiresAt)])
         : tr('Pedido feito às {0}. Sem resposta aqui até {1}, o Habblaud devolve o pedido ao terminal.', [formatClock(p.createdAt), formatClock(p.expiresAt)]),
     );
@@ -376,6 +393,7 @@ export class PermissionCard {
     const busy = this.isBusy();
     setHidden(this.approveBtn, ask);
     setHidden(this.answerBtn, !ask);
+    setHidden(this.terminalBtn, !opts.terminal);
     for (const b of [this.approveBtn, this.denyBtn, this.terminalBtn]) b.disabled = busy;
     for (const el of this.askForm.querySelectorAll('input')) el.disabled = busy;
     if (ask) this.syncAnswer();

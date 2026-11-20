@@ -10,6 +10,7 @@ import {
   isQuestionRequest,
   nextPermissionAgent,
   permissionAgents,
+  OPENCODE_PERMISSION_NOTE,
   permissionOptions,
   type AskChoice,
 } from './permission';
@@ -59,12 +60,29 @@ describe('responder pelo escritório (peças puras)', () => {
       reasonRequired: true,
       seconds: true,
       note: CODEX_PERMISSION_NOTE,
+      terminal: true,
+      expires: true,
     });
     expect(CODEX_PERMISSION_NOTE).toBe('No Codex, a aprovação só aparece no terminal depois que você responder aqui ou o prazo acabar.');
     // Claude Code: como antes.
-    expect(permissionOptions({ suggestions }, { kind: 'main' })).toEqual({ always: true, interrupt: true, reasonRequired: false, seconds: false, note: '' });
+    expect(permissionOptions({ suggestions }, { kind: 'main' })).toEqual({ always: true, interrupt: true, reasonRequired: false, seconds: false, note: '', terminal: true, expires: true });
     expect(permissionOptions({}, { kind: 'main' }).always).toBe(false);
     expect(permissionOptions({}, { kind: 'sub', background: true }).note).toMatch(/^Este subagente roda em segundo plano/);
+  });
+
+  it('cartão do OpenCode: o "sempre" dele, sem interromper, sem prazo e sem "Responder no terminal"', () => {
+    const suggestions = [{ index: 0, rules: ['bash(git status *)'], destination: 'opencode' }];
+    expect(permissionOptions({ provider: 'opencode', suggestions }, { kind: 'main' })).toEqual({
+      always: true,
+      interrupt: false,
+      reasonRequired: false,
+      seconds: false,
+      note: OPENCODE_PERMISSION_NOTE,
+      terminal: false,
+      expires: false,
+    });
+    expect(permissionOptions({ provider: 'opencode' }, { kind: 'main' }).always).toBe(false);
+    expect(destinationLabel('opencode')).toBe('guardado no OpenCode');
   });
 
   it('destinationLabel', () => {

@@ -6,7 +6,8 @@ import { setQuiet } from '../../log';
 import { NameStore } from '../../model/names';
 import { Office } from '../../model/office';
 import type { FetchLike } from './service';
-import { OpenCodeSource, PRESENCE_MS } from './source';
+import { OpenCodeSource, pinnedSessions, PRESENCE_MS } from './source';
+import { PermissionRegistry } from '../../permissions/registry';
 
 setQuiet(true);
 
@@ -24,6 +25,8 @@ interface FakeService {
   down: boolean;
   posts: Array<{ url: string; body: unknown; auth?: string }>;
   calls: string[];
+  /** Status da resposta a um pedido de permissão (padrão 204). */
+  replyStatus?: number;
 }
 
 let stops: Array<() => void> = [];
@@ -48,7 +51,7 @@ function session(id: string, over: Record<string, unknown> = {}): Record<string,
   };
 }
 
-function setup(state: Partial<FakeService> = {}) {
+function setup(state: Partial<FakeService> = {}, env: NodeJS.ProcessEnv = {}) {
   const svc: FakeService = {
     sessions: [],
     active: {},
@@ -68,9 +71,13 @@ function setup(state: Partial<FakeService> = {}) {
     svc.calls.push(`${init?.method ?? 'GET'} ${path}`);
     if (init?.method === 'POST') {
       svc.posts.push({ url, body: JSON.parse(init.body ?? 'null'), auth: init.headers?.authorization });
+      if (path.endsWith('/reply')) {
+        const status = svc.replyStatus ?? 204;
+        return { ok: status < 300, status, json: async () => { throw new SyntaxError('sem corpo'); } };
+      }
       return json({ data: {} });
     }
-    if (path === '/api/session') return json({ data: svc.sessions, cursor: {} });
+    if (path === '/api/session') return json({ data: svc.sessions.filter((x) => !x.unlisted), cursor: {} });
     if (path === '/api/session/active') return json({ data: svc.active });
     if (path === '/api/experimental/usage/limits') return json(svc.limits);
     let m = /^\/api\/session\/(ses_\w+)\/message$/.exec(path);
@@ -86,7 +93,7 @@ function setup(state: Partial<FakeService> = {}) {
     }
     return { ok: false, status: 404, json: async () => ({}) };
   };
-  const late: { office?: Office } = {};
+  const late: { office?: Office; permissions?: PermissionRegistry } = {};
   const accounts = new AccountsService({ dirs: [], home: '/nada', env: {}, onChange: () => late.office?.markDirty() });
   const office = new Office({
     names: new NameStore(null),
@@ -95,21 +102,27 @@ function setup(state: Partial<FakeService> = {}) {
     accounts: (s) => accounts.list(s),
     sources: () => [],
     accountName: (id) => accounts.find(id)?.detected.name,
+    permissions: () => late.permissions?.snapshot() ?? new Map(),
   });
   late.office = office;
   const source = new OpenCodeSource({
     accounts,
     office,
-    env: { HABBLAUD_OPENCODE_URL: 'http://opencode.test', HABBLAUD_OPENCODE_PASSWORD: 'segredo' },
+    env: { HABBLAUD_OPENCODE_URL: 'http://opencode.test', HABBLAUD_OPENCODE_PASSWORD: 'segredo', ...env },
     home: '/nada',
     fetch: fetchFn,
     stream: false,
     timers: false,
   });
   stops.push(() => source.stop());
+  // Sem nenhuma página aberta: os pedidos do OpenCode aparecem mesmo assim (não saem do lugar de lá).
+  const permissions = new PermissionRegistry({ office, viewers: () => 0 });
+  late.permissions = permissions;
+  source.setPermissionSink({ add: (r) => permissions.registerExternal(r), remove: (key) => permissions.releaseExternal(key) });
   const agents = (): AgentInfo[] => office.commit().snapshot.agents;
   return {
     svc,
+    permissions,
     accounts,
     office,
     source,
@@ -210,6 +223,19 @@ describe('fonte do OpenCode: presença e o que o agente faz', () => {
 });
 
 describe('fonte do OpenCode: uso e mensagens', () => {
+  it('sessão fixa (HABBLAUD_OPENCODE_PINNED) fica parada no escritório, mesmo fora da lista; arquivada sai', async () => {
+    const parada = { time: { created: 1, updated: Date.now() - PRESENCE_MS - 60_000 } };
+    // `unlisted`: fora da lista (cortada nas mais recentes); a fonte busca a sessão fixa sozinha.
+    const t = setup({ sessions: [session(OLD, { ...parada, unlisted: true })] }, { HABBLAUD_OPENCODE_PINNED: `${OLD}, ses_naoexiste000000000009` });
+    await t.source.start();
+    expect(t.agent(OLD)).toMatchObject({ status: 'idle', provider: 'opencode' });
+    expect(t.svc.calls).toContain(`GET /api/session/${OLD}`);
+    t.svc.sessions = [session(OLD, { time: { created: 1, updated: Date.now(), archived: Date.now() } })];
+    await t.source.poll();
+    expect(t.agent(OLD)?.status ?? 'offline').toBe('offline');
+    expect([...pinnedSessions({ HABBLAUD_OPENCODE_PINNED: ' ses_abc123456 ; nada,ses_def123456 ' })]).toEqual(['ses_abc123456', 'ses_def123456']);
+  });
+
   it('limites do OpenCode Go entram na conta (5h, semana, mês) com o plano e o workspace', async () => {
     const t = setup({
       limits: {
@@ -243,5 +269,90 @@ describe('fonte do OpenCode: uso e mensagens', () => {
     await expect(t.source.sendPrompt(MAIN, 'olá')).resolves.toEqual({ ok: true });
     expect(t.svc.posts).toEqual([{ url: `http://opencode.test/api/session/${MAIN}/prompt`, body: { text: 'olá', delivery: 'queue' }, auth: `Basic ${Buffer.from('opencode:segredo').toString('base64')}` }]);
     await expect(t.source.sendPrompt('../x', 'olá')).resolves.toMatchObject({ ok: false });
+  });
+});
+
+describe('fonte do OpenCode: permissões pelo escritório', () => {
+  const BASH = { id: 'per_1', sessionID: MAIN, action: 'bash', resources: ['npm test'], save: ['npm test *'] };
+
+  it('o pedido pendente aparece no agente; "sempre permitir" responde always ao serviço e o agente volta a trabalhar', async () => {
+    const t = setup({ sessions: [session(MAIN)], active: { [MAIN]: { type: 'running' } }, permissions: { [MAIN]: [BASH] } });
+    await t.source.start();
+    const p = t.agent(MAIN)!.permission!;
+    expect(p).toMatchObject({ provider: 'opencode', tool: 'Bash', suggestions: [{ index: 0, rules: ['bash(npm test *)'], destination: 'opencode' }] });
+    expect(t.agent(MAIN)!.status).toBe('waiting');
+    expect(t.permissions.detail(p.id)).toMatchObject({ input: 'npm test', inputKind: 'command' });
+
+    await expect(t.permissions.decideAsync(p.id, { behavior: 'allow', suggestion: 0 })).resolves.toBe('ok');
+    expect(t.svc.posts.at(-1)).toMatchObject({ url: `http://opencode.test/api/session/${MAIN}/permission/per_1/reply`, body: { decision: 'always' } });
+    const a = t.agent(MAIN)!;
+    expect(a.permission).toBeUndefined();
+    expect(a.status).toBe('working');
+    // A releitura seguinte (o serviço ainda listando o pedido por um instante) não o traz de volta.
+    t.svc.permissions[MAIN] = [];
+    await t.source.poll();
+    expect(t.agent(MAIN)!.permission).toBeUndefined();
+  });
+
+  it('recusar manda reject com o motivo; interromper e "responder no terminal" não valem no OpenCode', async () => {
+    const t = setup({ sessions: [session(MAIN)], active: { [MAIN]: { type: 'running' } }, permissions: { [MAIN]: [BASH] } });
+    await t.source.start();
+    const id = t.agent(MAIN)!.permission!.id;
+    expect(t.permissions.decide(id, { behavior: 'terminal' })).toBe('unsupported');
+    await expect(t.permissions.decideAsync(id, { behavior: 'deny', interrupt: true })).resolves.toBe('unsupported');
+    expect(t.svc.posts).toEqual([]);
+    await expect(t.permissions.decideAsync(id, { behavior: 'deny', message: 'use pnpm' })).resolves.toBe('ok');
+    expect(t.svc.posts.at(-1)?.body).toEqual({ decision: 'reject', message: 'use pnpm' });
+  });
+
+  it('serviço que não aceitou a resposta: erro e o pedido continua aberto', async () => {
+    const t = setup({ sessions: [session(MAIN)], active: { [MAIN]: { type: 'running' } }, permissions: { [MAIN]: [BASH] }, replyStatus: 404 });
+    await t.source.start();
+    const id = t.agent(MAIN)!.permission!.id;
+    await expect(t.permissions.decideAsync(id, { behavior: 'allow' })).resolves.toEqual({ error: 'o pedido não está mais aberto no OpenCode (já foi respondido?)' });
+    expect(t.agent(MAIN)!.permission?.id).toBe(id);
+  });
+
+  it('pedido pelo evento; respondido na TUI (permission.replied), some do escritório', async () => {
+    const t = setup({ sessions: [session(MAIN)], active: { [MAIN]: { type: 'running' } } });
+    await t.source.start();
+    t.source.handleEvent({ type: 'permission.asked', data: { ...BASH, id: 'per_9' } });
+    expect(t.agent(MAIN)!.permission).toMatchObject({ provider: 'opencode', tool: 'Bash' });
+    t.source.handleEvent({ type: 'permission.replied', data: { sessionID: MAIN, requestID: 'per_9', reply: 'once' } });
+    expect(t.agent(MAIN)!.permission).toBeUndefined();
+    expect(t.permissions.size).toBe(0);
+  });
+
+  it('a execução acabou com o pedido aberto: ele some junto', async () => {
+    const t = setup({ sessions: [session(MAIN)], active: { [MAIN]: { type: 'running' } }, permissions: { [MAIN]: [BASH] } });
+    await t.source.start();
+    expect(t.permissions.size).toBe(1);
+    t.source.handleEvent({ type: 'session.execution.interrupted', data: { sessionID: MAIN } });
+    expect(t.permissions.size).toBe(0);
+  });
+});
+
+describe('fonte do OpenCode: terminal', () => {
+  it('conversation: a conversa da sessão pelo serviço; agente que não é desta fonte, nada', async () => {
+    const t = setup({
+      sessions: [session(MAIN)],
+      messages: {
+        [MAIN]: [
+          { id: 'msg_1', type: 'user', text: 'oi', time: { created: 2_000 } },
+          { id: 'msg_2', type: 'assistant', time: { created: 3_000, completed: 3_500 }, content: [{ type: 'text', text: 'Olá!' }] },
+        ],
+      },
+    });
+    await t.source.start();
+    expect(t.source.conversation('.claude:1')).toBeUndefined();
+    const conv = t.source.conversation(`.opencode:${MAIN}`)!;
+    const r = await conv.read();
+    expect(r.truncated).toBe(false);
+    expect(r.entries.map((e) => [e.kind, e.id])).toEqual([
+      ['user', 'msg_1'],
+      ['assistant', 'msg_2:0'],
+    ]);
+    t.svc.down = true;
+    await expect(conv.read()).rejects.toThrow();
   });
 });
