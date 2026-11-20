@@ -661,7 +661,8 @@ rounded corners and carries the **OPENCODE** tag.
   next prompt when OpenCode finishes what it's doing) — in Node mode and in Docker alike.
 - **Approving permissions:** OpenCode's permission requests show up on the agent's card like Claude Code's: **Approve**,
   **Deny** (with a reason, if you like) and **always allow** with the rule OpenCode itself would save (e.g.
-  `bash(git push *)`). The request stays in OpenCode too (TUI or app): the first answer wins. No "interrupt" and no
+  `bash(git push *)`). Its questions (the `question` tool) are answered there too, with the options and "Other"; denying
+  cancels the question. The request stays in OpenCode too (TUI or app): the first answer wins. No "interrupt" and no
   "answer in the terminal".
 - **Terminal:** **Open terminal** shows the session's conversation live (prompts, reasoning, tools and results), read
   from the service every 1.5 s, with the message box at the bottom — in Node mode, in Docker and on the phone.

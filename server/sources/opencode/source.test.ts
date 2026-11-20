@@ -21,6 +21,7 @@ interface FakeService {
   active: Record<string, { type: 'running' }>;
   messages: Record<string, unknown[]>;
   permissions: Record<string, unknown[]>;
+  forms: Record<string, unknown[]>;
   limits: unknown;
   down: boolean;
   posts: Array<{ url: string; body: unknown; auth?: string }>;
@@ -57,6 +58,7 @@ function setup(state: Partial<FakeService> = {}, env: NodeJS.ProcessEnv = {}) {
     active: {},
     messages: {},
     permissions: {},
+    forms: {},
     limits: { data: { workspace: { id: 'org', name: 'Personal', usageURL: 'u' }, budgets: [] } },
     down: false,
     posts: [],
@@ -69,6 +71,10 @@ function setup(state: Partial<FakeService> = {}, env: NodeJS.ProcessEnv = {}) {
     const u = new URL(url);
     const path = u.pathname;
     svc.calls.push(`${init?.method ?? 'GET'} ${path}`);
+    if (init?.method === 'DELETE') {
+      svc.posts.push({ url: `DELETE ${url}`, body: null });
+      return { ok: true, status: 204, json: async () => { throw new SyntaxError('sem corpo'); } };
+    }
     if (init?.method === 'POST') {
       svc.posts.push({ url, body: JSON.parse(init.body ?? 'null'), auth: init.headers?.authorization });
       if (path.endsWith('/reply')) {
@@ -85,7 +91,7 @@ function setup(state: Partial<FakeService> = {}, env: NodeJS.ProcessEnv = {}) {
     m = /^\/api\/session\/(ses_\w+)\/permission$/.exec(path);
     if (m) return json({ data: svc.permissions[m[1]] ?? [] });
     m = /^\/api\/session\/(ses_\w+)\/form$/.exec(path);
-    if (m) return json({ data: [] });
+    if (m) return json({ data: svc.forms[m[1]] ?? [] });
     m = /^\/api\/session\/(ses_\w+)$/.exec(path);
     if (m) {
       const s = svc.sessions.find((x) => x.id === m![1]);
@@ -354,5 +360,65 @@ describe('fonte do OpenCode: terminal', () => {
     ]);
     t.svc.down = true;
     await expect(conv.read()).rejects.toThrow();
+  });
+});
+
+describe('fonte do OpenCode: perguntas pelo escritório', () => {
+  const FORM = {
+  id: 'frm_1',
+  sessionID: MAIN,
+  title: 'Questions',
+  metadata: { kind: 'question' },
+  fields: [
+    {
+      key: 'q0',
+      title: 'Teste',
+      description: 'Como você prefere?',
+      type: 'string',
+      options: [
+        { value: 'curto', label: 'Curto', description: 'Só o necessário' },
+        { value: 'longo', label: 'Com detalhes' },
+      ],
+      custom: true,
+    },
+  ],
+};
+
+  it('a pergunta vira o cartão com as opções; responder manda o valor ao formulário e o agente volta a trabalhar', async () => {
+    const t = setup({ sessions: [session(MAIN)], active: { [MAIN]: { type: 'running' } }, forms: { [MAIN]: [FORM] } });
+    await t.source.start();
+    const p = t.agent(MAIN)!.permission!;
+    expect(p).toMatchObject({ provider: 'opencode', tool: 'AskUserQuestion' });
+    expect(p.questions).toEqual([
+      { index: 0, question: 'Como você prefere?', header: 'Teste', options: [{ index: 0, label: 'Curto', description: 'Só o necessário' }, { index: 1, label: 'Com detalhes' }] },
+    ]);
+    await expect(t.permissions.decideAsync(p.id, { behavior: 'allow' })).resolves.toBe('invalid-answer');
+    await expect(t.permissions.decideAsync(p.id, { behavior: 'answer', answers: [{ question: 0, options: [1] }] })).resolves.toBe('ok');
+    expect(t.svc.posts.at(-1)).toMatchObject({ url: `http://opencode.test/api/session/${MAIN}/form/frm_1/reply`, body: { answer: { q0: 'longo' } } });
+    const a = t.agent(MAIN)!;
+    expect(a.permission).toBeUndefined();
+    expect(a.status).toBe('working');
+  });
+
+  it('"Outro" vai como texto livre; recusar cancela a pergunta', async () => {
+    const t = setup({ sessions: [session(MAIN)], active: { [MAIN]: { type: 'running' } }, forms: { [MAIN]: [FORM] } });
+    await t.source.start();
+    const id = t.agent(MAIN)!.permission!.id;
+    await expect(t.permissions.decideAsync(id, { behavior: 'answer', answers: [{ question: 0, other: 'do seu jeito' }] })).resolves.toBe('ok');
+    expect(t.svc.posts.at(-1)?.body).toEqual({ answer: { q0: 'do seu jeito' } });
+
+    const t2 = setup({ sessions: [session(MAIN)], active: { [MAIN]: { type: 'running' } }, forms: { [MAIN]: [FORM] } });
+    await t2.source.start();
+    await expect(t2.permissions.decideAsync(t2.agent(MAIN)!.permission!.id, { behavior: 'deny' })).resolves.toBe('ok');
+    expect(t2.svc.posts.at(-1)?.url).toBe(`DELETE http://opencode.test/api/session/${MAIN}/form/frm_1`);
+  });
+
+  it('pergunta pelo evento form.created; respondida na TUI (form.replied), some do escritório', async () => {
+    const t = setup({ sessions: [session(MAIN)], active: { [MAIN]: { type: 'running' } } });
+    await t.source.start();
+    t.source.handleEvent({ type: 'form.created', data: { form: FORM } });
+    expect(t.agent(MAIN)!.permission).toMatchObject({ tool: 'AskUserQuestion' });
+    t.source.handleEvent({ type: 'form.replied', data: { sessionID: MAIN, id: 'frm_1' } });
+    expect(t.agent(MAIN)!.permission).toBeUndefined();
   });
 });

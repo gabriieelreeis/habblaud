@@ -687,7 +687,7 @@ projet, activité en direct, tâches, sous-agents (l’outil `task`) et le compt
   l’infobulle). Sans Go, la carte indique **aucune limite indiquée** (jamais 0 %).
 - **Envoyer des messages :** la zone **Envoyer un message** met le texte dans la file de la session via le service.
 - **Approuver les permissions :** les demandes d’OpenCode apparaissent sur la carte de l’agent : **Approuver**,
-  **Refuser** et **toujours autoriser** avec la règle qu’OpenCode enregistrerait. La demande reste dans OpenCode : la
+  **Refuser** et **toujours autoriser** avec la règle qu’OpenCode enregistrerait. Ses questions se répondent aussi là. La demande reste dans OpenCode : la
   première réponse l’emporte.
 - **Terminal :** **Ouvrir le terminal** affiche la conversation de la session en direct, avec la zone de message en bas.
 - **Sessions épinglées :** `HABBLAUD_OPENCODE_PINNED` (ids `ses_...` séparés par des virgules) les garde dans le bureau

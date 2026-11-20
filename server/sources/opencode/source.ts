@@ -29,7 +29,8 @@ import type { Office, TranscriptSummary } from '../../model/office';
 import type { AgentSource } from '../source';
 import type { ExternalRequest } from '../../permissions/registry';
 import type { PermissionDecision } from '../../../shared/types';
-import { parsePermission, permissionReply, permissionView, type OcPermission } from './permission';
+import { formReply, parseForm, parsePermission, permissionReply, permissionView, type OcForm, type OcPermission } from './permission';
+import { ASK_TOOL } from '../../../shared/answers';
 import { conversationOf } from './terminal';
 import type { TerminalEntry } from '../../../shared/types';
 import { isSessionId, parseSession, parseUsageLimits, readMessages, sessionBusy, type OcSession } from './parse';
@@ -121,6 +122,8 @@ interface Tracker {
   forms: Set<string>;
   /** Os pedidos de permissão pendentes, inteiros (para o cartão do escritório). */
   permReqs: Map<string, OcPermission>;
+  /** As perguntas pendentes que o escritório sabe responder, inteiras. */
+  formReqs: Map<string, OcForm>;
   /** Pedidos já levados ao registro do escritório. */
   published: Set<string>;
   /** Ids das atividades já levadas ao escritório. */
@@ -433,7 +436,8 @@ export class OpenCodeSource implements AgentSource {
         if (!this.wanted(tracker, now)) continue;
         seen.add(s.id);
         if (!t) this.sessions.set(s.id, tracker);
-        if (tracker.running || tracker.permissions.size || tracker.forms.size) await this.syncPending(tracker, timeout);
+        // Pedidos pendentes: rodando, com pedido conhecido ou entrando agora (um pedido de antes do Habblaud abrir).
+        if (tracker.running || tracker.permissions.size || tracker.forms.size || !tracker.inOffice) await this.syncPending(tracker, timeout);
         if (this.stopped) return;
         if (!tracker.inOffice) await this.enter(tracker, boot);
         else this.settle(tracker);
@@ -453,6 +457,7 @@ export class OpenCodeSource implements AgentSource {
       permissions: new Set(),
       forms: new Set(),
       permReqs: new Map(),
+      formReqs: new Map(),
       published: new Set(),
       seen: new Set(),
       tools: new Set(),
@@ -477,6 +482,8 @@ export class OpenCodeSource implements AgentSource {
         t.forms = ids(forms);
         const reqs = (Array.isArray(perms?.data) ? perms.data : []).map(parsePermission).filter((p): p is OcPermission => !!p && t.permissions.has(p.id));
         t.permReqs = new Map(reqs.map((p) => [p.id, p]));
+        const qs = (Array.isArray(forms?.data) ? forms.data : []).map(parseForm).filter((f): f is OcForm => !!f && t.forms.has(f.id));
+        t.formReqs = new Map(qs.map((f) => [f.id, f]));
       }
     } catch {
       // versão sem as rotas ou serviço ocupado: fica com o que os eventos disseram
@@ -577,8 +584,9 @@ export class OpenCodeSource implements AgentSource {
     const sink = this.permissionSink;
     if (!sink) return;
     const live = t.inOffice ? t.permReqs : new Map<string, OcPermission>();
+    const forms = t.inOffice ? t.formReqs : new Map<string, OcForm>();
     for (const key of [...t.published]) {
-      if (live.has(key)) continue;
+      if (live.has(key) || forms.has(key)) continue;
       sink.remove(key);
       t.published.delete(key);
     }
@@ -588,6 +596,41 @@ export class OpenCodeSource implements AgentSource {
       const id = sink.add({ provider: 'opencode', key, agentId: t.key, view: permissionView(req, cwd), deliver: (d) => this.replyPermission(req.sessionId, key, d) });
       if (id) t.published.add(key);
     }
+    for (const [key, form] of forms) {
+      if (t.published.has(key)) continue;
+      const view = { tool: ASK_TOOL, title: tr('Pergunta'), text: tr('Responder uma pergunta'), icon: '❓', questions: form.questions };
+      const id = sink.add({ provider: 'opencode', key, agentId: t.key, view, deliver: (d) => this.replyForm(form, d) });
+      if (id) t.published.add(key);
+    }
+  }
+
+  /**
+   * Resposta do escritório a uma pergunta (formulário) do OpenCode: os valores escolhidos em .../form/<id>/reply, ou
+   * recusar = cancelar a pergunta (DELETE). Lança se não chegou lá.
+   */
+  async replyForm(form: OcForm, d: PermissionDecision): Promise<void> {
+    const ep = this.endpoint ?? this.resolve();
+    if (!ep) throw new Error(this.error ?? tr('serviço do OpenCode desconhecido'));
+    const path = `/api/session/${form.sessionId}/form/${encodeURIComponent(form.id)}`;
+    try {
+      if (d.behavior === 'answer') {
+        const body = formReply(form, d.answers ?? []);
+        if (!body) throw new Error(tr('resposta que o OpenCode não aceita'));
+        await postJson(this.fetchFn, ep, `${path}/reply`, body);
+      } else if (d.behavior === 'deny') await postJson(this.fetchFn, ep, path, undefined, undefined, 'DELETE');
+      else throw new Error(tr('resposta que o OpenCode não aceita'));
+    } catch (err) {
+      if (err instanceof OpenCodeHttpError && (err.status === 404 || err.status === 409)) throw new Error(tr('a pergunta não está mais aberta no OpenCode (já foi respondida?)'));
+      if (err instanceof OpenCodeHttpError && err.status === 400) throw new Error(tr('o OpenCode não aceitou a resposta (confira as opções)'));
+      throw err;
+    }
+    const t = this.sessions.get(form.sessionId);
+    if (!t) return;
+    t.formReqs.delete(form.id);
+    t.forms.delete(form.id);
+    t.published.delete(form.id);
+    t.runningAt = this.now();
+    this.settle(t);
   }
 
   /** Leva o status e os pedidos de permissão ao escritório. */
@@ -738,7 +781,9 @@ export class OpenCodeSource implements AgentSource {
   }
 
   private event(ev: OpenCodeEvent): void {
-    const d = ev.data;
+    // form.created traz a pergunta inteira em `form` (Form.Info), com o sessionID lá dentro.
+    const inner = ev.type === 'form.created' ? ev.data.form : undefined;
+    const d = inner && typeof inner === 'object' && !Array.isArray(inner) ? (inner as Record<string, unknown>) : ev.data;
     const sid = str(d.sessionID);
     if (LIST_EVENTS.has(ev.type)) {
       this.kickList();
@@ -767,6 +812,7 @@ export class OpenCodeSource implements AgentSource {
         t.permissions.clear();
         t.permReqs.clear();
         t.forms.clear();
+        t.formReqs.clear();
         this.settle(t);
         this.kickSession(t);
         return;
@@ -800,6 +846,10 @@ export class OpenCodeSource implements AgentSource {
         const id = str(d.id) ?? str(d.formID) ?? `form:${at}`;
         if (!t) return this.kickList();
         t.forms.add(id);
+        const form = parseForm({ ...d, sessionID: d.sessionID ?? sid });
+        if (form) t.formReqs.set(form.id, form);
+        // O evento sem os campos: a lista da sessão traz a pergunta inteira.
+        else void this.syncPending(t, 8_000).then(() => this.settle(t));
         t.runningAt = this.now();
         if (!t.inOffice) return this.kickList();
         this.settle(t);
@@ -809,8 +859,13 @@ export class OpenCodeSource implements AgentSource {
       case 'form.cancelled': {
         if (!t) return;
         const id = str(d.formID) ?? str(d.id);
-        if (id && t.forms.has(id)) t.forms.delete(id);
-        else t.forms.clear();
+        if (id && t.forms.has(id)) {
+          t.forms.delete(id);
+          t.formReqs.delete(id);
+        } else {
+          t.forms.clear();
+          t.formReqs.clear();
+        }
         t.runningAt = this.now();
         this.settle(t);
         this.kickSession(t);

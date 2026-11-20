@@ -3477,4 +3477,10 @@ export const FR: Readonly<Record<string, string>> = {
   "o pedido não está mais aberto no OpenCode (já foi respondido?)": "la demande n'est plus ouverte dans OpenCode (déjà répondue ?)",
   "Interrompido": "Interrompu",
   "A execução falhou": "L'exécution a échoué",
+  "Aqui ou no OpenCode: vale a primeira resposta{0}": "Ici ou dans OpenCode : c'est la première réponse qui compte{0}",
+  "Pergunta": "Question",
+  "Responder uma pergunta": "Répondre à une question",
+  "a pergunta não está mais aberta no OpenCode (já foi respondida?)": "la question n'est plus ouverte dans OpenCode (déjà répondue ?)",
+  "ao OpenCode": "OpenCode",
+  "o OpenCode não aceitou a resposta (confira as opções)": "OpenCode n'a pas accepté la réponse (vérifiez les options)",
 };

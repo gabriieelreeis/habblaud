@@ -686,7 +686,7 @@ proyecto, actividad en vivo, tareas, subagentes (la herramienta `task`) y la cue
   la tarjeta dice **sin límites informados** (nunca 0%).
 - **Enviar mensajes:** la caja **Enviar mensaje** pone el texto en la cola de la sesión a través del servicio.
 - **Aprobar permisos:** las solicitudes de OpenCode aparecen en la tarjeta del agente: **Aprobar**, **Rechazar** y
-  **permitir siempre** con la regla que OpenCode guardaría. La solicitud sigue en OpenCode: vale la primera respuesta.
+  **permitir siempre** con la regla que OpenCode guardaría. Sus preguntas también se responden ahí. La solicitud sigue en OpenCode: vale la primera respuesta.
 - **Terminal:** **Abrir terminal** muestra la conversación de la sesión en vivo, con la caja de mensaje abajo.
 - **Sesiones fijas:** `HABBLAUD_OPENCODE_PINNED` (ids `ses_...` separados por comas) las deja en la oficina mientras el
   servicio esté activo.
