@@ -72,6 +72,12 @@ do meio (0.**3**.0).
   caixa. Agora a fonte do OpenCode também fornece as sessões recentes e as mensagens delas ao índice de entregas —
   inclusive as sessões que já saíram do escritório. Cada entrega sai com o selo do OpenCode e o nome do agente, como as
   das outras ferramentas.
+- **Entregas: todas as contas aparecem e o painel filtra por agente.** As sessões do OpenCode vinham no fim da lista e
+  eram cortadas quando havia 30 ou mais sessões das outras ferramentas: agora o limite de 30 vale só para elas, e as
+  sessões do OpenCode entram sempre. Uma sessão muito ativa também podia ocupar as 60 vagas da caixa: cada sessão passa
+  a contribuir com no máximo 10 entregas (as mais recentes) e o total subiu para 150. O painel ganhou **Filtrar por
+  agente** (com "Todos os agentes" por padrão) no computador e no celular, com a escolha salva no navegador; o selo de
+  novidades e os avisos continuam contando a lista inteira.
 - **Celular: tocar na TV das salas volta a abrir a apresentação.** O toque abria a janela no `pointerup`, mas o `click` sintético que o navegador mandava em seguida caía no fundo do `<dialog>` e a fechava na hora — parecia que a TV piscava e sumia. Agora o clique no fundo só desliga depois de uma folga curta desde a abertura; o botão de desligar e o `Esc` continuam imediatos.
 - **Celular: a barra do topo voltou a caber numa linha, com o menu "⋮".** Com o botão da festa, os botões da direita
   passaram do espaço e a barra quebrou em duas linhas, cortando os cartões de uso. Até 600 px de largura, os botões

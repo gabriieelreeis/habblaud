@@ -226,6 +226,7 @@ const deliveries = history
         return st === 'working' || st === 'waiting' || st === 'shell';
       },
       agentName: (id) => office.list().find((a) => a.id === id)?.name,
+      isLive: (account) => !!opencode && account === opencode.accountId,
     })
   : undefined;
 const deliveryFiles = deliveries

@@ -17,7 +17,8 @@ import { fileType, pathProblem } from './files';
 /** Quanto do fim de cada transcript entra (os pedidos mais antigos de uma sessão longa ficam de fora). */
 export const TAIL_BYTES = 6 * 1024 * 1024;
 export const MAX_SESSIONS = 30;
-export const MAX_DELIVERIES = 60;
+export const MAX_PER_AGENT = 10;
+export const MAX_DELIVERIES = 150;
 const CAPTURES_PER_DELIVERY = 2;
 /** Só os últimos pedidos de cada conversa guardam as telas capturadas (base64): o resto da memória fica de fora. */
 const TURNS_WITH_CAPTURES = 4;
@@ -53,6 +54,8 @@ export interface DeliveryIndexOptions {
   /** O agente está no meio de um pedido (o último pedido ainda não é entrega). */
   isBusy: (agentId: string) => boolean;
   agentName?: (agentId: string) => string | undefined;
+  /** Conta cujas sessões não entram no limite de MAX_SESSIONS. */
+  isLive?: (account: string) => boolean;
 }
 
 export type StoredAttachment =
@@ -274,7 +277,9 @@ export class DeliveryIndex {
   }
 
   async list(): Promise<DeliveryInfo[]> {
-    const sessions = (await this.opts.sessions()).slice(0, MAX_SESSIONS);
+    const all = await this.opts.sessions();
+    const isLive = (account: string) => !!this.opts.isLive?.(account);
+    const sessions = [...all.filter((s) => !isLive(s.account)).slice(0, MAX_SESSIONS), ...all.filter((s) => isLive(s.account))];
     const out: DeliveryInfo[] = [];
     const files = new Map<string, StoredAttachment>();
     const seen = new Set<string>();
@@ -294,7 +299,18 @@ export class DeliveryIndex {
     }
     for (const path of this.cache.keys()) if (!seen.has(path)) this.cache.delete(path);
     this.files = files;
-    return out.sort((a, b) => b.finishedAt - a.finishedAt).slice(0, MAX_DELIVERIES);
+    const bySession = new Map<string, DeliveryInfo[]>();
+    for (const d of out) {
+      const group = bySession.get(d.sessionId);
+      if (group) group.push(d);
+      else bySession.set(d.sessionId, [d]);
+    }
+    const limited: DeliveryInfo[] = [];
+    for (const group of bySession.values()) {
+      group.sort((a, b) => b.finishedAt - a.finishedAt);
+      limited.push(...group.slice(0, MAX_PER_AGENT));
+    }
+    return limited.sort((a, b) => b.finishedAt - a.finishedAt).slice(0, MAX_DELIVERIES);
   }
 
   private async read(src: DeliverySource): Promise<Parsed | undefined> {

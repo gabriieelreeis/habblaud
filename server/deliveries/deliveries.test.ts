@@ -1,10 +1,11 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { RecentSession } from '../../shared/types';
 import { conversationOf } from '../sources/opencode/terminal';
 import { createTerminalParser } from '../sources/terminal';
 import { tempDir } from '../test/fixtures';
-import { DeliveryIndex, headlineOf, linkedFiles, parseTurns, summaryOf } from './deliveries';
+import { DeliveryIndex, MAX_DELIVERIES, MAX_PER_AGENT, MAX_SESSIONS, headlineOf, linkedFiles, parseTurns, summaryOf } from './deliveries';
 
 const ts = (s: number) => new Date(Date.UTC(2026, 9, 12, 12, 0, s)).toISOString();
 const user = (id: string, s: number, text: string) => ({ type: 'user', uuid: id, timestamp: ts(s), message: { role: 'user', content: text } });
@@ -159,5 +160,89 @@ describe('entregas: sessões do OpenCode (sem transcript em arquivo)', () => {
     // "De nada..." sem ferramentas não é entrega; o cache evita reler as mensagens sem mudança.
     await idx.list();
     expect(reads).toBe(1);
+  });
+});
+
+function writeTranscript(dir: string, name: string, count: number, offset: number): string {
+  const path = join(dir, name);
+  const lines: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const at = offset + i * 60;
+    lines.push(JSON.stringify(user(`u${i}`, at, `Pedido ${i} da sessão`)));
+    lines.push(JSON.stringify(tool(`a${i}`, at + 1, 'Edit', { file_path: '/proj/x.ts', old_string: 'a', new_string: 'b' })));
+    lines.push(JSON.stringify(say(`r${i}`, at + 2, `Resposta ${i} com texto suficiente para virar uma entrega completa.`)));
+  }
+  writeFileSync(path, lines.join('\n') + '\n');
+  return path;
+}
+
+const liveMessages = () => [
+  { id: 'u1', type: 'user', text: 'Corrija o relatório de vendas', time: { created: 1_000 } },
+  {
+    id: 'm1',
+    type: 'assistant',
+    time: { created: 2_000, completed: 2_100 },
+    content: [{ type: 'tool', id: 't1', name: 'edit', state: { status: 'completed', input: { filePath: '/proj/x.ts', oldString: 'a', newString: 'b' }, output: 'ok' }, time: { created: 2_050 } }],
+  },
+  { id: 'm2', type: 'assistant', time: { created: 3_000, completed: 3_100 }, content: [{ type: 'text', text: 'O relatório de vendas foi corrigido e enviado para a pasta do projeto, confira.' }] },
+];
+
+describe('entregas: limites', () => {
+  it('com 31 sessões do Claude, a entrega do OpenCode continua na lista', async () => {
+    const dir = tempDir().dir;
+    const path = writeTranscript(dir, 'claude.jsonl', 1, 0);
+    const sessions: RecentSession[] = Array.from({ length: 31 }, (_, i) => ({
+      account: '.claude', sessionId: `c${i}`, projectDir: 'p', project: '/proj', lastAt: 1, size: 1, open: false,
+    }));
+    sessions.push({ account: '.opencode', provider: 'opencode', sessionId: 'ses_live', projectDir: 'p', project: '/proj', title: 'Ao vivo', lastAt: 1, size: 0, open: false });
+    const idx = new DeliveryIndex({
+      sessions: async () => sessions,
+      resolve: (account, sessionId) => {
+        if (account === '.opencode') return { key: sessionId, stamp: 3_100, entries: async () => conversationOf(liveMessages(), '/proj') };
+        return { path, createParser: createTerminalParser };
+      },
+      isBusy: () => false,
+      isLive: (account) => account === '.opencode',
+    });
+    const list = await idx.list();
+    const live = list.find((d) => d.sessionId === 'ses_live');
+    expect(live).toMatchObject({ account: '.opencode', provider: 'opencode', agentName: 'Ao vivo' });
+    expect(list.filter((d) => d.sessionId !== 'ses_live')).toHaveLength(MAX_SESSIONS);
+  });
+
+  it('cada sessão contribui com no máximo 10 entregas, as mais recentes', async () => {
+    const dir = tempDir().dir;
+    const many = writeTranscript(dir, 'many.jsonl', 25, 0);
+    const few = writeTranscript(dir, 'few.jsonl', 2, 0);
+    const idx = new DeliveryIndex({
+      sessions: async () => [
+        { account: '.claude', sessionId: 'many', projectDir: 'p', project: '/proj', title: 'Muitas', lastAt: 1, size: 1, open: false },
+        { account: '.claude', sessionId: 'few', projectDir: 'p', project: '/proj', title: 'Poucas', lastAt: 1, size: 1, open: false },
+      ],
+      resolve: (_account, sessionId) => ({ path: sessionId === 'many' ? many : few, createParser: createTerminalParser }),
+      isBusy: () => false,
+    });
+    const list = await idx.list();
+    const from = (id: string) => list.filter((d) => d.sessionId === id);
+    expect(from('many')).toHaveLength(MAX_PER_AGENT);
+    expect(from('few')).toHaveLength(2);
+    expect(from('many').map((d) => d.finishedAt)).toEqual(
+      Array.from({ length: 25 }, (_, i) => Date.parse(ts(i * 60 + 2))).slice(-MAX_PER_AGENT).reverse(),
+    );
+  });
+
+  it('o total não passa de 150 entregas e sai em ordem de finishedAt decrescente', async () => {
+    const dir = tempDir().dir;
+    const paths = new Map<string, string>();
+    for (let i = 0; i < 20; i++) paths.set(`s${i}`, writeTranscript(dir, `s${i}.jsonl`, 25, i * 10));
+    const idx = new DeliveryIndex({
+      sessions: async () => [...paths.keys()].map((sessionId) => ({ account: '.claude', sessionId, projectDir: 'p', project: '/proj', lastAt: 1, size: 1, open: false })),
+      resolve: (_account, sessionId) => ({ path: paths.get(sessionId)!, createParser: createTerminalParser }),
+      isBusy: () => false,
+    });
+    const list = await idx.list();
+    const times = list.map((d) => d.finishedAt);
+    expect(list).toHaveLength(MAX_DELIVERIES);
+    expect(times).toEqual([...times].sort((a, b) => b - a));
   });
 });
