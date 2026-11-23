@@ -32,7 +32,9 @@ import type { PermissionDecision } from '../../../shared/types';
 import { formReply, parseForm, parsePermission, permissionReply, permissionView, type OcForm, type OcPermission } from './permission';
 import { ASK_TOOL } from '../../../shared/answers';
 import { conversationOf } from './terminal';
-import type { TerminalEntry } from '../../../shared/types';
+import type { RecentSession, TerminalEntry } from '../../../shared/types';
+import type { LiveSessionSource } from '../../deliveries/deliveries';
+import { encodeCwd } from '../watcher';
 import { isSessionId, parseSession, parseUsageLimits, readMessages, sessionBusy, type OcSession } from './parse';
 import { getJson, OpenCodeHttpError, postJson, resolveEndpoint, serviceFile, streamEvents, type FetchLike, type OpenCodeEndpoint, type OpenCodeEvent } from './service';
 import { tr } from '../../../shared/i18n';
@@ -174,6 +176,8 @@ export class OpenCodeSource implements AgentSource {
   private endpoint?: OpenCodeEndpoint;
   private error?: string;
   private sessions = new Map<string, Tracker>();
+  /** Sessões principais vistas no último polling (inclui as que já saíram do escritório). */
+  private recent = new Map<string, OcSession>();
   private streaming = false;
   private stopped = false;
   private abort?: AbortController;
@@ -293,6 +297,49 @@ export class OpenCodeSource implements AgentSource {
         if (!this.endpoint && !this.resolve()) throw new Error(this.error ?? tr('serviço do OpenCode desconhecido'));
         const msgs = await this.messages(sid, CONVERSATION_WINDOW);
         return { entries: conversationOf(msgs, cwd), truncated: msgs.length >= CONVERSATION_WINDOW };
+      },
+    };
+  }
+
+  /**
+   * Sessões principais recentes para as entregas (e o histórico). Vêm da lista que o próprio polling já lê, então
+   * incluem sessões que terminaram e saíram do escritório — é justamente o trabalho concluído que interessa aqui.
+   */
+  deliverySessions(): RecentSession[] {
+    const out: RecentSession[] = [];
+    for (const s of this.recent.values()) {
+      const t = this.sessions.get(s.id);
+      const open = !!t?.inOffice && t.kind === 'main';
+      const r: RecentSession = {
+        account: this.accountId,
+        provider: 'opencode',
+        sessionId: s.id,
+        projectDir: s.directory ? encodeCwd(s.directory) : 'opencode',
+        firstAt: s.createdAt,
+        lastAt: s.updatedAt,
+        size: 0,
+        open,
+      };
+      if (s.directory) r.project = s.directory;
+      if (s.title) r.title = s.title;
+      if (open) r.agentId = t!.key;
+      out.push(r);
+    }
+    return out;
+  }
+
+  /** Fonte em memória de uma sessão: as mensagens vêm do serviço do OpenCode, não de um transcript em arquivo. */
+  deliverySource(sessionId: string): LiveSessionSource | undefined {
+    const s = this.recent.get(sessionId);
+    if (!s || s.parentId) return undefined;
+    const t = this.sessions.get(sessionId);
+    const cwd = s.directory ?? (t?.info.parentId ? this.recent.get(t.info.parentId)?.directory : undefined);
+    return {
+      key: sessionId,
+      stamp: s.updatedAt,
+      entries: async () => {
+        if (!this.endpoint && !this.resolve()) throw new Error(this.error ?? tr('serviço do OpenCode desconhecido'));
+        return conversationOf(await this.messages(sessionId, CONVERSATION_WINDOW), cwd);
       },
     };
   }
@@ -420,6 +467,8 @@ export class OpenCodeSource implements AgentSource {
         // some na próxima
       }
     }
+    // Guarda as principais para o histórico de entregas: uma sessão concluída sai do escritório, mas a entrega fica.
+    this.recent = new Map(parsed.filter((s) => !s.parentId).map((s) => [s.id, s]));
     // Principais antes dos filhos: o subagente precisa do pai já no escritório.
     for (const group of [parsed.filter((s) => !s.parentId), parsed.filter((s) => s.parentId)]) {
       for (const s of group) {

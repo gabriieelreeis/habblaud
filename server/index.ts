@@ -209,8 +209,13 @@ if (history && codex) history.add(new CodexHistory({ accounts: () => accounts.en
 // são lidos aqui (Node, ou pasta de conta montada no Docker) ou pelo auxiliar do host.
 const deliveries = history
   ? new DeliveryIndex({
-      sessions: () => history.list(),
+      sessions: async () => {
+        const list = await history.list();
+        // O OpenCode não tem transcript em arquivo: as sessões vêm do serviço dele, pela própria fonte.
+        return opencode ? [...list, ...opencode.deliverySessions()] : list;
+      },
       resolve: (account, sessionId) => {
+        if (opencode && account === opencode.accountId) return opencode.deliverySource(sessionId);
         const r = history.resolve(account, sessionId);
         return 'path' in r ? r : undefined;
       },

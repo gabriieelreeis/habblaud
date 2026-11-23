@@ -35,9 +35,21 @@ export interface SessionSource {
   createParser: () => TerminalParser;
 }
 
+/**
+ * Sessão sem transcript em arquivo (o OpenCode lê as mensagens do serviço dele). `stamp` é a versão barata da
+ * conversa (o `updatedAt` da sessão): enquanto não muda, as entradas ficam no cache.
+ */
+export interface LiveSessionSource {
+  key: string;
+  stamp?: string | number;
+  entries: () => Promise<TerminalEntry[]>;
+}
+
+export type DeliverySource = SessionSource | LiveSessionSource;
+
 export interface DeliveryIndexOptions {
   sessions: () => Promise<RecentSession[]>;
-  resolve: (account: string, sessionId: string) => SessionSource | undefined;
+  resolve: (account: string, sessionId: string) => DeliverySource | undefined;
   /** O agente está no meio de um pedido (o último pedido ainda não é entrega). */
   isBusy: (agentId: string) => boolean;
   agentName?: (agentId: string) => string | undefined;
@@ -47,7 +59,7 @@ export type StoredAttachment =
   | { kind: 'capture'; type: string; data: Buffer; name: string }
   | { kind: 'file'; path: string; name: string; type: string };
 
-interface Turn {
+export interface Turn {
   start: TerminalEntry & { kind: 'user' };
   tools: number;
   edited: Set<string>;
@@ -63,6 +75,8 @@ interface Turn {
 interface Parsed {
   mtimeMs: number;
   size: number;
+  /** Versão de uma fonte em memória (arquivo não tem). */
+  stamp?: string | number;
   /** Pedidos terminados (o último também, se o arquivo acabou depois dele). */
   turns: Turn[];
   /** O último pedido do arquivo (pode estar em andamento). */
@@ -201,29 +215,42 @@ function stopReasonOf(line: string): string | null | undefined {
   return m ? (m[2] ?? null) : undefined;
 }
 
+/** Junta uma entrada do terminal no pedido atual; `stop` é o motivo de parada do transcript do Claude Code. */
+function pushEntry(turns: Turn[], cur: Turn | undefined, e: TerminalEntry, stop?: string | null): Turn | undefined {
+  if (e.kind === 'user') {
+    if (cur) turns.push(cur);
+    return newTurn(e);
+  }
+  if (!cur) return cur;
+  if (e.kind === 'assistant') {
+    cur.text = e.text;
+    cur.textAt = e.at;
+    if (stop) {
+      cur.marksStop = true;
+      cur.ended = stop === 'end_turn';
+    }
+  } else if (e.kind === 'tool') {
+    cur.tools++;
+    if (EDIT_TOOLS.has(e.tool)) cur.edited.add(e.title);
+  }
+  return cur;
+}
+
+/** Pedidos a partir de entradas já prontas (OpenCode: as mensagens vêm do serviço, não de um arquivo). */
+export function turnsFromEntries(entries: Iterable<TerminalEntry>): { turns: Turn[]; last?: Turn } {
+  const turns: Turn[] = [];
+  let cur: Turn | undefined;
+  for (const e of entries) cur = pushEntry(turns, cur, e);
+  return { turns, last: cur };
+}
+
 /** Lê o fim de um transcript e separa os pedidos. */
 export function parseTurns(lines: Iterable<string>, parser: TerminalParser): { turns: Turn[]; last?: Turn } {
   const turns: Turn[] = [];
   let cur: Turn | undefined;
   for (const line of lines) {
-    for (const e of parser.push(line)) {
-      if (e.kind === 'user') {
-        if (cur) turns.push(cur);
-        cur = newTurn(e);
-      } else if (!cur) continue;
-      else if (e.kind === 'assistant') {
-        cur.text = e.text;
-        cur.textAt = e.at;
-        const stop = stopReasonOf(line);
-        if (stop !== undefined && stop !== null) {
-          cur.marksStop = true;
-          cur.ended = stop === 'end_turn';
-        }
-      } else if (e.kind === 'tool') {
-        cur.tools++;
-        if (EDIT_TOOLS.has(e.tool)) cur.edited.add(e.title);
-      }
-    }
+    const stop = stopReasonOf(line);
+    for (const e of parser.push(line)) cur = pushEntry(turns, cur, e, stop);
     if (!cur) continue;
     cur.files.push(...sentFilesIn(line));
     const caps = capturesIn(line);
@@ -254,8 +281,9 @@ export class DeliveryIndex {
     for (const s of sessions) {
       const src = this.opts.resolve(s.account, s.sessionId);
       if (!src) continue;
-      seen.add(src.path);
-      const parsed = this.read(src);
+      const key = 'path' in src ? src.path : `live:${src.key}`;
+      seen.add(key);
+      const parsed = await this.read(src);
       if (!parsed) continue;
       const busy = !!s.agentId && this.opts.isBusy(s.agentId);
       const turns = parsed.last && !busy ? [...parsed.turns, parsed.last] : parsed.turns;
@@ -269,7 +297,21 @@ export class DeliveryIndex {
     return out.sort((a, b) => b.finishedAt - a.finishedAt).slice(0, MAX_DELIVERIES);
   }
 
-  private read(src: SessionSource): Parsed | undefined {
+  private async read(src: DeliverySource): Promise<Parsed | undefined> {
+    if (!('path' in src)) {
+      const key = `live:${src.key}`;
+      const cached = this.cache.get(key);
+      if (cached && cached.stamp === src.stamp) return cached;
+      try {
+        const { turns, last } = turnsFromEntries(await src.entries());
+        for (const t of turns.slice(0, Math.max(0, turns.length - (last ? TURNS_WITH_CAPTURES - 1 : TURNS_WITH_CAPTURES)))) t.captures = [];
+        const parsed: Parsed = { mtimeMs: 0, size: 0, stamp: src.stamp, turns, last };
+        this.cache.set(key, parsed);
+        return parsed;
+      } catch {
+        return undefined;
+      }
+    }
     let st: { mtimeMs: number; size: number };
     try {
       st = statSync(src.path);
