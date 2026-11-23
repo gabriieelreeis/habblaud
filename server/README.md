@@ -259,7 +259,12 @@ nenhuma válida) não é desviada (`unsupported-tool`).
   não encerra o hook quando você responde lá, então o registro acha a chamada no fim do transcript
   (`permissions/transcript.ts`: nome + assinatura dos argumentos, a mais recente sem resultado) e espera o
   `tool_result` dela; sem a chamada, um principal que esteve `waiting` no registro de sessões e saiu dele há 3 s;
+- libera por "ninguém olhando" (5 min sem página que responda) só se `PermissionSettingsStore.get().returnWhenUnwatched`
+  estiver ligado — opção das Configurações salva em `<dataDir>/permissions-settings.json`, ligada por padrão;
 - decisões não buscadas ficam guardadas por 30 s; pedidos do demo (`demo:perm-…`) vão para o simulador.
+
+Há também `GET/POST /api/permissions/settings` (`{returnWhenUnwatched: boolean}`), que lê e muda essa opção; o valor
+novo vai no snapshot (`meta.permissions.returnWhenUnwatched`) e a página sincroniza por ele.
 
 As rotas (`permissions/http.ts`) seguem a trava do terminal: sem `ServerConfig.terminal` → 403 em
 todas; `Host` que não é local → 403. O guard já exige JSON e `Origin` local nos `POST`. Erros: 400 (corpo, sugestão

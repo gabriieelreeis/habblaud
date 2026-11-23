@@ -78,6 +78,8 @@ export interface RegistryOptions {
   viewers: () => number;
   /** Uma página que ainda não está aberta pode responder depois (celular com login e `permissions` liberado). */
   answerLater?: () => boolean;
+  /** Opção das configurações: devolver ao terminal depois de UNWATCHED_MS sem página que responda (padrão: sim). */
+  returnWhenUnwatched?: () => boolean;
   /** Transcript de um agente presente (ClaudeWatcher.transcriptPathOf). */
   transcriptPathOf?: (agentId: string) => string | undefined;
   /**
@@ -671,7 +673,7 @@ export class PermissionRegistry {
   tick(): void {
     const now = this.now();
     this.unwatchedSince = this.opts.viewers() > 0 ? null : (this.unwatchedSince ?? now);
-    const unwatched = this.unwatchedSince !== null && now - this.unwatchedSince >= UNWATCHED_MS && !this.opts.answerLater?.();
+    const unwatched = this.unwatchedSince !== null && now - this.unwatchedSince >= UNWATCHED_MS && !this.opts.answerLater?.() && (this.opts.returnWhenUnwatched?.() ?? true);
     for (const [id, p] of this.pending) {
       if (p.outcome) {
         if (now - (p.resolvedAt ?? now) >= this.resolvedKeepMs) this.pending.delete(id);

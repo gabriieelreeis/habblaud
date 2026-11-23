@@ -562,7 +562,10 @@ terminal.
   después de que el hook termina: responde desde la oficina o usa **Responder en la terminal**. Con una espera de más
   de 5 minutos, si pasan 5 minutos sin ninguna página abierta que pueda responder (y no hay ningún
   [celular con inicio de sesión](#celular-con-inicio-de-sesión-y-https-aprobar-solicitudes) configurado para
-  responder), la solicitud vuelve a la terminal.
+  responder), la solicitud vuelve a la terminal. Esta devolución por "nadie mirando" se puede desactivar en
+  **Configuración › Solicitudes de permiso**: con **Devolver las preguntas a la terminal cuando nadie esté mirando**
+  desactivada, la solicitud espera en la oficina hasta que respondas o hasta el tiempo máximo del hook. La elección se
+  guarda en el servidor y se mantiene al reiniciar.
 - Funciona con el mismo bloqueo que la terminal: solo con Habblaud accesible únicamente desde la propia
   computadora y abierto por `http://localhost`. Compruébalo con `npm run mod:status` (o `npm run hooks:status`, en el
   método antiguo).

@@ -28,6 +28,7 @@ import { openMainAgent, SessionHistory } from './sources/history';
 import { HistorySet, SourceSet } from './sources/source';
 import { createPermissionRoutes } from './permissions/http';
 import { PermissionRegistry } from './permissions/registry';
+import { PermissionSettingsStore } from './permissions/settings';
 import { codexAccountOf } from './codex/http';
 import { createCodexQueueRunner, findCodexBin } from './messages/codex';
 import { createMessageRoutes } from './messages/http';
@@ -83,7 +84,7 @@ const roomAliases = new RoomAliases(join(config.dataDir, 'rooms.json'));
 roomAliases.load();
 
 // Office, contas e fontes de agentes se referenciam (avisos de mudança / fontes): ligação tardia.
-const late: { office?: Office; agents?: SourceSet; permissions?: PermissionRegistry; messages?: MessageRegistry; ptys?: PtyManager; ptyOff?: string; presentations?: PresentationStore } = {};
+const late: { office?: Office; agents?: SourceSet; permissions?: PermissionRegistry; permissionSettings?: PermissionSettingsStore; messages?: MessageRegistry; ptys?: PtyManager; ptyOff?: string; presentations?: PresentationStore } = {};
 // Versão nova: consulta a release mais recente no GitHub a cada 6 h (HABBLAUD_UPDATE_CHECK=0 desliga).
 const updates = new UpdateChecker({
   current: config.version,
@@ -129,6 +130,7 @@ const office = new Office({
   accountName: (id) => accounts.find(id)?.detected.name,
   terminal: config.terminal,
   permissions: () => late.permissions?.snapshot() ?? new Map(),
+  permissionSettings: config.terminal ? () => late.permissionSettings?.get().returnWhenUnwatched ?? true : undefined,
   messages: config.messages ? () => late.messages?.reachable() ?? new Set() : undefined,
   ptys: () => (late.ptys ? { status: late.ptys.status(), list: late.ptys.list() } : { status: { enabled: false, reason: late.ptyOff ?? tr('desligado') }, list: [] }),
   updates: () => updates.status(),
@@ -243,11 +245,15 @@ const timelineDir = join(config.dataDir, TIMELINE_DIR);
 const timeline = config.timeline ? new TimelineRecorder({ dir: timelineDir }) : undefined;
 if (timeline) hub.onSnapshot((snap) => timeline.ingest(snap));
 // Responder pelo escritório (hook PermissionRequest): age sobre as sessões, então segue a mesma trava.
+const permissionSettings = new PermissionSettingsStore(join(config.dataDir, 'permissions-settings.json'), () => office.markDirty());
+permissionSettings.load();
+late.permissionSettings = permissionSettings;
 const permissions = config.terminal
   ? new PermissionRegistry({
       office,
       viewers: () => hub.localSize,
       answerLater: () => !!config.remote?.allow.has('permissions'),
+      returnWhenUnwatched: () => permissionSettings.get().returnWhenUnwatched,
       // Só o Claude Code: a busca da resposta dada no terminal lê o formato do transcript dele.
       transcriptPathOf: (id) => claude.transcriptPathOf(id),
       // Pedidos do hook do Codex: a conta pela pasta CODEX_HOME que ele manda.
@@ -402,7 +408,7 @@ const api = createApiHandler({
   terminals,
   sessions: history,
   timeline: createTimelineHandler({ dir: timelineDir, recording: !!timeline }),
-  permissions: permissions ? createPermissionRoutes(permissions) : undefined,
+  permissions: permissions ? createPermissionRoutes(permissions, permissionSettings) : undefined,
   messages: messages ? createMessageRoutes(messages, messageImages) : undefined,
   messageImages: !!messages && !!messageImages,
   pty: ptys ? createPtyRoutes(ptys) : undefined,

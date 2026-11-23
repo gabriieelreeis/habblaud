@@ -536,7 +536,10 @@ terminal** leaves the question there. The answer reaches the agent as if you had
   `--port`, the port). For **background subagents**, Claude Code only shows the dialog in the terminal after the
   hook finishes: answer from the office or use **Answer in terminal**. With a wait longer than 5 minutes, if no
   page that can answer stays open for 5 minutes (and no [phone with login](#phone-with-login-and-https-approving-requests)
-  is set up to answer), the request goes back to the terminal.
+  is set up to answer), the request goes back to the terminal. This "no one watching" fallback can be turned off in
+  **Settings › Permission requests**: with **Return questions to the terminal when no one is watching** off, the
+  request stays in the office until you answer or until the hook's maximum time. The choice is saved on the server and
+  survives a restart.
 - It works under the same safeguard as the terminal: only with Habblaud reachable only from the computer it runs on
   and opened through `http://localhost`. Check with `npm run mod:status` (or `npm run hooks:status`, in the old
   way). It also works from the [phone with login](#phone-with-login-and-https-approving-requests) (its default).

@@ -654,6 +654,12 @@ export const EN: Readonly<Record<string, string>> = {
   "Modo demonstração ligado.": "Demo mode on.",
   "Modo demonstração desligado.": "Demo mode off.",
   "Não foi possível mudar o modo demonstração.": "Couldn't change demo mode.",
+  "Pedidos de permissão": "Permission requests",
+  "Devolver perguntas ao terminal quando ninguém estiver vendo": "Return questions to the terminal when no one is watching",
+  "Desligada: a pergunta ou o pedido espera no escritório até você responder ou até o tempo máximo do hook.": "Off: the question or request waits in the office until you answer or until the hook's maximum time.",
+  "Não foi possível mudar a opção de devolução ao terminal.": "Couldn't change the terminal fallback setting.",
+  "Perguntas e pedidos voltam ao terminal quando ninguém estiver vendo.": "Questions and requests return to the terminal when no one is watching.",
+  "Perguntas e pedidos esperam no escritório até você responder.": "Questions and requests wait in the office until you answer.",
 
   // client/src/ui/sidebar.ts
   "Atalho: /": "Shortcut: /",
@@ -1810,6 +1816,7 @@ export const EN: Readonly<Record<string, string>> = {
   "Digitando num processo do terminal": "Typing into a terminal process",
 
   // server/permissions/http.ts
+  "esperado {returnWhenUnwatched: boolean}": "expected {returnWhenUnwatched: boolean}",
   "pedido desconhecido": "unknown request",
   "pedido desconhecido: já foi respondido, expirou ou foi respondido no terminal": "unknown request: already answered, expired, or answered in the terminal",
   "este pedido já foi respondido": "this request has already been answered",
@@ -1822,6 +1829,10 @@ export const EN: Readonly<Record<string, string>> = {
   "Pedidos de permissão: falha no relógio ({0}).": "Permission requests: clock failed ({0}).",
   " (subagente {0})": " (subagent {0})",
   "Pede permissão: {0}": "Asks for permission: {0}",
+
+  // server/permissions/settings.ts
+  "[permissões] configurações ilegíveis ({0}): mantendo o padrão.": "[permissions] unreadable settings ({0}): keeping the default.",
+  "[permissões] não deu para gravar as configurações: {0}": "[permissions] couldn't save the settings: {0}",
 
   // server/pty/manager.ts
   "indisponível": "unavailable",

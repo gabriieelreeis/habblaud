@@ -399,6 +399,11 @@ export interface OfficeSnapshot {
      */
     messages?: boolean;
     /**
+     * Opções de "responder pelo escritório" no snapshot: `returnWhenUnwatched` = devolver ao terminal depois de
+     * 5 minutos sem página que responda (padrão: true). Ausente = recurso desligado.
+     */
+    permissions?: { returnWhenUnwatched: boolean };
+    /**
      * Terminal interativo (abrir/assumir sessões e encerrar agentes pelo escritório): só fora do Docker, com
      * node-pty e acesso local. Ausente = recurso desligado.
      */
