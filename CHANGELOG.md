@@ -61,6 +61,7 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Celular: tocar na TV das salas volta a abrir a apresentação.** O toque abria a janela no `pointerup`, mas o `click` sintético que o navegador mandava em seguida caía no fundo do `<dialog>` e a fechava na hora — parecia que a TV piscava e sumia. Agora o clique no fundo só desliga depois de uma folga curta desde a abertura; o botão de desligar e o `Esc` continuam imediatos.
 - **Celular: a barra do topo voltou a caber numa linha, com o menu "⋮".** Com o botão da festa, os botões da direita
   passaram do espaço e a barra quebrou em duas linhas, cortando os cartões de uso. Até 600 px de largura, os botões
   agora ficam num menu: o "⋮" no canto direito abre a lista de todos (Visão geral, Meu dia, festa, Entregas, Novo
