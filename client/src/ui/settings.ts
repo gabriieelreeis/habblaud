@@ -36,6 +36,7 @@ function pickLanguage(v: LanguageChoice): void {
 }
 
 type BoolPref = { [K in keyof UiPrefs]: UiPrefs[K] extends boolean ? K : never }[keyof UiPrefs];
+type SwitchKey = BoolPref | 'demo' | 'returnWhenUnwatched';
 
 interface SwitchRefs {
   btn: HTMLButtonElement;
@@ -84,19 +85,21 @@ export function segmented<T extends string>(label: string, options: readonly [T,
 
 export class SettingsPopover implements UiComponent {
   readonly el: HTMLElement;
-  private switches = new Map<BoolPref | 'demo', SwitchRefs>();
+  private switches = new Map<SwitchKey, SwitchRefs>();
   private bubbles: ReturnType<typeof segmented<UiPrefs['bubbles']>>;
   private liveliness: ReturnType<typeof segmented<UiPrefs['liveliness']>>;
   private daylight: ReturnType<typeof segmented<UiPrefs['daylight']>>;
   private theme: ReturnType<typeof segmented<UiPrefs['theme']>>;
   private language: ReturnType<typeof segmented<LanguageChoice>>;
   private soundGroup: SoundSettingsGroup;
+  private permissionGroup: HTMLElement;
   private demoGroup: HTMLElement;
   /** Só na página do celular (porta remota com login): sair deste aparelho. */
   private remoteGroup: HTMLElement;
   private logoutBtn: HTMLButtonElement;
   private about: AboutGroup;
   private demoBusy = false;
+  private permissionBusy = false;
   private anchor: HTMLElement | null = null;
 
   constructor(
@@ -106,7 +109,7 @@ export class SettingsPopover implements UiComponent {
     /** A janela do Habblaud World: a dica do tema em Aparência e o envio do tema ao prédio. */
     private readonly world: WorldThemeLink,
   ) {
-    const sw = (key: BoolPref | 'demo', label: string, hint: string, onToggle: () => void) => {
+    const sw = (key: SwitchKey, label: string, hint: string, onToggle: () => void) => {
       const r = switchRow(label, hint, onToggle);
       this.switches.set(key, r);
       return r.row;
@@ -163,6 +166,18 @@ export class SettingsPopover implements UiComponent {
       h('span', { class: 'ui-set__hint', text: tr('Os textos das atividades vêm do servidor: seguem HABBLAUD_LANG ou o idioma do sistema onde o Habblaud roda (o inglês, só com HABBLAUD_LANG=en).') }),
     );
 
+    this.permissionGroup = h(
+      'div',
+      { class: 'ui-set-group' },
+      h('h3', { text: tr('Pedidos de permissão') }),
+      sw(
+        'returnWhenUnwatched',
+        tr('Devolver perguntas ao terminal quando ninguém estiver vendo'),
+        tr('Desligada: a pergunta ou o pedido espera no escritório até você responder ou até o tempo máximo do hook.'),
+        () => void this.toggleReturnWhenUnwatched(),
+      ),
+    );
+
     this.demoGroup = h(
       'div',
       { class: 'ui-set-group' },
@@ -213,6 +228,7 @@ export class SettingsPopover implements UiComponent {
         sw('browserNotifications', tr('Notificações do navegador'), tr('Avisa quando alguém precisa de você e a aba está em segundo plano.'), () => void this.toggleNotifications()),
       ),
       this.soundGroup.el,
+      this.permissionGroup,
       h('div', { class: 'ui-set-group' }, h('h3', { text: tr('Idioma') }), this.language.row),
       this.demoGroup,
       this.remoteGroup,
@@ -277,9 +293,9 @@ export class SettingsPopover implements UiComponent {
   render(): void {
     const p = this.ctx.prefs;
     for (const [key, r] of this.switches) {
-      const on = key === 'demo' ? !!this.ctx.store.liveSnapshot?.meta.demo : p[key];
+      const on = key === 'demo' ? !!this.ctx.store.liveSnapshot?.meta.demo : key === 'returnWhenUnwatched' ? this.returnWhenUnwatched() : p[key];
       setAttr(r.btn, 'aria-checked', String(on));
-      r.btn.disabled = key === 'demo' && this.demoBusy;
+      r.btn.disabled = (key === 'demo' && this.demoBusy) || (key === 'returnWhenUnwatched' && this.permissionBusy);
     }
     this.bubbles.set(p.bubbles);
     this.liveliness.set(p.liveliness);
@@ -287,6 +303,7 @@ export class SettingsPopover implements UiComponent {
     this.theme.set(p.theme);
     this.language.set(savedLanguage());
     this.soundGroup.render();
+    setHidden(this.permissionGroup, this.ctx.store.mock || !access().permissions);
     setHidden(this.demoGroup, this.ctx.store.mock || access().remote);
     setHidden(this.remoteGroup, !access().remote);
     this.about.render();
@@ -311,6 +328,26 @@ export class SettingsPopover implements UiComponent {
     const state = await this.notifier.enableBrowserNotifications();
     this.ctx.updatePrefs({ browserNotifications: state === 'granted' });
     if (state === 'denied') this.ctx.announce(tr('Notificações bloqueadas pelo navegador.'));
+  }
+
+  private returnWhenUnwatched(): boolean {
+    return this.ctx.store.liveSnapshot?.meta.permissions?.returnWhenUnwatched ?? true;
+  }
+
+  private async toggleReturnWhenUnwatched(): Promise<void> {
+    if (this.permissionBusy) return;
+    this.permissionBusy = true;
+    this.render();
+    const enable = !this.returnWhenUnwatched();
+    try {
+      if (!(await this.ctx.store.setReturnWhenUnwatched(enable))) this.ctx.announce(tr('Não foi possível mudar a opção de devolução ao terminal.'));
+      else this.ctx.announce(enable ? tr('Perguntas e pedidos voltam ao terminal quando ninguém estiver vendo.') : tr('Perguntas e pedidos esperam no escritório até você responder.'));
+    } catch {
+      this.ctx.announce(tr('Não foi possível falar com o servidor.'));
+    } finally {
+      this.permissionBusy = false;
+      this.ctx.invalidate();
+    }
   }
 
   private async toggleDemo(): Promise<void> {

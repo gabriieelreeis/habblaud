@@ -654,6 +654,12 @@ export const ES: Readonly<Record<string, string>> = {
   "Modo demonstração ligado.": "Modo demostración activado.",
   "Modo demonstração desligado.": "Modo demostración desactivado.",
   "Não foi possível mudar o modo demonstração.": "No se pudo cambiar el modo demostración.",
+  "Pedidos de permissão": "Solicitudes de permiso",
+  "Devolver perguntas ao terminal quando ninguém estiver vendo": "Devolver las preguntas a la terminal cuando nadie esté mirando",
+  "Desligada: a pergunta ou o pedido espera no escritório até você responder ou até o tempo máximo do hook.": "Desactivada: la pregunta o la solicitud espera en la oficina hasta que respondas o hasta el tiempo máximo del hook.",
+  "Não foi possível mudar a opção de devolução ao terminal.": "No se pudo cambiar la opción de devolución a la terminal.",
+  "Perguntas e pedidos voltam ao terminal quando ninguém estiver vendo.": "Las preguntas y solicitudes vuelven a la terminal cuando nadie está mirando.",
+  "Perguntas e pedidos esperam no escritório até você responder.": "Las preguntas y solicitudes esperan en la oficina hasta que respondas.",
 
   // client/src/ui/sidebar.ts
   "Atalho: /": "Atajo: /",
@@ -1810,6 +1816,7 @@ export const ES: Readonly<Record<string, string>> = {
   "Digitando num processo do terminal": "Escribiendo en un proceso de la terminal",
 
   // server/permissions/http.ts
+  "esperado {returnWhenUnwatched: boolean}": "se esperaba {returnWhenUnwatched: boolean}",
   "pedido desconhecido": "solicitud desconocida",
   "pedido desconhecido: já foi respondido, expirou ou foi respondido no terminal": "solicitud desconocida: ya fue respondida, expiró o se respondió en la terminal",
   "este pedido já foi respondido": "esta solicitud ya fue respondida",
@@ -1822,6 +1829,10 @@ export const ES: Readonly<Record<string, string>> = {
   "Pedidos de permissão: falha no relógio ({0}).": "Solicitudes de permiso: error en el reloj ({0}).",
   " (subagente {0})": " (subagente {0})",
   "Pede permissão: {0}": "Pide permiso: {0}",
+
+  // server/permissions/settings.ts
+  "[permissões] configurações ilegíveis ({0}): mantendo o padrão.": "[permisos] configuración ilegible ({0}): se mantiene el valor predeterminado.",
+  "[permissões] não deu para gravar as configurações: {0}": "[permisos] no se pudo guardar la configuración: {0}",
 
   // server/pty/manager.ts
   "indisponível": "no disponible",

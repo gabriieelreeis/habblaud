@@ -187,6 +187,17 @@ export class OfficeStore {
     return res.ok;
   }
 
+  /** Muda a opção de devolver ao terminal pedidos que ninguém está vendo; o valor novo chega no snapshot. */
+  async setReturnWhenUnwatched(enabled: boolean): Promise<boolean> {
+    if (this.mock) return false;
+    const res = await fetch('/api/permissions/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ returnWhenUnwatched: enabled }),
+    });
+    return res.ok;
+  }
+
   /** "Verificar agora": pede ao servidor uma consulta ao GitHub (o resultado chega no snapshot). */
   async checkUpdates(): Promise<boolean> {
     if (this.mock) return false;

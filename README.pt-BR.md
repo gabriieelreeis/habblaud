@@ -534,7 +534,10 @@ terminal** deixa a pergunta lá. A resposta chega ao agente como se você tivess
   `--port`, a porta). Em **subagentes em segundo plano** o Claude Code só mostra o diálogo no terminal depois que o
   hook termina: responda pelo escritório ou use **Responder no terminal**. Numa espera maior que 5 minutos, se nenhuma
   página que responda ficar aberta por 5 minutos (e nenhum [celular com login](#celular-com-login-e-https-aprovando-pedidos)
-  estiver configurado para responder), o pedido volta ao terminal.
+  estiver configurado para responder), o pedido volta ao terminal. Essa devolução por "ninguém olhando" pode ser
+  desligada em **Configurações › Pedidos de permissão**: com **Devolver perguntas ao terminal quando ninguém estiver
+  vendo** desligada, o pedido fica esperando no escritório até você responder ou até o tempo máximo do hook. A escolha
+  fica salva no servidor e vale depois de reiniciar.
 - Funciona com a mesma trava do terminal: só com o Habblaud acessível apenas pelo próprio
   computador e aberto por `http://localhost`. Confira com `npm run mod:status` (ou `npm run hooks:status`, no jeito
   antigo). Também funciona pelo [celular com login](#celular-com-login-e-https-aprovando-pedidos) (lá, é o padrão).

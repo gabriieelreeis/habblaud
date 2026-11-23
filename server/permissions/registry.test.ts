@@ -17,7 +17,7 @@ const MAIN = 'acc:1';
 const SESSION = 'sess-1';
 const SUB = `${SESSION}:a1b2c3`;
 
-function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number; answerLater?: boolean } = {}) {
+function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number; answerLater?: boolean; returnWhenUnwatched?: boolean } = {}) {
   let now = 1_000_000;
   const clock = { now: () => now, advance: (ms: number) => (now += ms) };
   let permissions: PermissionRegistry | undefined;
@@ -39,6 +39,7 @@ function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number;
     office,
     viewers: () => viewers,
     answerLater: () => !!opts.answerLater,
+    returnWhenUnwatched: () => opts.returnWhenUnwatched ?? true,
     transcriptPathOf: (id) => paths.get(id),
     now: clock.now,
     orphanMs: opts.orphanMs,
@@ -349,6 +350,21 @@ describe('PermissionRegistry: pedidos órfãos', () => {
     await expect(w.result).resolves.toEqual({ status: 'released', reason: 'unwatched' });
     // O pedido com a espera padrão (5 min) segue até o tempo dele.
     await expect(registry.wait(short, 10)!.result).resolves.not.toEqual({ status: 'released', reason: 'unwatched' });
+  });
+
+  it('opção desligada: sem página aberta a espera longa fica no escritório e só termina no tempo do hook', async () => {
+    const { registry, clock, setViewers } = setup({ orphanMs: 60 * 60_000, returnWhenUnwatched: false });
+    const long = registered(registry.register(hookInput({ timeout_ms: 86_400_000 })));
+    const w = registry.wait(long, 25_000)!;
+    setViewers(0);
+    registry.tick();
+    clock.advance(UNWATCHED_MS * 2);
+    registry.tick();
+    expect(registry.size).toBe(1);
+    // O limite do hook continua valendo: expira como sempre, só não volta por "ninguém olhando".
+    clock.advance(86_400_000 - UNWATCHED_MS * 2 + EXPIRY_GRACE_MS);
+    registry.tick();
+    await expect(w.result).resolves.toEqual({ status: 'released', reason: 'expired' });
   });
 
   it('espera longa com celular que pode entrar depois (porta remota com permissions): continua esperando', () => {

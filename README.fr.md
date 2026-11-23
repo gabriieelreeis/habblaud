@@ -563,7 +563,10 @@ vous l'aviez choisie dans le terminal.
   qu'une fois le hook terminé : répondez depuis le bureau ou utilisez **Répondre dans le terminal**. Avec une attente
   de plus de 5 minutes, si 5 minutes passent sans aucune page ouverte capable de répondre (et sans
   [téléphone avec connexion](#téléphone-avec-connexion-et-https-valider-les-demandes) configuré pour répondre), la
-  demande revient au terminal.
+  demande revient au terminal. Ce retour « personne ne regarde » peut être désactivé dans
+  **Paramètres › Demandes d'autorisation** : avec **Renvoi des questions au terminal lorsque personne ne regarde**
+  désactivée, la demande attend dans le bureau jusqu'à votre réponse ou jusqu'au délai maximum du hook. Le choix est
+  enregistré sur le serveur et conservé au redémarrage.
 - Cela fonctionne avec le même verrou que le terminal : uniquement avec Habblaud accessible seulement depuis l'ordinateur
   lui-même et ouvert via `http://localhost`. Vérifiez avec `npm run mod:status` (ou `npm run hooks:status`, avec
   l'ancienne méthode).

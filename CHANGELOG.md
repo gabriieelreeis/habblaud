@@ -12,6 +12,12 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- **Perguntas e pedidos podem esperar no escritório sem limite de "ninguém olhando".** Configurações › Pedidos de
+  permissão ganhou **Devolver perguntas ao terminal quando ninguém estiver vendo** (ligada, como hoje). Desligada, uma
+  espera longa não volta ao terminal depois de 5 minutos sem página que possa responder: o pedido fica no escritório
+  até você responder ou até o tempo máximo do hook (`HABBLAUD_PERMISSION_TIMEOUT`, até 24 h). A escolha é salva no
+  servidor (`~/.habblaud/permissions-settings.json`; no Docker, `/data/permissions-settings.json`) e vale depois de
+  reiniciar, no computador e no celular com login.
 - **OpenCode no escritório.** As sessões do OpenCode (2.0 ou mais novo: TUI, `opencode run` e o app desktop) entram no
   escritório como as do Claude Code e do Codex: personagem na sala do projeto, atividade ao vivo (lendo, editando,
   rodando comandos...), tarefas, subagentes da ferramenta `task`, mão levantada quando ele pede permissão ou faz uma

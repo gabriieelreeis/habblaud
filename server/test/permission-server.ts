@@ -13,6 +13,7 @@ import { NameStore } from '../model/names';
 import { Office } from '../model/office';
 import { createPermissionRoutes } from '../permissions/http';
 import { PermissionRegistry, type RegistryOptions } from '../permissions/registry';
+import { PermissionSettingsStore } from '../permissions/settings';
 import type { CodexLive } from '../sources/codex/live';
 import { tempDir } from './fixtures';
 
@@ -27,17 +28,20 @@ export interface PermissionServer {
   port: number;
   office: Office;
   registry?: PermissionRegistry;
+  settings: PermissionSettingsStore;
   /** Páginas locais "abertas" (o que Hub.localSize diria). */
   setViewers(n: number): void;
   close(): Promise<void>;
 }
 
 export async function servePermissions(
-  opts: { enabled?: boolean; viewers?: number; demo?: boolean; registry?: Partial<RegistryOptions>; codex?: boolean; codexLive?: CodexLive } = {},
+  opts: { enabled?: boolean; viewers?: number; demo?: boolean; registry?: Partial<RegistryOptions>; codex?: boolean; codexLive?: CodexLive; settingsFile?: string } = {},
 ): Promise<PermissionServer> {
   const tmp = tempDir();
   const enabled = opts.enabled ?? true;
   let viewers = opts.viewers ?? 1;
+  const settings = new PermissionSettingsStore(opts.settingsFile ?? null, () => office.markDirty());
+  settings.load();
   const late: { registry?: PermissionRegistry } = {};
   const office = new Office({
     names: new NameStore(null),
@@ -48,12 +52,14 @@ export async function servePermissions(
     accountName: () => undefined,
     terminal: enabled,
     permissions: () => late.registry?.snapshot() ?? new Map(),
+    permissionSettings: () => settings.get().returnWhenUnwatched,
   });
   const hub = new Hub(office, { throttleMs: 10 });
   const registry = enabled
     ? new PermissionRegistry({
         office,
         viewers: () => viewers,
+        returnWhenUnwatched: () => settings.get().returnWhenUnwatched,
         demoDecide: (id, d) => office.decideDemoPermission(id, d),
         demoDetail: (id) => office.demoPermission(id),
         tickMs: 50,
@@ -71,7 +77,7 @@ export async function servePermissions(
     version: 't',
     inDocker: false,
     terminal: enabled,
-    permissions: registry ? createPermissionRoutes(registry) : undefined,
+    permissions: registry ? createPermissionRoutes(registry, settings) : undefined,
     codexLive: opts.codexLive,
   });
   const guard = createRequestGuard({ allowedHosts: new Set(['habblaud.lan']) });
@@ -91,6 +97,7 @@ export async function servePermissions(
     port,
     office,
     registry,
+    settings,
     setViewers: (n) => (viewers = n),
     close: () =>
       new Promise((ok) => {

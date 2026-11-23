@@ -621,6 +621,12 @@ export const FR: Readonly<Record<string, string>> = {
   "Modo demonstração ligado.": "Mode démonstration activé.",
   "Modo demonstração desligado.": "Mode démonstration désactivé.",
   "Não foi possível mudar o modo demonstração.": "Impossible de changer le mode démonstration.",
+  "Pedidos de permissão": "Demandes d'autorisation",
+  "Devolver perguntas ao terminal quando ninguém estiver vendo": "Renvoi des questions au terminal lorsque personne ne regarde",
+  "Desligada: a pergunta ou o pedido espera no escritório até você responder ou até o tempo máximo do hook.": "Désactivée : la question ou la demande attend dans le bureau jusqu'à votre réponse ou jusqu'au délai maximum du hook.",
+  "Não foi possível mudar a opção de devolução ao terminal.": "Impossible de modifier l'option de renvoi au terminal.",
+  "Perguntas e pedidos voltam ao terminal quando ninguém estiver vendo.": "Les questions et les demandes reviennent au terminal lorsque personne ne regarde.",
+  "Perguntas e pedidos esperam no escritório até você responder.": "Les questions et les demandes attendent dans le bureau jusqu'à votre réponse.",
 
   // client/src/ui/sidebar.ts
   "Atalho: /": "Raccourci : /",
@@ -1671,6 +1677,7 @@ export const FR: Readonly<Record<string, string>> = {
   "Digitando num processo do terminal": "Tape dans un processus du terminal",
 
   // server/permissions/http.ts
+  "esperado {returnWhenUnwatched: boolean}": "attendu {returnWhenUnwatched: boolean}",
   "pedido desconhecido": "demande inconnue",
   "pedido desconhecido: já foi respondido, expirou ou foi respondido no terminal": "demande inconnue : elle a déjà reçu une réponse, a expiré ou a été traitée dans le terminal",
   "este pedido já foi respondido": "cette demande a déjà reçu une réponse",
@@ -2212,6 +2219,10 @@ export const FR: Readonly<Record<string, string>> = {
 
   // server/messages/registry.ts
   "a conversa do agente mudou (/clear ou /resume) antes da entrega": "la conversation de l'agent a changé (/clear ou /resume) avant la remise",
+
+  // server/permissions/settings.ts
+  "[permissões] configurações ilegíveis ({0}): mantendo o padrão.": "[autorisations] configuration illisible ({0}) : valeur par défaut conservée.",
+  "[permissões] não deu para gravar as configurações: {0}": "[autorisations] impossible d'enregistrer la configuration : {0}",
 
   // server/pty/manager.ts
   "indisponível": "indisponible",

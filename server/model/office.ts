@@ -72,6 +72,8 @@ export interface OfficeDeps {
   terminal?: boolean;
   /** Pedidos de permissão pendentes por agente (PermissionRegistry.snapshot), postos no snapshot. */
   permissions?: () => ReadonlyMap<string, PermissionRequestInfo>;
+  /** Opção "devolver ao terminal quando ninguém estiver vendo" (ver OfficeSnapshot.meta.permissions). */
+  permissionSettings?: () => boolean;
   /**
    * Agentes cuja sessão o registro de mensagens vê conectada (MessageRegistry.reachable): viram AgentInfo.canMessage.
    * Ausente = mensagens pelo escritório desligadas (OfficeSnapshot.meta.messages).
@@ -1066,6 +1068,7 @@ export class Office {
         build: this.deps.build?.(),
         terminal: this.deps.terminal === true,
         messages: this.deps.messages !== undefined,
+        ...(this.deps.permissionSettings ? { permissions: { returnWhenUnwatched: this.deps.permissionSettings() } } : {}),
         ...(ptys ? { pty: ptys.status } : {}),
         updates: this.deps.updates?.(),
         ...(this.deps.world ? { world: this.deps.world() } : {}),
