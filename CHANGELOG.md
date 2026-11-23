@@ -61,6 +61,11 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Entregas do OpenCode aparecem na caixa de entrada.** A lista de entregas só lia os transcripts do Claude Code e do
+  Codex; como o OpenCode guarda as conversas no serviço dele, o trabalho concluído por essas sessões nunca chegava à
+  caixa. Agora a fonte do OpenCode também fornece as sessões recentes e as mensagens delas ao índice de entregas —
+  inclusive as sessões que já saíram do escritório. Cada entrega sai com o selo do OpenCode e o nome do agente, como as
+  das outras ferramentas.
 - **Celular: tocar na TV das salas volta a abrir a apresentação.** O toque abria a janela no `pointerup`, mas o `click` sintético que o navegador mandava em seguida caía no fundo do `<dialog>` e a fechava na hora — parecia que a TV piscava e sumia. Agora o clique no fundo só desliga depois de uma folga curta desde a abertura; o botão de desligar e o `Esc` continuam imediatos.
 - **Celular: a barra do topo voltou a caber numa linha, com o menu "⋮".** Com o botão da festa, os botões da direita
   passaram do espaço e a barra quebrou em duas linhas, cortando os cartões de uso. Até 600 px de largura, os botões

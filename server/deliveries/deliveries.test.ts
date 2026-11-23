@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { conversationOf } from '../sources/opencode/terminal';
 import { createTerminalParser } from '../sources/terminal';
 import { tempDir } from '../test/fixtures';
 import { DeliveryIndex, headlineOf, linkedFiles, parseTurns, summaryOf } from './deliveries';
@@ -107,5 +108,56 @@ describe('entregas: pedidos do transcript', () => {
     // "De nada!" sem ferramentas não é entrega; o último pedido conta só quando o agente para.
     busy = false;
     expect((await idx.list()).map((x) => x.request)).toEqual(['Corrija o relatório de vendas']);
+  });
+});
+
+describe('entregas: sessões do OpenCode (sem transcript em arquivo)', () => {
+  const messages = [
+    { id: 'u1', type: 'user', text: 'Corrija o relatório de vendas', time: { created: 1_000 } },
+    {
+      id: 'm1',
+      type: 'assistant',
+      time: { created: 2_000, completed: 2_100 },
+      content: [
+        { type: 'tool', id: 't1', name: 'edit', state: { status: 'completed', input: { filePath: '/proj/x.ts', oldString: 'a', newString: 'b' }, output: 'ok' }, time: { created: 2_050 } },
+      ],
+    },
+    { id: 'm2', type: 'assistant', time: { created: 3_000, completed: 3_100 }, content: [{ type: 'text', text: REPLY }] },
+    { id: 'u2', type: 'user', text: 'Obrigado', time: { created: 4_000 } },
+    { id: 'm3', type: 'assistant', time: { created: 5_000, completed: 5_100 }, content: [{ type: 'text', text: 'De nada, fico à disposição para o que mais precisar.' }] },
+  ];
+
+  it('as mensagens do serviço viram entrega com o selo do OpenCode', async () => {
+    let reads = 0;
+    const idx = new DeliveryIndex({
+      sessions: async () => [{ account: '.opencode', provider: 'opencode', sessionId: 'ses_abc123', projectDir: 'p', project: '/proj', title: 'Relatório', lastAt: 5_000, size: 0, open: false }],
+      resolve: (account, sessionId) =>
+        account === '.opencode'
+          ? {
+              key: sessionId,
+              stamp: 5_000,
+              entries: async () => {
+                reads++;
+                return conversationOf(messages, '/proj');
+              },
+            }
+          : undefined,
+      isBusy: () => false,
+    });
+    const list = await idx.list();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      account: '.opencode',
+      provider: 'opencode',
+      sessionId: 'ses_abc123',
+      agentName: 'Relatório',
+      request: 'Corrija o relatório de vendas',
+      headline: 'O relatório está pronto e foi enviado.',
+      tools: 1,
+      edited: 1,
+    });
+    // "De nada..." sem ferramentas não é entrega; o cache evita reler as mensagens sem mudança.
+    await idx.list();
+    expect(reads).toBe(1);
   });
 });

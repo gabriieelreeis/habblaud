@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentInfo } from '../../../shared/types';
 import { AccountsService } from '../../accounts/service';
+import { DeliveryIndex } from '../../deliveries/deliveries';
 import { setQuiet } from '../../log';
 import { NameStore } from '../../model/names';
 import { Office } from '../../model/office';
@@ -163,6 +164,59 @@ describe('fonte do OpenCode: presença e o que o agente faz', () => {
     expect(t.source.sources()).toEqual([{ label: '.opencode', provider: 'opencode', path: 'http://opencode.test', sessions: 1, ok: true }]);
     // A conta do OpenCode está nas contas do snapshot.
     expect(t.office.commit().snapshot.accounts.map((x) => [x.id, x.provider, x.short, x.name])).toEqual([['.opencode', 'opencode', 'O', 'OpenCode']]);
+  });
+
+  it('sessões e mensagens do serviço alimentam as entregas do escritório', async () => {
+    const t = setup({
+      sessions: [session(MAIN)],
+      messages: {
+        [MAIN]: [
+          { id: 'msg_1', type: 'user', text: 'Faça o relatório completo de vendas', time: { created: 2_000 } },
+          {
+            id: 'msg_2',
+            type: 'assistant',
+            time: { created: 3_000, completed: 3_100 },
+            content: [{ type: 'tool', id: 'call_1', name: 'write', state: { status: 'completed', input: { filePath: 'relatorio.md', content: 'dados' }, output: 'ok' }, time: { created: 3_050 } }],
+          },
+          { id: 'msg_3', type: 'assistant', time: { created: 4_000, completed: 4_100 }, content: [{ type: 'text', text: 'Relatório pronto, com o último dia de vendas conferido.' }] },
+        ],
+      },
+    });
+    await t.source.start();
+    const sessions = t.source.deliverySessions();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      account: '.opencode',
+      provider: 'opencode',
+      sessionId: MAIN,
+      project: DIR,
+      title: 'Ler o arquivo',
+      open: true,
+      agentId: `.opencode:${MAIN}`,
+    });
+    const src = t.source.deliverySource(MAIN);
+    expect(src?.key).toBe(MAIN);
+    const entries = await src!.entries();
+    expect(entries.map((e) => e.kind)).toEqual(['user', 'tool', 'result', 'assistant']);
+    expect(entries[0]).toMatchObject({ text: 'Faça o relatório completo de vendas' });
+    expect(entries.at(-1)).toMatchObject({ text: 'Relatório pronto, com o último dia de vendas conferido.' });
+
+    // O mesmo encadeamento usado pelo servidor: a entrega aparece com o selo do OpenCode.
+    const idx = new DeliveryIndex({
+      sessions: async () => t.source.deliverySessions(),
+      resolve: (account, sid) => (account === t.source.accountId ? t.source.deliverySource(sid) : undefined),
+      isBusy: () => false,
+    });
+    const list = await idx.list();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      account: '.opencode',
+      provider: 'opencode',
+      sessionId: MAIN,
+      agentName: 'Ler o arquivo',
+      request: 'Faça o relatório completo de vendas',
+      tools: 1,
+    });
   });
 
   it('rodando = trabalhando; os eventos mudam o status na hora (fim da execução, permissão)', async () => {
