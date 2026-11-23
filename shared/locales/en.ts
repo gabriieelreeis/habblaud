@@ -2280,6 +2280,8 @@ export const EN: Readonly<Record<string, string>> = {
   "Carregando as entregas…": "Loading deliveries…",
   "Fechar": "Close",
   "O que cada agente terminou, em poucas palavras. Toque para ver o pedido, a resposta e os anexos.": "What each agent finished, in a few words. Tap to see the request, the response, and the attachments.",
+  "Filtrar por agente": "Filter by agent",
+  "Todos os agentes": "All agents",
   "Entrega": "Delivery",
   "Abrir": "Open",
   "Anterior": "Previous",

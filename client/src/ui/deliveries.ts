@@ -16,8 +16,10 @@ import { renderMarkdown } from './markdown';
 import type { TerminalControl } from './terminal';
 
 export const DELIVERIES_URL = '/api/deliveries';
+export const ALL_AGENTS = '';
 const POLL_MS = 30_000;
 const SEEN_KEY = 'habblaud.deliveries.seen';
+const FILTER_KEY = 'habblaud.deliveries.agent';
 const TOAST_MS = 9_000;
 
 // ---------------------------------------------------------------- modelo (puro)
@@ -49,6 +51,11 @@ export function unseenCount(list: readonly DeliveryInfo[], seenAt: number): numb
 /** As que chegaram depois da última consulta (para o aviso). */
 export function arrivals(list: readonly DeliveryInfo[], newestKnown: number): DeliveryInfo[] {
   return newestKnown ? list.filter((d) => d.finishedAt > newestKnown) : [];
+}
+
+/** Agente escolhido no filtro; string vazia mostra todos. */
+export function filterByAgent(list: readonly DeliveryInfo[], agent: string): DeliveryInfo[] {
+  return agent ? list.filter((d) => d.agentName === agent) : [...list];
 }
 
 export function fileUrl(a: Pick<DeliveryAttachment, 'id'>): string {
@@ -102,6 +109,23 @@ function writeSeen(at: number): void {
   }
 }
 
+function readAgentFilter(): string {
+  try {
+    return localStorage.getItem(FILTER_KEY) ?? ALL_AGENTS;
+  } catch {
+    return ALL_AGENTS;
+  }
+}
+
+function writeAgentFilter(agent: string): void {
+  try {
+    if (agent === ALL_AGENTS) localStorage.removeItem(FILTER_KEY);
+    else localStorage.setItem(FILTER_KEY, agent);
+  } catch {
+    // sem armazenamento: o filtro volta ao padrão ao recarregar
+  }
+}
+
 // ---------------------------------------------------------------- componente
 
 export class Deliveries implements UiComponent {
@@ -109,6 +133,7 @@ export class Deliveries implements UiComponent {
   readonly el: HTMLElement;
   private readonly badge: HTMLElement;
   private readonly panel: HTMLElement;
+  private readonly filterEl: HTMLSelectElement;
   private readonly listEl: HTMLElement;
   private readonly empty: HTMLElement;
   private readonly modal: HTMLDialogElement;
@@ -122,6 +147,8 @@ export class Deliveries implements UiComponent {
   private readonly nextBtn: HTMLButtonElement;
   private readonly toast: HTMLButtonElement;
   private list: DeliveryInfo[] = [];
+  private agentFilter = readAgentFilter();
+  private filterNamesKey = '';
   private seenAt = readSeen();
   private newestKnown = 0;
   private loading = false;
@@ -143,6 +170,8 @@ export class Deliveries implements UiComponent {
     this.button.append(this.badge);
     this.button.hidden = true;
 
+    this.filterEl = h('select', { class: 'ui-deliv-filter', attrs: { 'aria-label': tr('Filtrar por agente') }, on: { change: () => this.onFilterChange() } }) as HTMLSelectElement;
+    this.updateFilterOptions();
     this.listEl = h('ul', { class: 'ui-deliv-list', attrs: { 'aria-label': tr('Entregas') } });
     this.empty = h('p', { class: 'ui-deliv-empty', text: tr('Carregando as entregas…') });
     this.panel = h(
@@ -150,6 +179,7 @@ export class Deliveries implements UiComponent {
       { class: 'ui-popover ui-deliv', role: 'dialog', tabIndex: -1, attrs: { 'aria-label': tr('Entregas'), id: 'ui-deliveries', popover: 'auto' } },
       h('div', { class: 'ui-popover__head' }, h('h2', { text: tr('Entregas') }), iconButton(ICONS.close, tr('Fechar'), () => this.hidePanel(), 'ui-icon-btn--sm')),
       h('p', { class: 'ui-deliv-lead', text: tr('O que cada agente terminou, em poucas palavras. Toque para ver o pedido, a resposta e os anexos.') }),
+      h('label', { class: 'ui-deliv-filter-row' }, h('span', { text: tr('Filtrar por agente') }), this.filterEl),
       this.empty,
       this.listEl,
     );
@@ -245,6 +275,7 @@ export class Deliveries implements UiComponent {
       const list = parseDeliveries(body);
       const fresh = this.loaded ? arrivals(list, this.newestKnown) : [];
       this.list = list;
+      this.updateFilterOptions();
       this.loaded = true;
       this.error = '';
       this.newestKnown = Math.max(this.newestKnown, ...list.map((d) => d.finishedAt), 0);
@@ -290,11 +321,34 @@ export class Deliveries implements UiComponent {
     this.panel.classList.remove('is-open');
   }
 
+  private updateFilterOptions(): void {
+    if (this.agentFilter !== ALL_AGENTS && !this.list.some((d) => d.agentName === this.agentFilter)) {
+      this.agentFilter = ALL_AGENTS;
+      writeAgentFilter(this.agentFilter);
+    }
+    const names = [...new Set(this.list.map((d) => d.agentName).filter((name): name is string => !!name))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const key = names.join('\0');
+    if (key !== this.filterNamesKey || this.filterEl.options.length !== names.length + 1) {
+      this.filterNamesKey = key;
+      this.filterEl.replaceChildren(
+        h('option', { text: tr('Todos os agentes'), attrs: { value: ALL_AGENTS } }),
+        ...names.map((name) => h('option', { text: name, attrs: { value: name } })),
+      );
+    }
+    this.filterEl.value = this.agentFilter;
+  }
+
+  private onFilterChange(): void {
+    this.agentFilter = this.filterEl.value || ALL_AGENTS;
+    writeAgentFilter(this.agentFilter);
+    if (this.panelOpen) this.renderList();
+  }
+
   private renderList(highlightAfter = this.seenAt): void {
     const now = Date.now();
     setHidden(this.empty, this.list.length > 0);
     setText(this.empty, this.error ? tr('Não deu para carregar: {0}', [this.error]) : this.loaded ? tr('Nenhuma entrega nos últimos 7 dias.') : tr('Carregando as entregas…'));
-    this.listEl.replaceChildren(...this.list.map((d) => h('li', {}, this.card(d, now, d.finishedAt > highlightAfter))));
+    this.listEl.replaceChildren(...filterByAgent(this.list, this.agentFilter).map((d) => h('li', {}, this.card(d, now, d.finishedAt > highlightAfter))));
   }
 
   private who(d: DeliveryInfo, size: 'sm' | 'md'): HTMLElement {

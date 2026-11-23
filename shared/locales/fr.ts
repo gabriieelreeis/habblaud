@@ -2296,6 +2296,8 @@ export const FR: Readonly<Record<string, string>> = {
   "Carregando as entregas…": "Chargement des livraisons…",
   "Fechar": "Fermer",
   "O que cada agente terminou, em poucas palavras. Toque para ver o pedido, a resposta e os anexos.": "Ce que chaque agent a terminé, en quelques mots. Touchez pour voir la demande, la réponse et les pièces jointes.",
+  "Filtrar por agente": "Filtrer par agent",
+  "Todos os agentes": "Tous les agents",
   "Entrega": "Livraison",
   "Abrir": "Ouvrir",
   "Anterior": "Précédent",

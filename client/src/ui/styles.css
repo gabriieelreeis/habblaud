@@ -8525,6 +8525,40 @@ html.is-replay #world {
   color: var(--ui-faint);
 }
 
+.ui-deliv-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 14px 10px;
+  color: var(--ui-faint);
+  font-size: 12px;
+}
+
+.ui-deliv-filter {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ui-line-strong);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ui-text);
+  font: 500 12.5px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.ui-deliv-filter option {
+  background: #141821;
+  color: var(--ui-text);
+}
+
+@media (pointer: coarse) {
+  .ui-deliv-filter {
+    height: 40px;
+  }
+}
+
 .ui-deliv-empty {
   margin: 18px 14px;
   color: var(--ui-muted);
