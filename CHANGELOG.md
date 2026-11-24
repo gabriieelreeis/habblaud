@@ -10,6 +10,11 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Alterado
+
+- **Escritório:** móveis do prédio e árvores, cercas e flores do lado de fora são pintados uma vez e reaproveitados
+  a cada quadro, em vez de desenhados um a um: 72,8% → 58,5% de CPU a 30 quadros por segundo (medido com GPU).
+
 ### Adicionado
 
 - **Perguntas e pedidos podem esperar no escritório sem limite de "ninguém olhando".** Configurações › Pedidos de
