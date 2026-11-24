@@ -11700,6 +11700,19 @@ html.is-replay #world {
   vertical-align: middle;
 }
 
+.ui-tv__img-error {
+  display: block;
+  max-width: 100%;
+  padding: 0.5em 0.8em;
+  border: 2px dashed rgba(255, 181, 71, 0.6);
+  border-radius: 0.3em;
+  background: rgba(255, 181, 71, 0.1);
+  color: #ffe0b2;
+  font-size: 0.8em;
+  line-height: 1.3;
+  text-align: center;
+}
+
 /* ---- lista, pedido e mensagens */
 .ui-tv__msg {
   margin: 0;

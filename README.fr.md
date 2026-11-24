@@ -626,7 +626,9 @@ bureau flouté derrière.
   `Edit(~/.habblaud/apresentacoes/**)`, qui laisse les agents y écrire (et seulement là) sans demander la permission ;
   sans elle, vous approuvez l'écriture à chaque présentation. Dans Docker, `npm run docker:up` monte le dossier en
   lecture seule. Les diapositives sont dessinées par Habblaud lui-même : aucun HTML de l'agent ne s'exécute dans la
-  page. `HABBLAUD_PRESENTATIONS=0` éteint les TV.
+  page. Une image citée par chemin absolu suppose que le fichier reste là (et que l'auxiliaire de l'ordinateur tourne
+  dans Docker) ; copiez-la dans ce dossier si elle peut être déplacée : une image manquante affiche un avertissement
+  clair sur la TV au lieu d'une image cassée. `HABBLAUD_PRESENTATIONS=0` éteint les TV.
 
 ### Modifier le personnage
 
