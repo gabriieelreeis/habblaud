@@ -1,7 +1,6 @@
 // Rotas da API (/api/*). Respostas JSON; rotas desconhecidas -> 404 JSON.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { NAME_MAX, parseAppearanceParts, parseCharacterName, parseSeed } from '../../shared/appearance';
-import type { ProjectSize } from '../../shared/projects';
 import type { AccessInfo, AgentInfo, ModSummary, OfficeSnapshot, SourceInfo, UpdateStatus } from '../../shared/types';
 import type { AccountsService } from '../accounts/service';
 import { handleCodexEvent } from '../codex/http';
@@ -84,8 +83,6 @@ export interface ApiDeps {
   files?: FileFetcher;
   /** Renomeia a sala (POST /api/rooms/rename {id, name}; vazio volta ao padrão). Devolve o nome em uso, ou undefined se a sala não existe. */
   renameRoom?: (id: string, name: string) => string | undefined;
-  /** Tamanho dos projetos com sala aberta, para a cidade dos projetos (GET /api/projects; projects/sizes.ts). */
-  projects?: () => Promise<ProjectSize[]>;
   /** Estatísticas do "Meu dia" (GET /api/stats, http/stats.ts). */
   stats?: DayStatsService;
   /** Verificação de versão nova no GitHub (GET /api/updates, POST /api/updates/check; updates/checker.ts). */
@@ -792,12 +789,6 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
             sendJson(res, 200, { ok: true, party: started.party, room: started.roomName });
           })
           .catch((err) => fail(res, err));
-      return true;
-    }
-    if (path === '/api/projects') {
-      if (!isRead) methodNotAllowed(res, 'GET');
-      else if (!deps.projects) sendJson(res, 200, { projects: [] });
-      else deps.projects().then((projects) => sendJson(res, 200, { projects }), (err) => fail(res, err));
       return true;
     }
     if (path === '/api/stats' || path.startsWith('/api/stats/')) {

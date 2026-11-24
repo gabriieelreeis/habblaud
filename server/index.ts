@@ -63,8 +63,6 @@ import { OwnerSocial } from './world/social';
 import { BuildingTokens } from './world/tokens';
 import { BuildingUplink } from './world/uplink';
 import { WorldViewer } from './world/viewer';
-import { createProjectSizes } from './projects/sizes';
-import { groupProjects } from '../shared/projects';
 
 const config = loadConfig();
 const startedAt = Date.now();
@@ -393,7 +391,6 @@ const ticker = setInterval(() => {
   }
 }, 250);
 
-const projectSizes = createProjectSizes();
 const api = createApiHandler({
   renameRoom: (id, name) => {
     const path = office.roomPath(id);
@@ -430,10 +427,6 @@ const api = createApiHandler({
     return recentFolders(history ? await history.list().catch(() => []) : [], rooms);
   },
   codexLive,
-  projects: () => {
-    const snap = hub.current();
-    return projectSizes(groupProjects({ rooms: snap.rooms.filter((r) => !isDemoId(r.id)), agents: [] }).map((g) => g.root));
-  },
   stats,
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,
