@@ -3664,6 +3664,8 @@ export const FR: Readonly<Record<string, string>> = {
   "Esta sala ainda não tem apresentação.": "Cette salle n'a pas encore de présentation.",
   "Formato (Markdown, sem HTML):": "Format (Markdown, sans HTML) :",
   "Grave o arquivo em {0} (troque <{1}> por poucas palavras, em minúsculas e com hífens; crie a pasta). Não grave nada fora dessa pasta e não altere o projeto. No fim, responda só com o título da apresentação.": "Enregistrez le fichier dans {0} (remplacez <{1}> par quelques mots, en minuscules et avec des tirets ; créez le dossier). N'enregistrez rien en dehors de ce dossier et ne modifiez pas le projet. À la fin, répondez seulement avec le titre de la présentation.",
+  "Imagem de fora da pasta ({0}) indisponível: copie o arquivo para a pasta da apresentação ou deixe o auxiliar do computador rodando.": "Image externe ({0}) indisponible : copiez le fichier dans le dossier de la présentation ou laissez l'auxiliaire de l'ordinateur actif.",
+  "Imagem {0} indisponível: copie o arquivo para a pasta da apresentação e abra de novo.": "Image {0} indisponible : copiez le fichier dans le dossier de la présentation et rouvrez-la.",
   "Ligando…": "Allumage…",
   "Nenhum agente principal nesta sala agora para criar a apresentação.": "Aucun agent principal dans cette salle pour créer la présentation en ce moment.",
   "Nenhuma apresentação nesta sala ainda.": "Pas encore de présentation dans cette salle.",

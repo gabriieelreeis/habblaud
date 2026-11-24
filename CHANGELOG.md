@@ -128,6 +128,7 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Imagem quebrada na TV agora vira aviso.** Se uma imagem citada nos slides não carrega — arquivo de fora da pasta que sumiu, auxiliar do computador parado no Docker — a TV mostra no lugar um aviso com o nome do arquivo e o que fazer: copiar a imagem para a pasta da apresentação ou deixar `npm run codex:bridge` rodando. Antes ficava só a quebra com a legenda.
 - **A conversa reaberta volta com o mesmo visual.** A aparência sorteada vinha do processo, então `claude --resume`
   (ou fechar e abrir a sessão) trazia o nome de volta, mas com outra cara. Agora a aparência fica guardada com o nome
   da sessão em `names.json`, inclusive a escolhida no editor, que não se perde quando outro agente da sala salva o dele.

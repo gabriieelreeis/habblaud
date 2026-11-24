@@ -3647,6 +3647,8 @@ export const EN: Readonly<Record<string, string>> = {
   "Esta sala ainda não tem apresentação.": "This room doesn't have a presentation yet.",
   "Formato (Markdown, sem HTML):": "Format (Markdown, no HTML):",
   "Grave o arquivo em {0} (troque <{1}> por poucas palavras, em minúsculas e com hífens; crie a pasta). Não grave nada fora dessa pasta e não altere o projeto. No fim, responda só com o título da apresentação.": "Save the file to {0} (replace <{1}> with a few words, lowercase and with hyphens; create the folder). Don't save anything outside that folder and don't change the project. At the end, reply only with the presentation title.",
+  "Imagem de fora da pasta ({0}) indisponível: copie o arquivo para a pasta da apresentação ou deixe o auxiliar do computador rodando.": "Outside image ({0}) unavailable: copy the file into the presentation folder or keep the computer helper running.",
+  "Imagem {0} indisponível: copie o arquivo para a pasta da apresentação e abra de novo.": "Image {0} unavailable: copy the file into the presentation folder and open it again.",
   "Ligando…": "Turning on…",
   "Nenhum agente principal nesta sala agora para criar a apresentação.": "No main agent in this room right now to create the presentation.",
   "Nenhuma apresentação nesta sala ainda.": "No presentations in this room yet.",

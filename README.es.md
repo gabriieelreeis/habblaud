@@ -623,8 +623,10 @@ desenfocada detrás.
   por `---`), fuera del proyecto. `npm run mod:install` pregunta antes de poner la regla
   `Edit(~/.habblaud/apresentacoes/**)`, que deja a los agentes escribir ahí (y solo ahí) sin pedir permiso; sin ella,
   apruebas la escritura en cada presentación. En Docker, `npm run docker:up` monta la carpeta en solo lectura. Las
-  diapositivas las dibuja el propio Habblaud: ningún HTML del agente corre en la página. `HABBLAUD_PRESENTATIONS=0`
-  apaga las TV.
+  diapositivas las dibuja el propio Habblaud: ningún HTML del agente corre en la página. Una imagen citada por ruta
+  absoluta necesita que el archivo siga ahí (y el auxiliar del computador en marcha en Docker); cópiala a esta carpeta
+  si puede moverse: una imagen ausente muestra un aviso claro en la TV en lugar de una imagen rota.
+  `HABBLAUD_PRESENTATIONS=0` apaga las TV.
 
 ### Editar el personaje
 

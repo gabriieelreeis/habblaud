@@ -617,7 +617,9 @@ começa quando você clica na TV: abre por cima de tudo, numa moldura de TV, com
   `---`), fora do projeto. O `npm run mod:install` pergunta antes de pôr a regra `Edit(~/.habblaud/apresentacoes/**)`,
   que deixa os agentes gravarem lá (e só lá) sem pedir permissão; sem ela, você aprova a gravação a cada apresentação.
   No Docker, o `npm run docker:up` monta a pasta somente leitura. Quem desenha os slides é o próprio Habblaud: nenhum
-  HTML do agente roda na página. `HABBLAUD_PRESENTATIONS=0` desliga as TVs.
+  HTML do agente roda na página. Imagem citada por caminho absoluto exige que o arquivo continue lá (e que o auxiliar
+  do computador esteja rodando no Docker); copie-a para a pasta se ela puder mudar de lugar: sem a imagem, a TV mostra
+  um aviso claro em vez da quebra. `HABBLAUD_PRESENTATIONS=0` desliga as TVs.
 
 ### Editar o personagem
 

@@ -593,8 +593,10 @@ TV: it opens on top of everything, in a TV frame, with the office blurred behind
   `---`), outside the project. `npm run mod:install` asks before adding the rule
   `Edit(~/.habblaud/apresentacoes/**)`, which lets agents write there (and only there) without asking for permission;
   without it, you approve the write for each presentation. In Docker, `npm run docker:up` mounts the folder read-only.
-  The slides are drawn by Habblaud itself: no HTML from the agent runs on the page. `HABBLAUD_PRESENTATIONS=0` turns the
-  TVs off.
+  The slides are drawn by Habblaud itself: no HTML from the agent runs on the page. An image cited by absolute path
+  needs the file to stay there (and the computer helper running in Docker); copy it into this folder if it may move —
+  a missing image shows a clear warning on the TV instead of a broken picture. `HABBLAUD_PRESENTATIONS=0` turns the TVs
+  off.
 
 ### Editing the character
 
