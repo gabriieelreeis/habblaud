@@ -70,6 +70,11 @@ do meio (0.**3**.0).
   permissão (`--imagens`/`--sem-imagens` respondem sem perguntar); no Docker, o `npm run docker:up` monta essa pasta com
   escrita, a única montagem gravável. `HABBLAUD_MESSAGE_IMAGES=0` desliga.
 
+- **Cidade dos projetos.** Um botão novo na barra do topo mostra uma rua em pixel art com um prédio por projeto
+  aberto no escritório, numa rua por disco (C:, D:). Os worktrees entram no prédio do projeto, os andares crescem
+  com os commits do git e cada janela acesa é uma sessão. Clicar num prédio deixa no escritório só as salas daquele
+  projeto; o selo “Prédio” na barra volta a mostrar todos.
+
 ### Corrigido
 
 - **Entregas do OpenCode aparecem na caixa de entrada.** A lista de entregas só lia os transcripts do Claude Code e do
