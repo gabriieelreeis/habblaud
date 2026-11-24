@@ -389,7 +389,7 @@ um **chip colorido com a letra da conta** (C, D…).
   linha do tempo e estatísticas (ferramentas, tokens, custo, linhas alteradas, modelo, branch).
 - **Feed:** as últimas atividades de todo o escritório.
 - **Configurações (⚙):** nomes, balões, quanto os ociosos passeiam, ciclo dia/noite, sons, notificações do navegador,
-  modo demonstração e **Sobre** (versão em uso e versão nova). **Ajuda (?):** legenda completa e atalhos.
+  modo demonstração e **Sobre** (versão em uso e versão nova). **Ajuda (?):** legenda completa e atalhos. Com o push ligado, o aparelho com a janela do Habblaud em foco não recebe avisos; **Enviar teste** continua funcionando.
 - **Meu dia (📊):** para onde foi o tempo do dia (veja [Meu dia](#meu-dia)). **Timelapse** e **Histórico** (os relógios
   da barra superior): veja [Timelapse do dia](#timelapse-do-dia) e [Terminal](#terminal).
 

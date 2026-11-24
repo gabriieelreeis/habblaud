@@ -5,6 +5,7 @@
 // gesto direto da pessoa — por isso `enable()` só é chamado no clique do botão, nunca na carga da página.
 
 import type { PushDiagnosis } from './diagnose';
+import { PushFocusReporter } from './focus';
 
 export type PushState = 'unsupported' | 'off' | 'denied' | 'on';
 
@@ -112,6 +113,9 @@ export class PushClient {
   private statusCode = 0;
   private swError?: string;
   private stopListening?: () => void;
+  private focusReporter?: PushFocusReporter;
+  private focusEndpoint?: string;
+  private focusGeneration = 0;
 
   /**
    * Pergunta ao servidor. Nada aqui esconde nada: quem decide o que mostrar é a seção, com o diagnóstico na mão.
@@ -233,6 +237,35 @@ export class PushClient {
     const sub = await this.current();
     if (!sub) return false;
     return !!(await api<{ ok: boolean }>('/api/push/test', { endpoint: sub.endpoint }));
+  }
+
+  /**
+   * Start telling the server when this window is focused. Called on page load when this device is subscribed, and
+   * right after enabling; while focused, this device gets no push because the office is already on screen.
+   */
+  async startFocus(): Promise<void> {
+    if (this.focusReporter) return;
+    const generation = ++this.focusGeneration;
+    const sub = await this.current().catch(() => null);
+    if (!sub || generation !== this.focusGeneration) return;
+    this.focusEndpoint = sub.endpoint;
+    const reporter = new PushFocusReporter((focused, tab) => void this.sendFocus(focused, tab), document, window);
+    this.focusReporter = reporter;
+    reporter.start();
+  }
+
+  /** Stop reporting focus (push disabled on this device). */
+  stopFocus(): void {
+    this.focusGeneration++;
+    this.focusReporter?.stop();
+    this.focusReporter = undefined;
+    this.focusEndpoint = undefined;
+  }
+
+  private async sendFocus(focused: boolean, tab: string): Promise<void> {
+    const endpoint = this.focusEndpoint ?? (await this.current().catch(() => null))?.endpoint;
+    if (!endpoint) return;
+    await api('/api/push/focus', { endpoint, focused, tab });
   }
 
   get types(): { id: string; label: string; enabled: boolean }[] {

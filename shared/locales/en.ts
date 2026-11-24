@@ -3835,6 +3835,9 @@ export const EN: Readonly<Record<string, string>> = {
   "Falha ao enviar notificação: {0}": "Couldn't send notification: {0}",
   "esperado {keys: {p256dh, auth}}": "expected {keys: {p256dh, auth}}",
   "esperado {types: {id: booleano}}": "expected {types: {id: boolean}}",
+  "Sem avisos neste aparelho enquanto a janela estiver em foco.": "No notices on this device while the window is in focus.",
+  "esperado {focused: booleano}": "expected {focused: boolean}",
+  "esperado {tab: id da janela}": "expected {tab: window id}",
   "este aparelho não está inscrito": "this device is not subscribed",
   "espere {0} s antes de outro teste": "wait {0} s before another test",
   // notificações push: diagnóstico e moldes de texto

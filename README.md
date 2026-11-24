@@ -391,7 +391,7 @@ a **colored chip with the account letter** (C, D…).
   timeline and stats (tools, tokens, cost, lines changed, model, branch).
 - **Feed:** the latest activity across the whole office.
 - **Settings (⚙):** names, bubbles, how much idle agents wander around, day/night cycle, sounds, browser notifications,
-  demo mode and **About** (version in use and new version). **Help (?):** full legend and shortcuts.
+  demo mode and **About** (version in use and new version). **Help (?):** full legend and shortcuts. With push enabled, a device with the Habblaud window in focus gets no notices; **Send test** still works.
 - **My day (📊):** where the day's time went (see [My day](#my-day)). **Timelapse** and **Session history** (the clocks
   in the top bar): see [Day timelapse](#day-timelapse) and [Terminal](#terminal).
 

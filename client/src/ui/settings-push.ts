@@ -28,6 +28,7 @@ export class PushSettingsGroup {
   private readonly enableBtn: HTMLButtonElement;
   private readonly testBtn: HTMLButtonElement;
   private readonly statusText: HTMLElement;
+  private readonly focusHint: HTMLElement;
   private readonly diagText: HTMLElement;
   private readonly typeList: HTMLElement;
   private readonly types = new Map<string, { btn: HTMLButtonElement; row: HTMLElement }>();
@@ -40,6 +41,7 @@ export class PushSettingsGroup {
     this.enableBtn = h('button', { class: 'ui-btn', type: 'button', text: tr('Ligar notificações neste aparelho'), on: { click: () => void this.toggle() } }) as HTMLButtonElement;
     this.testBtn = h('button', { class: 'ui-btn', type: 'button', text: tr('Enviar teste'), hidden: true, on: { click: () => void this.test() } }) as HTMLButtonElement;
     this.statusText = h('span', { class: 'ui-set__hint', text: '' });
+    this.focusHint = h('span', { class: 'ui-set__hint', text: tr('Sem avisos neste aparelho enquanto a janela estiver em foco.'), hidden: true });
     // Linha técnica, para quem está a resolver o problema ler ou ditar. Não fala de nada do escritório.
     this.diagText = h('span', { class: 'ui-set__hint', text: '', hidden: true });
     this.typeList = h('div', { hidden: true });
@@ -48,6 +50,7 @@ export class PushSettingsGroup {
       { class: 'ui-set-group', hidden: true },
       h('h3', { text: tr('Notificações no aparelho') }),
       h('div', { class: 'ui-set' }, h('div', { class: 'ui-set__text' }, h('span', { class: 'ui-set__label', text: tr('Avisos com o Habblaud fechado') }), this.statusText), this.enableBtn),
+      h('div', { class: 'ui-set' }, h('div', { class: 'ui-set__text' }, this.focusHint)),
       h('div', { class: 'ui-set' }, h('div', { class: 'ui-set__text' }, this.diagText)),
       this.typeList,
       h('div', { class: 'ui-set' }, h('div', { class: 'ui-set__text' }, h('span', { class: 'ui-set__hint', text: tr('Manda uma notificação agora, só para este aparelho.') })), this.testBtn),
@@ -68,6 +71,7 @@ export class PushSettingsGroup {
     // chave pública não há como inscrever, logo não vale a pena registar nada.
     if (status?.publicKey) await this.push.register();
     this.state = await this.push.state();
+    if (this.state === 'on') void this.push.startFocus();
     this.diag = await this.push.diagnose();
     this.render();
   }
@@ -76,6 +80,7 @@ export class PushSettingsGroup {
     setHidden(this.el, !this.available);
     if (!this.available) return;
     const on = this.state === 'on';
+    setHidden(this.focusHint, !on);
     const blocker = this.diag ? pushBlocker(this.diag) : undefined;
     setText(this.enableBtn, on ? tr('Desligar neste aparelho') : tr('Ligar notificações neste aparelho'));
     this.enableBtn.disabled = this.busy || this.state === 'denied' || (!on && !!blocker);
@@ -118,13 +123,17 @@ export class PushSettingsGroup {
     this.render();
     try {
       if (this.state === 'on') {
+        this.push.stopFocus();
         await this.push.disable();
         this.state = 'off';
         this.ctx.announce(tr('Notificações desligadas neste aparelho.'));
       } else {
         this.state = await this.push.enable();
         // Depois de ligar, relê o estado deste aparelho: é o que desenha os interruptores certos.
-        if (this.state === 'on') await this.push.refreshState();
+        if (this.state === 'on') {
+          await this.push.refreshState();
+          void this.push.startFocus();
+        }
         this.ctx.announce(this.state === 'on' ? tr('Notificações ligadas neste aparelho.') : tr('Não foi possível ligar as notificações neste aparelho.'));
       }
     } finally {
