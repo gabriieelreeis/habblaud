@@ -10,6 +10,8 @@
 // novo. Agentes do demo não têm transcript: a conversa fictícia sai de demoTerminalEntries a cada ~500 ms.
 // Sessões do histórico (GET /api/sessions/:conta/:sessionId/terminal, http/sessions.ts) usam o mesmo
 // leitor sobre o transcript já validado pela rota, com polling mais espaçado (~2 s).
+// Agentes sem transcript em arquivo (o OpenCode: a conversa fica no serviço dele) têm uma conversa remota
+// (TerminalOptions.remoteFor): relida a cada ~1,5 s, com só as entradas novas no `append`.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { demoTerminalEntries } from '../../shared/demo/terminal';
 import type { Activity, AgentInfo, TerminalEntry, TerminalInit } from '../../shared/types';
@@ -51,6 +53,11 @@ export interface TerminalOptions {
   parserFor?: (agentId: string) => TerminalParser | undefined;
   /** Fábrica do parser padrão (testes); padrão: createTerminalParser (o do Claude Code). */
   createParser?: () => TerminalParser;
+  /**
+   * Conversa de um agente sem transcript em arquivo (OpenCode): `read` devolve a conversa recente inteira (com ids
+   * estáveis) e lança se não deu para ler. undefined = o agente não tem conversa remota.
+   */
+  remoteFor?: (agentId: string) => RemoteConversation | undefined;
   /** Conversa fictícia dos agentes do demo (testes); padrão: demoTerminalEntries. */
   demoEntries?: (agent: AgentInfo, history: Activity[]) => TerminalEntry[];
   maxStreams?: number;
@@ -59,8 +66,18 @@ export interface TerminalOptions {
   pollMs?: number;
   demoPollMs?: number;
   sessionPollMs?: number;
+  remotePollMs?: number;
   pingMs?: number;
 }
+
+export interface RemoteConversation {
+  read(): Promise<{ entries: TerminalEntry[]; truncated: boolean }>;
+}
+
+/** Releitura da conversa remota (OpenCode). */
+export const REMOTE_POLL_MS = 1_500;
+/** Ids lembrados de uma conversa remota (o que o cliente já tem). */
+const REMOTE_SEEN_MAX = 4_000;
 
 /** O que mudou desde o último ciclo: `init` substitui tudo; `stop` = não há mais o que acompanhar. */
 interface PollResult {
@@ -73,8 +90,8 @@ interface PollResult {
 interface ConversationSource {
   readonly intervalMs: number;
   /** Conversa recente, para o `init`. */
-  load(): TerminalInit;
-  poll(): PollResult;
+  load(): TerminalInit | Promise<TerminalInit>;
+  poll(): PollResult | Promise<PollResult>;
 }
 
 /** Passa as linhas pelo parser; uma linha que o faça falhar é pulada sem perder o resto do lote. */
@@ -183,9 +200,38 @@ class DemoSource implements ConversationSource {
   }
 }
 
+/** Agente com a conversa num serviço (OpenCode): relê a conversa recente e manda só o que é novo. */
+class RemoteSource implements ConversationSource {
+  private sent = new Set<string>();
+
+  constructor(
+    private readonly agentId: string,
+    private readonly remote: RemoteConversation,
+    private readonly initEntries: number,
+    readonly intervalMs: number,
+  ) {}
+
+  async load(): Promise<TerminalInit> {
+    const r = await this.remote.read();
+    this.sent = new Set(r.entries.map((e) => e.id));
+    const entries = r.entries.slice(-this.initEntries);
+    return { agentId: this.agentId, entries, truncated: r.truncated || entries.length < r.entries.length };
+  }
+
+  async poll(): Promise<PollResult> {
+    const r = await this.remote.read();
+    const fresh = r.entries.filter((e) => !this.sent.has(e.id));
+    for (const e of fresh) this.sent.add(e.id);
+    if (this.sent.size > REMOTE_SEEN_MAX) this.sent = new Set(r.entries.map((e) => e.id));
+    return { append: fresh };
+  }
+}
+
 interface Stream {
   res: ServerResponse;
   timer: ReturnType<typeof setInterval> | null;
+  /** Releitura assíncrona em andamento (a próxima espera ela acabar). */
+  busy?: boolean;
 }
 
 export class TerminalStreams {
@@ -199,6 +245,7 @@ export class TerminalStreams {
   private readonly pollMs: number;
   private readonly demoPollMs: number;
   private readonly sessionPollMs: number;
+  private readonly remotePollMs: number;
   private readonly pingMs: number;
 
   constructor(private readonly opts: TerminalOptions) {
@@ -210,6 +257,7 @@ export class TerminalStreams {
     this.pollMs = opts.pollMs ?? POLL_MS;
     this.demoPollMs = opts.demoPollMs ?? DEMO_POLL_MS;
     this.sessionPollMs = opts.sessionPollMs ?? SESSION_POLL_MS;
+    this.remotePollMs = opts.remotePollMs ?? REMOTE_POLL_MS;
     this.pingMs = opts.pingMs ?? PING_MS;
   }
 
@@ -232,7 +280,7 @@ export class TerminalStreams {
   attach(req: IncomingMessage, res: ServerResponse, agentId: string): void {
     const source = this.sourceFor(agentId);
     if (typeof source === 'string') return sendJson(res, 404, { error: source });
-    this.serve(req, res, agentId, source);
+    void this.serve(req, res, agentId, source);
   }
 
   /**
@@ -242,20 +290,26 @@ export class TerminalStreams {
    */
   attachSession(req: IncomingMessage, res: ServerResponse, streamId: string, path: string, createParser?: () => TerminalParser): void {
     const o = { transcriptPathOf: () => undefined, createParser: createParser ?? this.createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries };
-    this.serve(req, res, streamId, new TranscriptSource(streamId, path, o, this.sessionPollMs));
+    void this.serve(req, res, streamId, new TranscriptSource(streamId, path, o, this.sessionPollMs));
   }
 
   /** Limite de terminais, `init` e o stream SSE de uma fonte já escolhida. */
-  private serve(req: IncomingMessage, res: ServerResponse, id: string, source: ConversationSource): void {
+  private async serve(req: IncomingMessage, res: ServerResponse, id: string, source: ConversationSource): Promise<void> {
     if (this.streams.size >= this.maxStreams) {
       return sendJson(res, 429, { error: tr('terminais abertos demais (máximo de {0}); feche algum e tente de novo', [this.maxStreams]) });
     }
     let init: TerminalInit;
     try {
-      init = source.load();
+      init = await source.load();
     } catch (err) {
       log.warnOnce(`terminal-load:${id}:${errMsg(err)}`, tr('Terminal de {0}: não foi possível ler o transcript ({1}).', [id, errMsg(err)]));
+      if (source instanceof RemoteSource) return sendJson(res, 502, { error: tr('não foi possível ler a conversa: {0}', [errMsg(err)]) });
       return sendJson(res, 500, { error: tr('não foi possível ler o transcript') });
+    }
+    // Conexão fechada durante a leitura remota, ou as vagas acabaram enquanto ela lia.
+    if (res.destroyed || res.writableEnded) return;
+    if (this.streams.size >= this.maxStreams) {
+      return sendJson(res, 429, { error: tr('terminais abertos demais (máximo de {0}); feche algum e tente de novo', [this.maxStreams]) });
     }
     req.socket.setTimeout(0);
     req.socket.setNoDelay(true);
@@ -286,6 +340,9 @@ export class TerminalStreams {
   /** Fonte da conversa do agente, ou a mensagem do 404. */
   private sourceFor(agentId: string): ConversationSource | string {
     const office = this.opts.office;
+    // Conversa num serviço (OpenCode), não num arquivo.
+    const remote = office.has(agentId) ? this.opts.remoteFor?.(agentId) : undefined;
+    if (remote) return new RemoteSource(agentId, remote, this.initEntries, this.remotePollMs);
     if (office.has(agentId)) {
       const path = this.opts.transcriptPathOf(agentId);
       if (!path) return tr('transcript do agente não encontrado');
@@ -302,14 +359,29 @@ export class TerminalStreams {
   }
 
   private pump(s: Stream, source: ConversationSource, agentId: string): void {
-    let r: PollResult;
+    if (s.busy) return;
+    let got: PollResult | Promise<PollResult>;
     try {
-      r = source.poll();
+      got = source.poll();
     } catch (err) {
       // Ex.: transcript sem permissão de leitura. Tenta de novo no próximo ciclo.
       log.warnOnce(`terminal:${agentId}:${errMsg(err)}`, tr('Terminal de {0}: {1}', [agentId, errMsg(err)]));
       return;
     }
+    if (!(got instanceof Promise)) return this.deliver(s, got);
+    s.busy = true;
+    got
+      .then(
+        (r) => this.deliver(s, r),
+        (err) => log.warnOnce(`terminal:${agentId}:${errMsg(err)}`, tr('Terminal de {0}: {1}', [agentId, errMsg(err)])),
+      )
+      .finally(() => {
+        s.busy = false;
+      });
+  }
+
+  private deliver(s: Stream, r: PollResult): void {
+    if (!this.streams.has(s)) return;
     if (r.init) this.write(s, frame('init', r.init));
     if (r.append?.length) this.write(s, frame('append', r.append));
     // O agente sumiu (demo desligado ou sessão simulada encerrada): o stream fica aberto só com pings.

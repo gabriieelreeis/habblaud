@@ -579,3 +579,37 @@ describe('ClaudeWatcher.transcriptPathOf', () => {
     }
   });
 });
+
+describe('terminal: conversa num serviço (OpenCode)', () => {
+  it('remoteFor: init com a conversa, append só com o que é novo; leitura que falha no início vira 502', async () => {
+    let entries: TerminalEntry[] = [user('u1'), user('u2')];
+    let fail = false;
+    const env = await serve({
+      streams: {
+        remotePollMs: 20,
+        remoteFor: (id) => (id === MAIN ? { read: async () => (fail ? Promise.reject(new Error('serviço do OpenCode fora do ar')) : { entries, truncated: false }) } : undefined),
+      },
+    });
+    try {
+      const s = await open(env.base, route(MAIN));
+      expect(s.status).toBe(200);
+      await waitFor(() => expect(inits(s)).toHaveLength(1));
+      expect(inits(s)[0]).toEqual({ agentId: MAIN, entries: [user('u1'), user('u2')], truncated: false });
+      entries = [...entries, user('u3')];
+      await waitFor(() => expect(appendIds(s)).toEqual(['u3']));
+      // A releitura que falha só é registrada; a seguinte continua de onde parou.
+      fail = true;
+      await sleep(60);
+      fail = false;
+      entries = [...entries, user('u4')];
+      await waitFor(() => expect(appendIds(s)).toEqual(['u3', 'u4']));
+      s.close();
+      fail = true;
+      const bad = await open(env.base, route(MAIN));
+      expect(bad.status).toBe(502);
+      expect(JSON.parse(bad.body).error).toMatch(/fora do ar/);
+    } finally {
+      await env.close();
+    }
+  });
+});

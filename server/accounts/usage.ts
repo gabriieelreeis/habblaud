@@ -2,9 +2,11 @@
 // - 'statusline': rate_limits que o Claude Code envia ao statusline, gravados pelo
 //   scripts/statusline-tap.mjs (recomendado: ao vivo);
 // - 'cache': cachedUsageUtilization gravado pelo próprio Claude Code (quando alguém roda /usage);
-// - 'codex': rate_limits dos arquivos de sessão do Codex, empurrados pela fonte do Codex (AccountsService.setUsage).
-// Vale sempre a fonte com os números mais recentes (maior fetchedAt). Nenhuma delas lê credenciais
-// nem faz chamadas de rede: são só arquivos que o Claude Code já grava na máquina.
+// - 'codex': rate_limits dos arquivos de sessão do Codex, empurrados pela fonte do Codex (AccountsService.setUsage);
+// - 'opencode': limites do OpenCode Go, pedidos pela fonte do OpenCode ao serviço local dele (só leitura, na própria
+//   máquina: a senha do serviço nunca sai dela).
+// Vale sempre a fonte com os números mais recentes (maior fetchedAt). Nenhuma delas lê credenciais de conta nem fala
+// com a internet: são arquivos que as ferramentas já gravam na máquina ou o serviço local do OpenCode.
 import type { AccountInfo, AccountUsage, UsageWindow } from '../../shared/types';
 
 export type UsageSource = AccountUsage['source'];
@@ -12,7 +14,7 @@ export type UsageStatus = AccountInfo['usageStatus'];
 
 /** Números com mais de 30 min são exibidos como "desatualizados". */
 export const STALE_AFTER_MS = 30 * 60_000;
-const WINDOW_KEYS = ['fiveHour', 'sevenDay', 'sevenDayOpus', 'sevenDaySonnet'] as const;
+const WINDOW_KEYS = ['fiveHour', 'sevenDay', 'sevenDayOpus', 'sevenDaySonnet', 'monthly'] as const;
 
 function num(v: unknown): number | undefined {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -81,6 +83,7 @@ export function rollover(usage: AccountUsage, now: number): AccountUsage {
     const w = usage[key];
     if (w?.resetsAt !== undefined && w.resetsAt <= now) delete out[key];
   }
+  if (usage.budget?.resetsAt !== undefined && usage.budget.resetsAt <= now) delete out.budget;
   return out;
 }
 

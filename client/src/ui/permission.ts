@@ -6,9 +6,16 @@
 // Pedido do Codex (`provider: 'codex'`): o hook dele só espera alguns segundos e o terminal só mostra a aprovação
 // depois que você responder aqui ou o prazo acabar; não há "sempre permitir" nem "interromper", e recusar pede um
 // motivo. O Codex nunca pergunta pelo escritório (sem cartão de pergunta).
+// Pedido do OpenCode (`provider: 'opencode'`): o próprio OpenCode guarda o pedido (também na TUI e no app) até alguém
+// responder, então não há prazo nem "Responder no terminal"; o "sempre permitir" é o `always` dele, e não há
+// "interromper".
+// Explicação em linguagem de leigo (PermissionRequestInfo.plain, shared/explain.ts): quando o pedido a traz, ela vai em
+// destaque logo abaixo do título, com o selo de risco (verde, amarelo ou vermelho), e o nome técnico, o caminho e o
+// comando/diff ficam recolhidos em "Detalhes técnicos". Sem ela (servidor antigo ou pergunta), o cartão fica como antes.
 import { access, isLoopbackHostname } from '../net/access';
 import { ANSWER_OTHER_MAX, ASK_TOOL, checkAnswers } from '../../../shared/answers';
-import type { AgentInfo, AskQuestion, PermissionAnswer, PermissionDecision, PermissionRequestInfo, PermissionSuggestionInfo } from '../../../shared/types';
+import { riskLabel } from '../../../shared/explain';
+import type { AgentInfo, AskQuestion, PermissionAnswer, PermissionDecision, PermissionRequestInfo, PermissionSuggestionInfo, PlainRisk } from '../../../shared/types';
 import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setText, setTitle } from './dom';
 import { formatClock, formatDuration } from './format';
@@ -26,6 +33,7 @@ const DESTINATIONS: Record<string, string> = {
   localSettings: tr('neste projeto, só para você'),
   projectSettings: tr('neste projeto, para todos (versionado)'),
   userSettings: tr('em todos os projetos'),
+  opencode: tr('guardado no OpenCode'),
 };
 
 /** Onde a regra "sempre permitir" fica guardada, em português. */
@@ -47,6 +55,9 @@ export function expiryText(expiresAt: number, now: number, seconds = false): str
 /** Aviso do cartão de um pedido do Codex. */
 export const CODEX_PERMISSION_NOTE = tr('No Codex, a aprovação só aparece no terminal depois que você responder aqui ou o prazo acabar.');
 
+/** Aviso do cartão de um pedido do OpenCode. */
+export const OPENCODE_PERMISSION_NOTE = tr('O pedido também aparece no OpenCode (TUI ou app): vale a primeira resposta.');
+
 /** O que o cartão oferece para um pedido (muda com a ferramenta). */
 export interface PermissionOptions {
   /** "Aprovar e não perguntar de novo" (as sugestões do Claude Code). */
@@ -59,10 +70,15 @@ export interface PermissionOptions {
   seconds: boolean;
   /** Aviso curto embaixo da prévia ('' = nenhum). */
   note: string;
+  /** "Responder no terminal" (devolver o pedido). */
+  terminal: boolean;
+  /** O prazo em que o pedido volta ao terminal. */
+  expires: boolean;
 }
 
 export function permissionOptions(p: Pick<PermissionRequestInfo, 'provider' | 'suggestions'>, agent: Pick<AgentInfo, 'kind' | 'background'>): PermissionOptions {
-  if (p.provider === 'codex') return { always: false, interrupt: false, reasonRequired: true, seconds: true, note: CODEX_PERMISSION_NOTE };
+  if (p.provider === 'codex') return { always: false, interrupt: false, reasonRequired: true, seconds: true, note: CODEX_PERMISSION_NOTE, terminal: true, expires: true };
+  if (p.provider === 'opencode') return { always: !!p.suggestions?.length, interrupt: false, reasonRequired: false, seconds: false, note: OPENCODE_PERMISSION_NOTE, terminal: false, expires: false };
   // Subagente em segundo plano: o Claude Code só mostra o diálogo depois que o hook responde.
   const blocking = agent.kind === 'sub' && !!agent.background;
   return {
@@ -71,6 +87,42 @@ export function permissionOptions(p: Pick<PermissionRequestInfo, 'provider' | 's
     reasonRequired: false,
     seconds: false,
     note: blocking ? tr('Este subagente roda em segundo plano: o terminal só mostra o pedido depois que você responder aqui ou escolher “Responder no terminal”.') : '',
+    terminal: true,
+    expires: true,
+  };
+}
+
+/** O que o cartão mostra da explicação em linguagem de leigo (null = pedido sem ela: o cartão fica como antes). */
+export interface PlainView {
+  risk: PlainRisk;
+  /** Classe do selo: is-baixo (verde), is-medio (amarelo) ou is-alto (vermelho). */
+  riskClass: string;
+  /** "Risco baixo", "Risco médio", "Risco alto". */
+  riskText: string;
+  what: string;
+  why: string;
+  context: string;
+  /** O texto foi refinado pelo Claude Code local (HABBLAUD_EXPLICAR=claude). */
+  refined: boolean;
+}
+
+const RISKS: ReadonlySet<string> = new Set(['baixo', 'medio', 'alto']);
+
+/**
+ * A explicação de um pedido, pronta para o cartão. Pergunta (AskUserQuestion) nunca tem; um `plain` com risco
+ * desconhecido ou sem texto também não conta (fica o cartão antigo, com os detalhes abertos).
+ */
+export function plainView(p: Pick<PermissionRequestInfo, 'tool' | 'questions' | 'provider' | 'plain'> | undefined): PlainView | null {
+  const plain = p?.plain;
+  if (!p || !plain || isQuestionRequest(p) || !RISKS.has(plain.risk) || !plain.what?.trim()) return null;
+  return {
+    risk: plain.risk,
+    riskClass: `is-${plain.risk}`,
+    riskText: riskLabel(plain.risk),
+    what: plain.what.trim(),
+    why: plain.why?.trim() ?? '',
+    context: plain.context?.trim() ?? '',
+    refined: plain.refined === true,
   };
 }
 
@@ -199,6 +251,15 @@ export class PermissionCard {
   private title: HTMLElement;
   private what: HTMLElement;
   private timer: HTMLElement;
+  /** Explicação em linguagem de leigo: selo de risco, o que, por quê e o contexto. */
+  private plain: HTMLElement;
+  private risk: HTMLElement;
+  private plainWhat: HTMLElement;
+  private plainWhy: HTMLElement;
+  private plainCtx: HTMLElement;
+  /** "Detalhes técnicos": o resumo técnico, o nome da ferramenta com o caminho e a prévia (comando/diff). */
+  private details: HTMLDetailsElement;
+  private techWhat: HTMLElement;
   private tool: HTMLElement;
   private preview: HTMLElement;
   private note: HTMLElement;
@@ -214,7 +275,7 @@ export class PermissionCard {
   private interruptRow: HTMLElement;
   private denySubmit: HTMLButtonElement;
   /** O que o cartão oferece para o pedido atual (Claude Code ou Codex). */
-  private opts: PermissionOptions = { always: false, interrupt: true, reasonRequired: false, seconds: false, note: '' };
+  private opts: PermissionOptions = { always: false, interrupt: true, reasonRequired: false, seconds: false, note: '', terminal: true, expires: true };
   private status: HTMLElement;
   private remote: HTMLElement;
   /** Perguntas do AskUserQuestion, montadas uma vez por pedido (a seleção sobrevive aos snapshots). */
@@ -228,8 +289,23 @@ export class PermissionCard {
     this.title = h('strong', { class: 'ui-perm__title' });
     this.what = h('p', { class: 'ui-perm__what' });
     this.timer = h('span', { class: 'ui-perm__timer' });
+    this.risk = h('span', { class: 'ui-perm__risk' });
+    this.plainWhat = h('p', { class: 'ui-perm__plain-what' });
+    this.plainWhy = h('p', { class: 'ui-perm__plain-why' });
+    this.plainCtx = h('p', { class: 'ui-perm__plain-ctx', hidden: true });
+    this.plain = h('div', { class: 'ui-perm__plain', hidden: true }, this.risk, this.plainWhat, this.plainWhy, this.plainCtx);
+    this.techWhat = h('p', { class: 'ui-perm__tech-what', hidden: true });
     this.tool = h('div', { class: 'ui-perm__tool' });
     this.preview = h('div', { class: 'ui-perm__preview' });
+    this.details = h(
+      'details',
+      { class: 'ui-perm__details is-flat' },
+      h('summary', { class: 'ui-perm__details-summary', text: tr('Detalhes técnicos') }),
+      this.techWhat,
+      this.tool,
+      this.preview,
+    );
+    this.details.open = true;
     this.note = h('p', { class: 'ui-perm__note', hidden: true });
     this.queue = h('p', { class: 'ui-perm__queue', hidden: true });
     this.remote = h('p', { class: 'ui-perm__note', hidden: true, text: tr('Para responder por aqui, abra o Habblaud por http://localhost (ou 127.0.0.1). Por enquanto, responda no terminal.') });
@@ -293,8 +369,8 @@ export class PermissionCard {
       'section',
       { class: 'ui-perm', hidden: true, tabIndex: -1 },
       h('div', { class: 'ui-perm__head' }, this.icon, h('div', { class: 'ui-perm__head-text' }, this.title, this.what), this.timer),
-      this.tool,
-      this.preview,
+      this.plain,
+      this.details,
       this.askForm,
       this.note,
       this.queue,
@@ -337,11 +413,39 @@ export class PermissionCard {
     }
     setText(this.title, ask ? (p.questions!.length > 1 ? tr('Perguntas para você') : tr('Pergunta para você')) : tr('Pede permissão'));
     const by = p.subagent ? tr(' · subagente {0}', [p.subagent]) : '';
-    setText(this.what, ask ? tr('Aqui ou no terminal: vale a primeira resposta{0}', [by]) :`${p.icon} ${p.text}${by}`);
-    setText(this.timer, expiryText(p.expiresAt, now, opts.seconds));
+    const tech = `${p.icon} ${p.text}${by}`;
+    setText(this.what, ask ? (p.provider === 'opencode' ? tr('Aqui ou no OpenCode: vale a primeira resposta{0}', [by]) : tr('Aqui ou no terminal: vale a primeira resposta{0}', [by])) : tech);
+
+    // Explicação em linguagem de leigo: em destaque; o resumo técnico desce para os "Detalhes técnicos".
+    const plain = plainView(p);
+    setHidden(this.plain, !plain);
+    setHidden(this.what, !!plain);
+    setHidden(this.techWhat, !plain || ask);
+    setText(this.techWhat, plain ? tech : '');
+    this.details.classList.toggle('is-flat', !plain);
+    this.el.classList.toggle('has-alto', plain?.risk === 'alto');
+    if (plain) {
+      if (this.risk.dataset.risk !== plain.risk) {
+        this.risk.dataset.risk = plain.risk;
+        this.risk.className = `ui-perm__risk ${plain.riskClass}`;
+      }
+      setText(this.risk, plain.riskText);
+      setTitle(this.risk, plain.why);
+      setText(this.plainWhat, plain.what);
+      setText(this.plainWhy, plain.why);
+      setHidden(this.plainWhy, !plain.why);
+      setText(this.plainCtx, plain.context);
+      setHidden(this.plainCtx, !plain.context);
+      this.plainWhat.classList.toggle('is-refined', plain.refined);
+      setTitle(this.plainWhat, plain.refined ? tr('Explicação refinada pelo Claude Code deste computador (HABBLAUD_EXPLICAR=claude)') : tr('Explicação automática do Habblaud, sem modelo de IA'));
+    }
+    setHidden(this.timer, !opts.expires);
+    setText(this.timer, opts.expires ? expiryText(p.expiresAt, now, opts.seconds) : '');
     setTitle(
       this.timer,
-      codex
+      !opts.expires
+        ? ''
+        : codex
         ? tr('Pedido feito às {0}. Sem resposta aqui até {1}, o Codex segue sem a decisão do escritório e pede a aprovação no terminal.', [formatClock(p.createdAt), formatClock(p.expiresAt)])
         : tr('Pedido feito às {0}. Sem resposta aqui até {1}, o Habblaud devolve o pedido ao terminal.', [formatClock(p.createdAt), formatClock(p.expiresAt)]),
     );
@@ -349,6 +453,7 @@ export class PermissionCard {
     // Pergunta: o formulário com as opções no lugar do título da ferramenta e da prévia dos argumentos.
     setHidden(this.tool, ask);
     setHidden(this.preview, ask);
+    setHidden(this.details, ask);
     setHidden(this.askForm, !ask);
     if (ask && this.askId !== p.id) this.buildAsk(p);
     if (!ask) {
@@ -376,6 +481,7 @@ export class PermissionCard {
     const busy = this.isBusy();
     setHidden(this.approveBtn, ask);
     setHidden(this.answerBtn, !ask);
+    setHidden(this.terminalBtn, !opts.terminal);
     for (const b of [this.approveBtn, this.denyBtn, this.terminalBtn]) b.disabled = busy;
     for (const el of this.askForm.querySelectorAll('input')) el.disabled = busy;
     if (ask) this.syncAnswer();
@@ -419,6 +525,8 @@ export class PermissionCard {
     this.detail = null;
     this.reason.value = '';
     this.interrupt.checked = false;
+    // Pedido novo: os detalhes técnicos voltam a ficar recolhidos (abertos só quando não há explicação).
+    this.details.open = !plainView(this.ctx.agent(agentId)?.permission);
     setText(this.status, '');
     this.status.classList.remove('is-error');
     delete this.preview.dataset.id;

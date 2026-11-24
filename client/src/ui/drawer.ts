@@ -549,8 +549,8 @@ class AgentView {
     updateAccountChip(this.accChip, account, a.account, a.provider);
     setText(this.accName, account?.name ?? a.account);
     updateProviderTag(this.accProv, provider, account?.name ?? '');
-    // E-mail (Claude Code) ou, no Codex (sem e-mail), o plano.
-    const accSub = account?.email ?? (codex && account?.plan ? tr('plano {0}', [account.plan]) : '');
+    // E-mail (Claude Code) ou, no Codex e no OpenCode (sem e-mail), o plano.
+    const accSub = account?.email ?? (provider !== 'claude' && account?.plan ? tr('plano {0}', [account.plan]) : '');
     setText(this.accEmail, accSub);
     setHidden(this.accEmail, !accSub);
     setText(this.roomName, room?.name ?? a.roomId);
@@ -579,7 +579,7 @@ class AgentView {
     if (waiting) {
       const accName = account?.name ?? a.account;
       // Codex: "Vá ao Codex (Conta X)"; sem repetir quando a conta já se chama "Codex".
-      const where = codex ? tr('ao Codex{0}', [/codex/i.test(accName) ? '' : ` (${accName})`]) : tr('ao terminal da {0}', [accName]);
+      const where = codex ? tr('ao Codex{0}', [/codex/i.test(accName) ? '' : ` (${accName})`]) : providerOf(a) === 'opencode' ? tr('ao OpenCode') : tr('ao terminal da {0}', [accName]);
       setText(this.alertText, tr('Vá {0} em {1} para responder{2}', [where, room?.name ?? tr('seu projeto'), a.waitingFor ? `: ${a.waitingFor}` : '.']));
     }
     // Perguntas do AskUserQuestion (só leitura): o Codex não pergunta pelo escritório.
@@ -587,8 +587,9 @@ class AgentView {
     this.renderQuestions(asking);
     // Sem o pedido no escritório: dá para responder por aqui com o plugin (só com a trava local, como o cartão). O Codex
     // não responde perguntas pelo escritório.
+    // OpenCode: a pergunta vira o cartão de resposta (pelo serviço dele); sem plugin a instalar.
     const answerable =
-      !codex && !!asking?.questions?.length && !this.perm.visible && !this.ctx.store.mock && !!this.ctx.store.snapshot?.meta.terminal && access().permissions;
+      !codex && providerOf(a) !== 'opencode' && !!asking?.questions?.length && !this.perm.visible && !this.ctx.store.mock && !!this.ctx.store.snapshot?.meta.terminal && access().permissions;
     setHidden(this.alertAnswerHint, !answerable);
 
     // Esperando o shell.
@@ -697,6 +698,7 @@ class AgentView {
 
   private renderTerminalButton(live: boolean, provider = providerOf(this.last)): void {
     const router = this.ctx.terminals;
+    // OpenCode: a conversa vem do serviço dele (o servidor relê as mensagens da sessão), não de um arquivo.
     const available = (router ? router.available : !!this.ctx.store.snapshot?.meta.terminal) && access().terminal;
     const open = (router ? router.openAgentId : this.terminal.agentId) === this.id;
     // Interativo: o Claude Code roda aqui (pty) ou roda noutro terminal e dá para assumir pela janela.
@@ -725,7 +727,7 @@ class AgentView {
             ? tr('O agente já saiu do escritório.')
             : kind === 'ao vivo'
               ? tr('Ver a conversa desta sessão como no {0}, ao vivo{1} (T)', [
-                  provider === 'codex' ? 'Codex' : tr('terminal do Claude Code'),
+                  provider === 'codex' ? 'Codex' : provider === 'opencode' ? 'OpenCode' : tr('terminal do Claude Code'),
                   this.pty.enabled && ptyControllable(this.last) ? tr('; "Assumir daqui" continua nela aqui') : '',
                 ])
               : kind === 'interativo'
@@ -751,7 +753,9 @@ class AgentView {
     st.set('branch', a.gitBranch ?? null);
     // Codex: a política de aprovação (quando o servidor a manda) no lugar do modo de permissão do Claude Code.
     st.label('perm', codex ? tr('Aprovações') : tr('Permissões'));
-    st.set('perm', a.kind !== 'main' ? null : codex ? (a.permissionMode ? codexApprovalLabel(a.permissionMode) : null) : permissionLabel(a.permissionMode));
+    // OpenCode: as permissões são regras por ferramenta no próprio OpenCode, sem um modo para mostrar aqui.
+    const opencode = providerOf(a) === 'opencode';
+    st.set('perm', a.kind !== 'main' || opencode ? null : codex ? (a.permissionMode ? codexApprovalLabel(a.permissionMode) : null) : permissionLabel(a.permissionMode));
 
     setText(this.sessionValue, a.sessionId);
     setTitle(this.sessionValue, a.sessionId);

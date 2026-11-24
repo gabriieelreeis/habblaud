@@ -290,7 +290,7 @@ Install a certificate › CA certificate), checking the fingerprint the setup sh
   certificate at `https://<computador>.<tailnet>.ts.net`; add that name to `HABBLAUD_ALLOWED_HOSTS`. Always point it at
   the remote port, never at 4747 (which has no login).
 - **Session:** 30 days; changing the password (running the setup again) ends all of them, and **Settings › Phone
-  access › Sign out** ends the one on that device. After 5 wrong passwords in a row, each new attempt waits from 1 s up to 5 min.
+  access › Sign out** ends the one on that device. After 5 wrong passwords in a row from the same address, each new attempt from that address waits from 1 s up to 5 min; an address's wrong passwords never delay another address, and about 60 wrong passwords in 5 min from all addresses together pause every login until the window ends.
 - **IP changed?** `docker:up` re-issues the server certificate when the new IP is missing or when it's 30 days from
   expiring, with the same CA (the phone keeps trusting it); the server swaps the certificate without restarting.
 - **Turn off:** `npm run remote:setup -- --off` and `npm run docker:up`.
@@ -298,6 +298,8 @@ Install a certificate › CA certificate), checking the fingerprint the setup sh
 Without HTTPS the remote port doesn't start; `HABBLAUD_REMOTE_INSECURE_HTTP=1` forces plain HTTP (password and cookie
 in the clear on the network). In Node mode: `HABBLAUD_REMOTE_PORT` and `HABBLAUD_REMOTE_HOST` (default
 `0.0.0.0:4748`) and `HABBLAUD_REMOTE_TLS_DIR` (default `~/.habblaud/remote-tls/server`).
+
+Behind a reverse proxy (e.g. Traefik terminating HTTPS), `HABBLAUD_REMOTE_TRUST_PROXY=<ip>[,<ip>...]` (the proxy's exact IPs **as Habblaud sees them**; no mask) makes the login throttle use the real client address (`X-Forwarded-For`) and makes the cookie carry `Secure` when the proxy speaks HTTPS (`X-Forwarded-Proto: https`). Without the variable both headers are ignored, because any client can write them, and every client behind the proxy shares the same throttle.
 
 ### Updating
 
@@ -536,7 +538,10 @@ terminal** leaves the question there. The answer reaches the agent as if you had
   `--port`, the port). For **background subagents**, Claude Code only shows the dialog in the terminal after the
   hook finishes: answer from the office or use **Answer in terminal**. With a wait longer than 5 minutes, if no
   page that can answer stays open for 5 minutes (and no [phone with login](#phone-with-login-and-https-approving-requests)
-  is set up to answer), the request goes back to the terminal.
+  is set up to answer), the request goes back to the terminal. This "no one watching" fallback can be turned off in
+  **Settings › Permission requests**: with **Return questions to the terminal when no one is watching** off, the
+  request stays in the office until you answer or until the hook's maximum time. The choice is saved on the server and
+  survives a restart.
 - It works under the same safeguard as the terminal: only with Habblaud reachable only from the computer it runs on
   and opened through `http://localhost`. Check with `npm run mod:status` (or `npm run hooks:status`, in the old
   way). It also works from the [phone with login](#phone-with-login-and-https-approving-requests) (its default).
@@ -637,6 +642,37 @@ Codex account chip is hollow and carries the **CODEX** tag.
   loaded for up to a minute after they go idle with no one watching; that's why the character may take a
   little while to leave after you close the terminal.
 - ChatGPT cloud conversations (with no file on the computer) don't show up. `HABBLAUD_CODEX=0` turns Codex off.
+
+### OpenCode
+
+[OpenCode](https://opencode.ai) sessions (2.0 or newer: the TUI, `opencode run` and the desktop app, which all talk to
+OpenCode's **background service**) show up in the same office: character in the project room, live activity, tasks,
+subagents (the `task` tool) and the **OpenCode** account in the top bar. The OpenCode account chip is hollow with
+rounded corners and carries the **OPENCODE** tag.
+
+- **Nothing to install:** Habblaud finds the service on its own through the file OpenCode writes at
+  `~/.local/state/opencode/service.json` (address and password of the local service) and reads everything from the service
+  itself — sessions, messages, live events and usage limits — without touching OpenCode's database. With Habblaud in
+  **Docker**, `npm run docker:up` mounts **only that file** (read-only) and the container reaches the service through
+  `host.docker.internal`.
+- **Who's in the office:** a session that is running, waiting on you (a permission or a question) or that had activity in
+  the last 30 minutes. A subagent session shows up while it works and delivers when it finishes. **Pinned sessions**
+  (`HABBLAUD_OPENCODE_PINNED`: `ses_...` ids separated by commas) stay in the office the whole time the service is up,
+  idle or not, like a permanent coworker.
+- **Usage in the top bar:** with **OpenCode Go**, the 5-hour and weekly bars (and the month in the tooltip), read from the
+  service every minute. Without Go, the card says **no limits reported** (never 0%): the free models' own limit isn't
+  exposed by OpenCode; a workspace budget in dollars shows up instead when there is one.
+- **Sending messages:** the **Send message** box puts the text in the session's queue through the service (it becomes the
+  next prompt when OpenCode finishes what it's doing) — in Node mode and in Docker alike.
+- **Approving permissions:** OpenCode's permission requests show up on the agent's card like Claude Code's: **Approve**,
+  **Deny** (with a reason, if you like) and **always allow** with the rule OpenCode itself would save (e.g.
+  `bash(git push *)`). Its questions (the `question` tool) are answered there too, with the options and "Other"; denying
+  cancels the question. The request stays in OpenCode too (TUI or app): the first answer wins. No "interrupt" and no
+  "answer in the terminal".
+- **Terminal:** **Open terminal** shows the session's conversation live (prompts, reasoning, tools and results), read
+  from the service every 1.5 s, with the message box at the bottom — in Node mode, in Docker and on the phone.
+- Not yet: the history of past sessions and the interactive terminal. OpenCode agents don't go up to Habblaud World (its protocol doesn't know OpenCode yet). `HABBLAUD_OPENCODE=0` turns OpenCode
+  off; `HABBLAUD_OPENCODE_URL` (+ `HABBLAUD_OPENCODE_PASSWORD`) points to a service somewhere else.
 
 ### GitHub in the office
 
@@ -755,6 +791,7 @@ Everything works without configuring anything. If you need to adjust something, 
 | `HABBLAUD_PTY` | off | `1` turns on the interactive terminal (open, take over and end Claude Code sessions from the office; local access only and outside Docker) and **New agent** (also in Docker, through `npm run codex:bridge`). Read the warning in [Privacy and security](#privacy-and-security). |
 | `HABBLAUD_CLAUDE_BIN` | `claude` from PATH | The Claude Code executable that the interactive terminal and New agent run. |
 | `HABBLAUD_REMOTE_ALLOW` | `permissions` | What the [phone with login](#phone-with-login-and-https-approving-requests) can do: `permissions`, `messages`, `terminal`, `spawn` (comma-separated) or `none`. The office party always works, except with `none`. The other `HABBLAUD_REMOTE_*` are written by `npm run remote:setup`. |
+| `HABBLAUD_REMOTE_TRUST_PROXY` | — | IPs (comma-separated) of the reverse proxy in front of the remote port, so the login throttle uses `X-Forwarded-For` and the cookie carries `Secure` with `X-Forwarded-Proto: https`. Without it both headers are ignored. |
 | `HABBLAUD_MENSAGENS` | on (with the terminal) | `0` turns off only messages from the office (the box in the terminal and in the agent's details). |
 | `HABBLAUD_PRESENTATIONS` | on | `0` turns off the [TV in the rooms](#tv-in-the-rooms-presentations) (presentations). |
 | `HABBLAUD_MESSAGE_IMAGES` | on | `0` turns off images in [messages from the office](#sending-messages). |

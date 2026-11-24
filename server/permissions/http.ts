@@ -1,14 +1,18 @@
 // Rotas de /api/permissions (responder pelo escritório). A trava (bind local + Host local) já foi
 // conferida em http/app.ts; o guard (http/guard.ts) já exigiu JSON e Origin local nos POST (contra CSRF).
 //
+//   GET  /api/permissions/settings        (página)  {returnWhenUnwatched}: a opção salva no servidor
+//   POST /api/permissions/settings        (página)  {returnWhenUnwatched: boolean}: muda e salva a opção
 //   POST /api/permissions                 (hook)    registra o pedido: 201 {id, expiresAt} ou 200 {skip}
 //                                                   (o hook do Codex manda também provider: "codex", account e codexHome)
+//                                                   (os do OpenCode não passam por aqui: a fonte dele os registra)
 //   GET  /api/permissions/:id/wait        (hook)    long-poll: {status: pending | decided | released}
 //   GET  /api/permissions/:id             (página)  detalhe com os argumentos (comando, diff...)
 //   POST /api/permissions/:id/decision    (página)  {behavior: allow | deny | terminal | answer, message?, answers?, ...}
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, readJson, sendJson } from '../http/app';
 import { InvalidRequest, parseDecision, WAIT_MAX_MS, type PermissionRegistry } from './registry';
+import type { PermissionSettingsStore } from './settings';
 import { tr } from '../../shared/i18n';
 
 const ITEM = /^\/api\/permissions\/([^/]+)(?:\/(wait|decision))?$/;
@@ -32,7 +36,7 @@ export function waitMs(url: URL): number {
   return Math.min(WAIT_MAX_MS, Math.max(50, raw * 1_000));
 }
 
-export function createPermissionRoutes(registry: PermissionRegistry): (req: IncomingMessage, res: ServerResponse, path: string) => void {
+export function createPermissionRoutes(registry: PermissionRegistry, settings?: PermissionSettingsStore): (req: IncomingMessage, res: ServerResponse, path: string) => void {
   const register = async (req: IncomingMessage, res: ServerResponse) => {
     const body = await readJson(req);
     const r = registry.register(body);
@@ -61,7 +65,11 @@ export function createPermissionRoutes(registry: PermissionRegistry): (req: Inco
     if (!d) {
       throw new HttpError(400, 'esperado {behavior: "allow" | "deny" | "terminal", message?, interrupt?, suggestion?} ou {behavior: "answer", answers: [{question, options?, other?}]}');
     }
-    switch (registry.decide(id, d)) {
+    // Pedido do OpenCode: a decisão vai ao serviço dele antes de responder (decideAsync espera).
+    const provider = registry.detail(id)?.provider;
+    const r = await registry.decideAsync(id, d);
+    if (typeof r === 'object') return sendJson(res, 502, { error: tr('o OpenCode não recebeu a resposta ({0}); responda no próprio OpenCode', [r.error]) });
+    switch (r) {
       case 'ok':
         return sendJson(res, 200, { ok: true });
       case 'not-found':
@@ -73,12 +81,27 @@ export function createPermissionRoutes(registry: PermissionRegistry): (req: Inco
       case 'invalid-answer':
         return sendJson(res, 400, { error: tr('resposta que não serve para este pedido: pergunta se responde com "answer" (cada pergunta uma vez, com as opções dela); os outros pedidos, com "allow" ou "deny"') });
       case 'unsupported':
+        if (provider === 'opencode') return sendJson(res, 400, { error: tr('o OpenCode não aceita interromper nem "responder no terminal" pelo Habblaud: aprove, recuse (com um motivo, se quiser) ou responda no próprio OpenCode') });
         return sendJson(res, 400, { error: tr('o Codex não aceita interromper nem "sempre permitir" pelo Habblaud: aprove, recuse (com um motivo, se quiser) ou responda no terminal') });
     }
   };
 
+  const changeSetting = async (req: IncomingMessage, res: ServerResponse) => {
+    const body = await readJson(req);
+    const b = body as { returnWhenUnwatched?: unknown } | null;
+    if (typeof b?.returnWhenUnwatched !== 'boolean') throw new HttpError(400, tr('esperado {returnWhenUnwatched: boolean}'));
+    settings!.set(b.returnWhenUnwatched);
+    sendJson(res, 200, { ok: true, ...settings!.get() });
+  };
+
   return (req, res, path) => {
     const method = req.method ?? 'GET';
+    if (path === '/api/permissions/settings') {
+      if (!settings) return sendJson(res, 404, { error: tr('rota desconhecida') });
+      if (method === 'GET' || method === 'HEAD') return sendJson(res, 200, settings.get());
+      if (method !== 'POST') return methodNotAllowed(res, 'GET, POST');
+      return void changeSetting(req, res).catch((err) => fail(res, err));
+    }
     if (path === '/api/permissions') {
       if (method !== 'POST') return methodNotAllowed(res, 'POST');
       register(req, res).catch((err) => fail(res, err));

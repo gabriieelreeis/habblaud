@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountInfo } from '../../../shared/types';
-import { cardState, codexUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
+import { budgetText, cardState, codexUsageNote, openCodeUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
 
 const MIN = 60_000;
 type Acc = Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider' | 'email' | 'plan' | 'configDir'>;
@@ -14,6 +14,7 @@ describe('sourceLabel', () => {
     expect(sourceLabel({ source: 'statusline', fetchedAt: 0 })).toBe('ao vivo (statusline do Claude Code)');
     expect(sourceLabel({ source: 'cache', fetchedAt: 0 })).toBe('cache do /usage do Claude Code');
     expect(sourceLabel({ source: 'codex', fetchedAt: 0 })).toBe('arquivos do Codex');
+    expect(sourceLabel({ source: 'opencode', fetchedAt: 0 })).toBe('serviço local do OpenCode');
   });
 });
 
@@ -48,5 +49,31 @@ describe('cartão de uso de uma conta do Codex', () => {
     expect(usageSubtitle({ email: 'a@b.c', configDir: '~/.claude' })).toBe('a@b.c');
     expect(usageSubtitle({ configDir: '~/.claude' })).toBe('~/.claude');
     expect(codexUsageNote({ usageStatus: 'ok' }, 0)).toBe('');
+  });
+});
+
+describe('cartão de uso da conta do OpenCode', () => {
+  const oc = (over: Partial<Acc & { organization?: string }> = {}): Acc & { organization?: string } => ({ provider: 'opencode', usageStatus: 'ok', configDir: '~/.local/state/opencode/service.json', ...over });
+
+  it('com o OpenCode Go: barras de 5h e semana como as outras contas; a idade só quando é antiga', () => {
+    const go = oc({ plan: 'Go', usage: { source: 'opencode', fiveHour: win, sevenDay: win, monthly: win, fetchedAt: 0 } });
+    expect(cardState(go)).toBe('ok');
+    expect(showsUsageAge(go)).toBe(false);
+    expect(usageSubtitle(go)).toBe('plano Go');
+    expect(openCodeUsageNote(go, 0)).toMatch(/OpenCode Go/);
+  });
+
+  it('sem o Go: "sem limites informados" (nunca 0% nem "sem dados"); com orçamento, o orçamento', () => {
+    const free = oc({ organization: 'Personal', usage: { source: 'opencode', noLimits: true, fetchedAt: 0 } });
+    expect(cardState(free)).toBe('nolimits');
+    expect(usageMessage(free)).toEqual(['sem limites informados', 'sem limites']);
+    expect(usageSubtitle(free)).toBe('Personal');
+    expect(openCodeUsageNote(free, 0)).toMatch(/não informou limites/);
+    const budget = oc({ usage: { source: 'opencode', budget: { spent: 1.2, limit: 10 }, fetchedAt: 0 } });
+    expect(cardState(budget)).toBe('nolimits');
+    expect(budgetText({ spent: 1.2, limit: 10 })).toMatch(/de .*(12%)/);
+    expect(usageMessage(budget)[0]).toMatch(/^orçamento: /);
+    expect(usageSubtitle(oc())).toBe('OpenCode');
+    expect(openCodeUsageNote({ usageStatus: 'ok' }, 0)).toBe('');
   });
 });

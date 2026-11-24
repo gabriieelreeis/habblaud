@@ -322,6 +322,12 @@ describe('projeção: regras', () => {
     expect(agentsOf(u).map((a) => a.provider).sort()).toEqual(['claude', 'codex']);
   });
 
+  it('agente do OpenCode não sobe (o protocolo não tem o valor; nunca vai como claude)', () => {
+    const u = project(input([room('/p/a')], [agent('m1', '/p/a'), agent('m3', '/p/a', { provider: 'opencode' })]), new FakeIds(), NOW);
+    expect(agentsOf(u).map((a) => a.provider)).toEqual(['claude']);
+    expect(validate(u)).toEqual([]);
+  });
+
   it('tokens só com tokensVisible, arredondados a 2 algarismos', () => {
     const base = input([room('/p/a')], [agent('m1', '/p/a')], { tokens: { day: 1_234_567, week: 98_765_432.7 } });
     expect(project(base, new FakeIds(), NOW).tokens).toEqual({ day: 1_200_000, week: 99_000_000 });

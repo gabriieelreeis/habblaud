@@ -14,9 +14,10 @@ export type AgentKind = 'main' | 'sub';
  * De qual ferramenta vem o agente (ou a conta, a fonte, a sessão, o pedido). Nos tipos do protocolo o campo
  * `provider` é opcional e AUSENTE quer dizer 'claude' (tudo o que existia antes do Codex continua igual).
  * - claude: Claude Code;
- * - codex: OpenAI Codex (CLI `codex` e o app desktop, que gravam no mesmo CODEX_HOME).
+ * - codex: OpenAI Codex (CLI `codex` e o app desktop, que gravam no mesmo CODEX_HOME);
+ * - opencode: OpenCode (TUI, `opencode run` e o app desktop, todos pelo serviço em segundo plano dele).
  */
-export type Provider = 'claude' | 'codex';
+export type Provider = 'claude' | 'codex' | 'opencode';
 
 /**
  * Estado de alto nível de um agente — é o que dirige o comportamento do personagem.
@@ -138,7 +139,7 @@ export interface AgentStats {
 export interface AgentInfo {
   /**
    * Estável enquanto o agente existir. Claude Code: principal "<conta>:<pid>", sub "<sessionId>:<agentId>".
-   * Codex: principal e sub "<conta>:<threadId>" (o sub com `parentId`).
+   * Codex: principal e sub "<conta>:<threadId>" (o sub com `parentId`). OpenCode: "<conta>:<sessionID>".
    */
   id: string;
   kind: AgentKind;
@@ -305,14 +306,17 @@ export interface AccountUsage {
   sevenDay?: UsageWindow;
   sevenDayOpus?: UsageWindow;
   sevenDaySonnet?: UsageWindow;
+  /** Limite mensal (OpenCode Go). */
+  monthly?: UsageWindow;
   /**
    * Origem dos números (todas são arquivos locais gravados pela própria ferramenta):
    * - 'statusline': capturado ao vivo e gravado em ~/.habblaud/usage/<conta>.json pelo mod do Habblaud
    *   (mod/habblaud, recomendado) ou pelo scripts/statusline-tap.mjs (campo rate_limits do statusline);
    * - 'cache': `cachedUsageUtilization` gravado pelo próprio Claude Code (atualiza quando alguém roda /usage);
-   * - 'codex': `rate_limits` dos arquivos de sessão do Codex (só se renovam enquanto alguma sessão roda).
+   * - 'codex': `rate_limits` dos arquivos de sessão do Codex (só se renovam enquanto alguma sessão roda);
+   * - 'opencode': limites do OpenCode Go (janela de 5h, semanal e mensal), pedidos ao serviço local do OpenCode.
    */
-  source: 'cache' | 'statusline' | 'codex';
+  source: 'cache' | 'statusline' | 'codex' | 'opencode';
   /** Quem gravou o arquivo ao vivo ('statusline'): o mod do Habblaud no Claude Code ou o tap de statusline. */
   via?: 'mod' | 'tap';
   /**
@@ -320,11 +324,21 @@ export interface AccountUsage {
    * esgotados). Não é "0% usado": as janelas ficam ausentes.
    */
   noQuota?: boolean;
+  /**
+   * O OpenCode não informou limite nenhum para a conta (sem o OpenCode Go nem orçamento: modelos grátis ou créditos).
+   * Não é "0% usado": as janelas ficam ausentes.
+   */
+  noLimits?: boolean;
+  /** Orçamento em dólares do workspace do OpenCode (o mais apertado), quando houver. */
+  budget?: { spent: number; limit: number; resetsAt?: number };
   /** Quando os números foram obtidos na origem (epoch ms). */
   fetchedAt: number;
 }
 
-/** Uma conta do Claude (um config dir: ~/.claude, ~/.claude-conta2, ...) ou do Codex (um CODEX_HOME: ~/.codex). */
+/**
+ * Uma conta do Claude (um config dir: ~/.claude, ~/.claude-conta2, ...), do Codex (um CODEX_HOME: ~/.codex) ou do
+ * OpenCode (o serviço local dele: uma conta só).
+ */
 export interface AccountInfo {
   /** = AgentInfo.account (basename do config dir, ex.: ".claude"); único entre as contas de todas as ferramentas. */
   id: string;
@@ -384,6 +398,11 @@ export interface OfficeSnapshot {
      * desligar. Quem recebe agora diz AgentInfo.canMessage. Ausente/false = recurso desligado.
      */
     messages?: boolean;
+    /**
+     * Opções de "responder pelo escritório" no snapshot: `returnWhenUnwatched` = devolver ao terminal depois de
+     * 5 minutos sem página que responda (padrão: true). Ausente = recurso desligado.
+     */
+    permissions?: { returnWhenUnwatched: boolean };
     /**
      * Terminal interativo (abrir/assumir sessões e encerrar agentes pelo escritório): só fora do Docker, com
      * node-pty e acesso local. Ausente = recurso desligado.
@@ -663,6 +682,26 @@ export interface PermissionSuggestionInfo {
   destination: string;
 }
 
+/** Risco de aprovar um pedido, para quem não é programador (shared/explain.ts). */
+export type PlainRisk = 'baixo' | 'medio' | 'alto';
+
+/**
+ * Explicação em linguagem de leigo de um pedido de permissão (shared/explain.ts): o que o agente quer fazer e onde,
+ * em palavras (nunca só o caminho cru), o risco de aprovar e por quê. Montada sem modelo de IA; HABBLAUD_EXPLICAR=claude
+ * refina o `what` com o Claude Code local (server/permissions/explain-claude.ts), sem mudar o risco.
+ */
+export interface PlainExplanation {
+  /** "O agente quer gravar o arquivo estado.json no caderno interno do Claude Code (~/.claude)." */
+  what: string;
+  /** "Risco baixo: não mexe nos seus projetos." */
+  why?: string;
+  risk: PlainRisk;
+  /** "Logo antes, o agente estava: rodando testes." */
+  context?: string;
+  /** O `what` foi refinado pelo Claude Code local (HABBLAUD_EXPLICAR=claude). */
+  refined?: boolean;
+}
+
 /**
  * Pedido de permissão pendente que dá para responder pelo Habblaud: o hook PermissionRequest do Claude Code
  * (mod/habblaud-permissoes/hooks/permission-hook.mjs) o registra e fica esperando a decisão. Só existe com bind local (a mesma
@@ -686,6 +725,8 @@ export interface PermissionRequestInfo {
   inputKind?: TerminalInputKind;
   /** Pedido de um subagente que o Habblaud ainda não mostra: o tipo dele (ex.: "Explore"). */
   subagent?: string;
+  /** Explicação em linguagem de leigo (o que, onde, risco). Ausente nas perguntas do AskUserQuestion. */
+  plain?: PlainExplanation;
   /** Regras "sempre permitir" que podem ser aplicadas junto com a aprovação. */
   suggestions?: PermissionSuggestionInfo[];
   /**

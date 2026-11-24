@@ -27,7 +27,11 @@ import { loadHeadlessScreen } from './pty/screen';
 import { openMainAgent, SessionHistory } from './sources/history';
 import { HistorySet, SourceSet } from './sources/source';
 import { createPermissionRoutes } from './permissions/http';
+import { NEEDS_YOU, noticePush } from './push/notices';
+import { createPushRoutes } from './push/routes';
+import { createPushService } from './push/service';
 import { PermissionRegistry } from './permissions/registry';
+import { PermissionSettingsStore } from './permissions/settings';
 import { codexAccountOf } from './codex/http';
 import { createCodexQueueRunner, findCodexBin } from './messages/codex';
 import { createMessageRoutes } from './messages/http';
@@ -37,12 +41,16 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
+import { openCodeConfigured } from './sources/opencode/service';
+import { OpenCodeSource } from './sources/opencode/source';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
 import { getLocale, tr } from '../shared/i18n';
+import type { PermissionRequestInfo, PlainExplanation } from '../shared/types';
 import type { WorldLocale } from '../shared/world/protocol';
 import { createCliRunner, createOpener, SpawnService } from './spawn/spawn';
 import { runnableClaudeBin } from './claude-bin';
+import { createClaudeRefiner } from './permissions/explain-claude';
 import { AttachmentStore } from './spawn/attachments';
 import { recentFolders } from './spawn/folders';
 import { isDemoId } from '../shared/timeline';
@@ -81,7 +89,7 @@ const roomAliases = new RoomAliases(join(config.dataDir, 'rooms.json'));
 roomAliases.load();
 
 // Office, contas e fontes de agentes se referenciam (avisos de mudança / fontes): ligação tardia.
-const late: { office?: Office; agents?: SourceSet; permissions?: PermissionRegistry; messages?: MessageRegistry; ptys?: PtyManager; ptyOff?: string; presentations?: PresentationStore } = {};
+const late: { office?: Office; agents?: SourceSet; permissions?: PermissionRegistry; permissionSettings?: PermissionSettingsStore; messages?: MessageRegistry; ptys?: PtyManager; ptyOff?: string; presentations?: PresentationStore } = {};
 // Versão nova: consulta a release mais recente no GitHub a cada 6 h (HABBLAUD_UPDATE_CHECK=0 desliga).
 const updates = new UpdateChecker({
   current: config.version,
@@ -127,6 +135,7 @@ const office = new Office({
   accountName: (id) => accounts.find(id)?.detected.name,
   terminal: config.terminal,
   permissions: () => late.permissions?.snapshot() ?? new Map(),
+  permissionSettings: config.terminal ? () => late.permissionSettings?.get().returnWhenUnwatched ?? true : undefined,
   messages: config.messages ? () => late.messages?.reachable() ?? new Set() : undefined,
   ptys: () => (late.ptys ? { status: late.ptys.status(), list: late.ptys.list() } : { status: { enabled: false, reason: late.ptyOff ?? tr('desligado') }, list: [] }),
   updates: () => updates.status(),
@@ -144,6 +153,10 @@ if (codex) agents.add(codex);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
+// OpenCode (v2+): pelo serviço em segundo plano dele (sources/opencode/), quando ele existe nesta máquina (ou
+// HABBLAUD_OPENCODE_URL); HABBLAUD_OPENCODE=0 desliga. Uma conta só, com o uso do OpenCode Go no topo.
+const opencode = config.opencode && openCodeConfigured(process.env, config.home) ? new OpenCodeSource({ accounts, office, env: process.env, home: config.home }) : undefined;
+if (opencode) agents.add(opencode);
 late.office = office;
 late.agents = agents;
 // Página que pode responder pelo escritório: Host local na porta local; na remota, só com permissions liberado.
@@ -192,7 +205,7 @@ if (worldUplink && worldSocial) {
 // Terminal: só existe com bind local (ver terminalOffReason em config.ts).
 // Cada agente com o parser da ferramenta dele (o do Claude Code por padrão).
 const terminals = config.terminal
-  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id) })
+  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id), remoteFor: (id) => opencode?.conversation(id) })
   : undefined;
 // Histórico do terminal (sessões recentes, abertas ou encerradas, de todas as ferramentas): mesma trava.
 const history = config.terminal
@@ -203,8 +216,13 @@ if (history && codex) history.add(new CodexHistory({ accounts: () => accounts.en
 // são lidos aqui (Node, ou pasta de conta montada no Docker) ou pelo auxiliar do host.
 const deliveries = history
   ? new DeliveryIndex({
-      sessions: () => history.list(),
+      sessions: async () => {
+        const list = await history.list();
+        // O OpenCode não tem transcript em arquivo: as sessões vêm do serviço dele, pela própria fonte.
+        return opencode ? [...list, ...opencode.deliverySessions()] : list;
+      },
       resolve: (account, sessionId) => {
+        if (opencode && account === opencode.accountId) return opencode.deliverySource(sessionId);
         const r = history.resolve(account, sessionId);
         return 'path' in r ? r : undefined;
       },
@@ -213,6 +231,7 @@ const deliveries = history
         return st === 'working' || st === 'waiting' || st === 'shell';
       },
       agentName: (id) => office.list().find((a) => a.id === id)?.name,
+      isLive: (account) => !!opencode && account === opencode.accountId,
     })
   : undefined;
 const deliveryFiles = deliveries
@@ -231,21 +250,43 @@ const deliveryFiles = deliveries
 const timelineDir = join(config.dataDir, TIMELINE_DIR);
 const timeline = config.timeline ? new TimelineRecorder({ dir: timelineDir }) : undefined;
 if (timeline) hub.onSnapshot((snap) => timeline.ingest(snap));
+// Explicação em linguagem de leigo dos pedidos (shared/explain.ts) refinada pelo Claude Code local: opt-in com
+// HABBLAUD_EXPLICAR=claude (usa o plano de quem roda o Habblaud; sem o `claude`, fica só a explicação automática).
+const explicar = process.env.HABBLAUD_EXPLICAR?.trim().toLowerCase();
+let explainRefiner: ((info: PermissionRequestInfo, plain: PlainExplanation) => Promise<string | undefined>) | undefined;
+if (explicar === 'claude') {
+  const bin = runnableClaudeBin();
+  if (bin) {
+    explainRefiner = createClaudeRefiner({ claudeBin: bin });
+    log.info(tr('Explicação dos pedidos refinada pelo Claude Code local (HABBLAUD_EXPLICAR=claude): usa o seu plano, uma chamada curta por pedido.'));
+  } else log.warn(tr('HABBLAUD_EXPLICAR=claude, mas o executável "claude" não foi encontrado: fica só a explicação automática.'));
+} else if (explicar && explicar !== '0' && explicar !== 'off' && explicar !== 'false' && explicar !== 'no') {
+  log.warn(tr('HABBLAUD_EXPLICAR={0} não é reconhecido (só "claude"): fica só a explicação automática.', [explicar]));
+}
+
 // Responder pelo escritório (hook PermissionRequest): age sobre as sessões, então segue a mesma trava.
+const permissionSettings = new PermissionSettingsStore(join(config.dataDir, 'permissions-settings.json'), () => office.markDirty());
+permissionSettings.load();
+late.permissionSettings = permissionSettings;
 const permissions = config.terminal
   ? new PermissionRegistry({
       office,
       viewers: () => hub.localSize,
       answerLater: () => !!config.remote?.allow.has('permissions'),
+      returnWhenUnwatched: () => permissionSettings.get().returnWhenUnwatched,
       // Só o Claude Code: a busca da resposta dada no terminal lê o formato do transcript dele.
       transcriptPathOf: (id) => claude.transcriptPathOf(id),
       // Pedidos do hook do Codex: a conta pela pasta CODEX_HOME que ele manda.
       codexAccount: (account, codexHome) => codexAccountOf(accounts.entriesOf('codex'), account, codexHome),
       demoDecide: (id, d) => office.decideDemoPermission(id, d),
       demoDetail: (id) => office.demoPermission(id),
+      home: () => config.home,
+      refine: explainRefiner,
     })
   : undefined;
 late.permissions = permissions;
+// OpenCode: os pedidos ficam no serviço dele (sem hook); a fonte os registra aqui e manda a resposta de volta.
+opencode?.setPermissionSink(permissions ? { add: (r) => permissions.registerExternal(r), remove: (key) => permissions.releaseExternal(key) } : undefined);
 // Mensagens pelo escritório (plugin habblaud-mensagens): entram na sessão como se você as tivesse digitado, então
 // seguem a mesma trava (e HABBLAUD_MENSAGENS=0 desliga só elas). Ao Codex vão por `codex queue` (messages/codex.ts):
 // fora do Docker o próprio servidor roda o comando (HABBLAUD_CODEX_BIN ou `codex` do PATH); no Docker, o auxiliar do
@@ -277,6 +318,8 @@ const messages = config.messages
         run: codexBin ? createCodexQueueRunner(codexBin) : undefined,
         homeOf: (account) => accounts.entriesOf('codex').find((e) => e.id === account)?.detected.configDir,
       },
+      // OpenCode: pelo serviço local dele (alcançável também de dentro do Docker).
+      opencode: opencode ? { send: (sid, text) => opencode.sendPrompt(sid, text), available: () => opencode.isReachable() } : undefined,
     })
   : undefined;
 late.messages = messages;
@@ -369,6 +412,23 @@ const ticker = setInterval(() => {
   }
 }, 250);
 
+// Notificações push (server/push/): a identidade VAPID vem de HABBLAUD_PUSH_VAPID_PRIVATE ou de
+// <dataDir>/push-vapid.json, gerado na primeira vez a 600. HABBLAUD_PUSH=0 devolve undefined: nenhuma rota
+// /api/push/* existe e a página não mostra a seção.
+const push = createPushService({ dataDir: config.dataDir, env: process.env, log: (msg) => log.info(msg) });
+if (push) {
+  // Único tipo do Habblaud: alguém precisa de você. Extensões registram os seus com push.registerType.
+  push.registerType({ id: NEEDS_YOU, label: tr('Alguém precisa de você'), enabled: true, ttlS: 600, urgency: 'high' });
+  // Os avisos só saem do escritório pelo commit() que o Hub drena, então é no Hub que se escuta (http/sse.ts). O
+  // texto do aviso NÃO atravessa: push/notices.ts monta a notificação a partir do nome do agente e de mais nada.
+  hub.onNotice((n) => {
+    const text = noticePush(n, (id) => office.get(id)?.name);
+    // `.catch()` obrigatório: em Node 22 uma promessa rejeitada sem tratamento mata o processo, e um aviso de nível
+    // `alert` chega a cada agente que pede resposta.
+    if (text) push.notify(NEEDS_YOU, text).catch((err) => log.warn(tr('Falha ao enviar notificação: {0}', [errMsg(err)])));
+  });
+}
+
 const api = createApiHandler({
   renameRoom: (id, name) => {
     const path = office.roomPath(id);
@@ -387,7 +447,7 @@ const api = createApiHandler({
   terminals,
   sessions: history,
   timeline: createTimelineHandler({ dir: timelineDir, recording: !!timeline }),
-  permissions: permissions ? createPermissionRoutes(permissions) : undefined,
+  permissions: permissions ? createPermissionRoutes(permissions, permissionSettings) : undefined,
   messages: messages ? createMessageRoutes(messages, messageImages) : undefined,
   messageImages: !!messages && !!messageImages,
   pty: ptys ? createPtyRoutes(ptys) : undefined,
@@ -408,6 +468,7 @@ const api = createApiHandler({
   stats,
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,
+  push: push ? createPushRoutes(push) : undefined,
   world: world ? createWorldRoutes(world, worldViewer, worldSocial) : undefined,
 });
 
@@ -440,7 +501,7 @@ if (config.dev) {
 }
 
 // Host/Origin/Content-Type: barra DNS rebinding e CSRF antes de qualquer rota (inclusive o Vite).
-const guard = createRequestGuard({ allowedHosts: config.allowedHosts });
+const guard = createRequestGuard({ allowedHosts: config.allowedHosts, looseLoopbackOrigin: config.dev });
 
 server.on('request', (req, res) => {
   const url = parseUrl(req);
@@ -471,6 +532,7 @@ if (config.remote) {
     config: remote,
     sessions: new RemoteSessions(loadSecret(join(config.dataDir, 'remote-secret')), remote, Date.now, join(config.dataDir, 'remote-revoked.json')),
     secure: !!remote.tls,
+    trustProxy: remote.trustProxy,
     caFile: remote.tls?.caFile,
   });
   remoteListener = startRemoteListener(
@@ -495,6 +557,8 @@ if (config.remote) {
     const where = config.inDocker ? tr('publicada pelo HABBLAUD_REMOTE_BIND') : remote.host;
     const scheme = remote.tls ? 'HTTPS' : tr('HTTP SEM criptografia (HABBLAUD_REMOTE_INSECURE_HTTP)');
     log.info(tr('   Acesso remoto: ligado na porta {0} ({1}), {2}, com login; libera: {3}.', [remote.port, where, scheme, allow]));
+    if (remote.trustProxy.size) log.info(tr('   Acesso remoto: confia em {0} como proxy (X-Forwarded-For e X-Forwarded-Proto).', [[...remote.trustProxy].join(', ')]));
+    for (const bad of remote.trustProxyInvalid) log.warn(tr('   Acesso remoto: HABBLAUD_REMOTE_TRUST_PROXY ignorou "{0}" (não é um endereço IP).', [bad]));
     if (remote.allow.has('spawn') && !spawn) log.warn(tr('   Acesso remoto: "spawn" liberado, mas o Novo agente está desligado (ligue com HABBLAUD_PTY=1).'));
   });
 } else if (config.remoteWarning) {
@@ -523,6 +587,12 @@ server.listen(config.port, config.host, () => {
     }
   } else {
     log.info(tr('   Codex: {0}.', [config.codex ? tr('nenhuma pasta do Codex encontrada (defina HABBLAUD_CODEX_DIRS)') : tr('desligado (HABBLAUD_CODEX=0)')]));
+  }
+  if (opencode) {
+    const src = opencode.sources()[0];
+    log.info(tr('   OpenCode: {0} sessão(ões) aberta(s) · uso: {1} · {2}', [src?.sessions ?? 0, accounts.usageView(opencode.accountId).status, src?.error ?? src?.path ?? '']));
+  } else {
+    log.info(tr('   OpenCode: {0}.', [config.opencode ? tr('serviço do OpenCode não encontrado (OpenCode 2 ou mais novo; defina HABBLAUD_OPENCODE_URL)') : tr('desligado (HABBLAUD_OPENCODE=0)')]));
   }
   if (office.isDemo()) log.info(tr('   Modo demonstração ligado (agentes simulados misturados aos reais).'));
   if (config.terminal) log.info(tr('   Terminal: ligado (acesso só local).'));

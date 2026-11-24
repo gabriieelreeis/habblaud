@@ -7,7 +7,9 @@
 #     (uso de 5h/semanal capturado pelo tap de statusline) em /usage;
 #   - do Codex, SOMENTE <pasta>/sessions, <pasta>/archived_sessions e <pasta>/thread-writer-locks em
 #     /codex/<conta>/... (nunca auth.json, config.toml, history.jsonl, logs nem os bancos SQLite);
-#   - HABBLAUD_CLAUDE_DIRS, HABBLAUD_CODEX_DIRS, HABBLAUD_ACCOUNTS e HABBLAUD_USAGE_DIR.
+#   - do OpenCode (v2+), SOMENTE o arquivo do serviço local (~/.local/state/opencode/service.json: endereço e senha)
+#     em /opencode/service.json (nunca o banco SQLite nem o histórico de prompts);
+#   - HABBLAUD_CLAUDE_DIRS, HABBLAUD_CODEX_DIRS, HABBLAUD_ACCOUNTS, HABBLAUD_USAGE_DIR e HABBLAUD_OPENCODE_*.
 # O Compose mescla o override automaticamente em qualquer `docker compose ...` rodado nesta pasta.
 name: habblaud
 
@@ -39,6 +41,10 @@ services:
       HABBLAUD_LANG: ${HABBLAUD_LANG:-}
       # 0 desliga as sessões do Codex no escritório.
       HABBLAUD_CODEX: ${HABBLAUD_CODEX:-}
+      # 0 desliga as sessões do OpenCode no escritório (o docker:up monta só o arquivo do serviço local dele).
+      HABBLAUD_OPENCODE: ${HABBLAUD_OPENCODE:-}
+      # Sessões do OpenCode sempre no escritório com o serviço no ar (ids ses_..., separados por vírgula).
+      HABBLAUD_OPENCODE_PINNED: ${HABBLAUD_OPENCODE_PINNED:-}
       # 1 liga o Novo agente pelo escritório (no Docker, quem começa a sessão é o auxiliar do host, npm run
       # codex:bridge; o terminal interativo em si não roda no container).
       HABBLAUD_PTY: ${HABBLAUD_PTY:-}
@@ -47,6 +53,7 @@ services:
       HABBLAUD_REMOTE_PASSWORD_HASH: ${HABBLAUD_REMOTE_PASSWORD_HASH:-}
       HABBLAUD_REMOTE_ALLOW: ${HABBLAUD_REMOTE_ALLOW:-}
       HABBLAUD_REMOTE_INSECURE_HTTP: ${HABBLAUD_REMOTE_INSECURE_HTTP:-}
+      HABBLAUD_REMOTE_TRUST_PROXY: ${HABBLAUD_REMOTE_TRUST_PROXY:-}
       # Habblaud World (ligado por padrão: server.habblaud.com; nada sai antes de criar a conta). HABBLAUD_WORLD=0 desliga tudo.
       HABBLAUD_WORLD: ${HABBLAUD_WORLD:-}
       HABBLAUD_WORLD_URL: ${HABBLAUD_WORLD_URL:-}

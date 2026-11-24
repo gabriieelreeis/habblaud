@@ -17,7 +17,7 @@ const MAIN = 'acc:1';
 const SESSION = 'sess-1';
 const SUB = `${SESSION}:a1b2c3`;
 
-function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number; answerLater?: boolean } = {}) {
+function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number; answerLater?: boolean; returnWhenUnwatched?: boolean } = {}) {
   let now = 1_000_000;
   const clock = { now: () => now, advance: (ms: number) => (now += ms) };
   let permissions: PermissionRegistry | undefined;
@@ -39,6 +39,7 @@ function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number;
     office,
     viewers: () => viewers,
     answerLater: () => !!opts.answerLater,
+    returnWhenUnwatched: () => opts.returnWhenUnwatched ?? true,
     transcriptPathOf: (id) => paths.get(id),
     now: clock.now,
     orphanMs: opts.orphanMs,
@@ -125,6 +126,52 @@ describe('PermissionRegistry: registro', () => {
     expect(commit.feed.map((f) => f.activity.text)).toEqual([expect.stringMatching(/^Pede permissão:/)]);
     expect(commit.notices.map((n) => n.text)).toEqual([expect.stringMatching(/^🔐 .+ pede permissão em loja:/)]);
     expect(commit.notices[0]).toMatchObject({ level: 'alert', agentId: MAIN });
+  });
+
+  it('explicação em linguagem de leigo: no snapshot e no detalhe, com o risco; não nas perguntas', () => {
+    const { office, registry } = setup();
+    office.commit();
+    const id = registered(registry.register(hookInput({ tool_name: 'Write', tool_input: { file_path: '/p/loja/src/novo.ts', content: 'x' } })));
+    const a = office.commit().snapshot.agents.find((x) => x.id === MAIN)!;
+    expect(a.permission!.plain).toEqual({
+      risk: 'baixo',
+      what: 'O agente quer gravar o arquivo novo.ts na pasta src do projeto loja (cria ou substitui o conteúdo).',
+      why: 'Risco baixo: mexe só dentro do projeto, e o git guarda a versão anterior.',
+    });
+    expect(registry.detail(id)!.plain).toEqual(a.permission!.plain);
+    // rm -rf fora do projeto: alto. O cwd do hook é o projeto da sessão.
+    const rm = registered(registry.register(hookInput({ tool_input: { command: 'rm -rf /p/outro/dist' } })));
+    expect(registry.detail(rm)!.plain).toMatchObject({ risk: 'alto', what: 'O agente quer apagar a pasta dist e tudo que há dentro, fora do projeto (/p/outro/dist).' });
+    // Pergunta: o cartão mostra as perguntas; sem explicação.
+    const q = registered(registry.register(askInput()));
+    expect(registry.detail(q)!.plain).toBeUndefined();
+  });
+
+  it('refino (HABBLAUD_EXPLICAR=claude): troca só o texto quando chega, se o pedido ainda está em aberto', async () => {
+    let resolveIt: (s: string | undefined) => void = () => {};
+    const refine = () => new Promise<string | undefined>((r) => (resolveIt = r));
+    let now = 1_000_000;
+    let permissions: PermissionRegistry | undefined;
+    const office = new Office({ names: new NameStore(null), version: 't', startedAt: 0, accounts: () => [], sources: () => [], accountName: () => undefined, permissions: () => permissions?.snapshot() ?? new Map(), now: () => now });
+    office.addMain({ id: MAIN, account: 'acc', sessionId: SESSION, cwd: '/p/loja', role: 'Agente principal', startedAt: 0, status: 'working' });
+    permissions = new PermissionRegistry({ office, viewers: () => 1, now: () => now, refine });
+    office.commit();
+    const id = registered(permissions.register(hookInput({ tool_input: { command: 'rm -rf dist' } })));
+    const before = permissions.detail(id)!.plain!;
+    expect(before.risk).toBe('alto');
+    expect(before.refined).toBeUndefined();
+    resolveIt('O agente quer apagar a pasta dist, que guarda a versão compilada da loja.');
+    await new Promise((r) => setTimeout(r, 0));
+    const after = permissions.detail(id)!.plain!;
+    expect(after).toEqual({ ...before, what: 'O agente quer apagar a pasta dist, que guarda a versão compilada da loja.', refined: true });
+    expect(after.risk).toBe('alto');
+    expect(office.commit().snapshot.agents.find((x) => x.id === MAIN)!.permission!.plain!.refined).toBe(true);
+    // Pedido já respondido: o refino que chega depois não mexe.
+    const id2 = registered(permissions.register(hookInput({ tool_input: { command: 'ls' } })));
+    expect(permissions.decide(id2, { behavior: 'allow' })).toBe('ok');
+    resolveIt('tarde demais');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(permissions.detail(id2)).toBeUndefined();
   });
 
   it('subagente acompanhado recebe o pedido; desconhecido vai para o principal com o tipo', () => {
@@ -349,6 +396,21 @@ describe('PermissionRegistry: pedidos órfãos', () => {
     await expect(w.result).resolves.toEqual({ status: 'released', reason: 'unwatched' });
     // O pedido com a espera padrão (5 min) segue até o tempo dele.
     await expect(registry.wait(short, 10)!.result).resolves.not.toEqual({ status: 'released', reason: 'unwatched' });
+  });
+
+  it('opção desligada: sem página aberta a espera longa fica no escritório e só termina no tempo do hook', async () => {
+    const { registry, clock, setViewers } = setup({ orphanMs: 60 * 60_000, returnWhenUnwatched: false });
+    const long = registered(registry.register(hookInput({ timeout_ms: 86_400_000 })));
+    const w = registry.wait(long, 25_000)!;
+    setViewers(0);
+    registry.tick();
+    clock.advance(UNWATCHED_MS * 2);
+    registry.tick();
+    expect(registry.size).toBe(1);
+    // O limite do hook continua valendo: expira como sempre, só não volta por "ninguém olhando".
+    clock.advance(86_400_000 - UNWATCHED_MS * 2 + EXPIRY_GRACE_MS);
+    registry.tick();
+    await expect(w.result).resolves.toEqual({ status: 'released', reason: 'expired' });
   });
 
   it('espera longa com celular que pode entrar depois (porta remota com permissions): continua esperando', () => {

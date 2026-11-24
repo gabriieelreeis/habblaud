@@ -297,8 +297,8 @@ comprobando la huella digital que mostró el setup.
   certificado válido en `https://<computador>.<tailnet>.ts.net`; agrega ese nombre a `HABBLAUD_ALLOWED_HOSTS`. Apunta
   siempre al puerto remoto, nunca al 4747 (que no pide iniciar sesión).
 - **Sesión:** 30 días; cambiar la contraseña (ejecutar el setup de nuevo) las cierra todas, y **Configuración ›
-  Acceso desde el celular › Salir** cierra la de ese dispositivo. Después de 5 contraseñas incorrectas seguidas, cada nuevo intento espera de
-  1 s a 5 min.
+  Acceso desde el celular › Salir** cierra la de ese dispositivo. Después de 5 contraseñas incorrectas seguidas desde la misma dirección, cada nuevo intento de esa dirección espera de
+  1 s a 5 min; las contraseñas incorrectas de una dirección nunca retrasan a otra, y unas 60 contraseñas incorrectas en 5 min sumando todas las direcciones pausan todo inicio de sesión hasta que termine la ventana.
 - **¿Cambió la IP?** `docker:up` vuelve a emitir el certificado del servidor cuando falta la IP nueva o cuando faltan
   30 días para que venza, con la misma CA (el celular sigue confiando en ella); el servidor cambia el certificado sin
   reiniciarse.
@@ -307,6 +307,8 @@ comprobando la huella digital que mostró el setup.
 Sin HTTPS, el puerto remoto no se inicia; `HABBLAUD_REMOTE_INSECURE_HTTP=1` fuerza HTTP plano (contraseña y cookie a
 la vista en la red). En modo Node: `HABBLAUD_REMOTE_PORT` y `HABBLAUD_REMOTE_HOST` (por defecto `0.0.0.0:4748`) y
 `HABBLAUD_REMOTE_TLS_DIR` (por defecto `~/.habblaud/remote-tls/server`).
+
+Detrás de un proxy inverso (p. ej. Traefik terminando el HTTPS), `HABBLAUD_REMOTE_TRUST_PROXY=<ip>[,<ip>...]` (las IPs exactas del proxy **tal como las ve Habblaud**; sin máscara) hace que el freno del inicio de sesión use la dirección real del cliente (`X-Forwarded-For`) y que la cookie lleve `Secure` cuando el proxy habla HTTPS (`X-Forwarded-Proto: https`). Sin la variable ambos encabezados se ignoran, porque cualquier cliente los escribe, y todos los clientes detrás del proxy comparten el mismo freno.
 
 ### Actualizar
 
@@ -562,7 +564,10 @@ terminal.
   después de que el hook termina: responde desde la oficina o usa **Responder en la terminal**. Con una espera de más
   de 5 minutos, si pasan 5 minutos sin ninguna página abierta que pueda responder (y no hay ningún
   [celular con inicio de sesión](#celular-con-inicio-de-sesión-y-https-aprobar-solicitudes) configurado para
-  responder), la solicitud vuelve a la terminal.
+  responder), la solicitud vuelve a la terminal. Esta devolución por "nadie mirando" se puede desactivar en
+  **Configuración › Solicitudes de permiso**: con **Devolver las preguntas a la terminal cuando nadie esté mirando**
+  desactivada, la solicitud espera en la oficina hasta que respondas o hasta el tiempo máximo del hook. La elección se
+  guarda en el servidor y se mantiene al reiniciar.
 - Funciona con el mismo bloqueo que la terminal: solo con Habblaud accesible únicamente desde la propia
   computadora y abierto por `http://localhost`. Compruébalo con `npm run mod:status` (o `npm run hooks:status`, en el
   método antiguo).
@@ -671,6 +676,27 @@ chip de la cuenta de Codex es hueco y lleva el sello **CODEX**.
   puede tardar un poco en irse después de que cierras la terminal.
 - Las conversaciones en la nube de ChatGPT (sin archivo en la computadora) no aparecen. `HABBLAUD_CODEX=0` desactiva
   Codex.
+
+### OpenCode
+
+Las sesiones de [OpenCode](https://opencode.ai) (2.0 o más nuevo: la TUI, `opencode run` y la app de escritorio, que
+hablan todas con el **servicio en segundo plano** de OpenCode) aparecen en la misma oficina: personaje en la sala del
+proyecto, actividad en vivo, tareas, subagentes (la herramienta `task`) y la cuenta **OpenCode** en la barra superior.
+
+- **Sin instalar nada:** Habblaud encuentra el servicio solo, por el archivo que OpenCode escribe en
+  `~/.local/state/opencode/service.json` (dirección y contraseña del servicio local), y lee todo del propio servicio, sin
+  tocar la base de datos de OpenCode. En **Docker**, `npm run docker:up` monta **solo ese archivo** (solo lectura) y el
+  contenedor habla con el servicio por `host.docker.internal`.
+- **Uso en la barra superior:** con **OpenCode Go**, las barras de 5 horas y de la semana (y el mes en la ayuda). Sin Go,
+  la tarjeta dice **sin límites informados** (nunca 0%).
+- **Enviar mensajes:** la caja **Enviar mensaje** pone el texto en la cola de la sesión a través del servicio.
+- **Aprobar permisos:** las solicitudes de OpenCode aparecen en la tarjeta del agente: **Aprobar**, **Rechazar** y
+  **permitir siempre** con la regla que OpenCode guardaría. Sus preguntas también se responden ahí. La solicitud sigue en OpenCode: vale la primera respuesta.
+- **Terminal:** **Abrir terminal** muestra la conversación de la sesión en vivo, con la caja de mensaje abajo.
+- **Sesiones fijas:** `HABBLAUD_OPENCODE_PINNED` (ids `ses_...` separados por comas) las deja en la oficina mientras el
+  servicio esté activo.
+- Todavía no: el historial y la terminal interactiva. Los agentes de OpenCode no suben a Habblaud
+  World. `HABBLAUD_OPENCODE=0` apaga OpenCode.
 
 ### GitHub en la oficina
 
@@ -791,6 +817,7 @@ Todo funciona sin configurar nada. Si necesitas ajustar algo, usa variables de e
 | `HABBLAUD_PTY` | desactivada | `1` activa la terminal interactiva (abrir, tomar el control y cerrar sesiones de Claude Code desde la oficina; solo con acceso local y fuera de Docker) y **Nuevo agente** (también en Docker, a través de `npm run codex:bridge`). Lee el aviso en [Privacidad y seguridad](#privacidad-y-seguridad). |
 | `HABBLAUD_CLAUDE_BIN` | `claude` del PATH | El ejecutable de Claude Code que ejecutan la terminal interactiva y Nuevo agente. |
 | `HABBLAUD_REMOTE_ALLOW` | `permissions` | Lo que puede hacer el [celular con inicio de sesión](#celular-con-inicio-de-sesión-y-https-aprobar-solicitudes): `permissions`, `messages`, `terminal`, `spawn` (separados por comas) o `none`. La fiesta en la oficina funciona siempre, menos con `none`. Las demás `HABBLAUD_REMOTE_*` las escribe `npm run remote:setup`. |
+| `HABBLAUD_REMOTE_TRUST_PROXY` | — | IPs (separadas por comas) del proxy inverso delante del puerto remoto, para que el freno del inicio de sesión use `X-Forwarded-For` y la cookie lleve `Secure` con `X-Forwarded-Proto: https`. Sin ella ambos encabezados se ignoran. |
 | `HABBLAUD_MENSAGENS` | activados (con la terminal) | `0` desactiva solo los mensajes desde la oficina (el cuadro en la terminal y en los detalles del agente). |
 | `HABBLAUD_PRESENTATIONS` | activado | `0` apaga la [TV de las salas](#tv-de-las-salas-presentaciones) (presentaciones). |
 | `HABBLAUD_MESSAGE_IMAGES` | activado | `0` desactiva las imágenes en los [mensajes desde la oficina](#enviar-mensajes). |

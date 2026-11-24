@@ -10,7 +10,94 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Alterado
+
+- **Página abre mais leve:** o player do timelapse e a janela do Habblaud World passam a ser baixados só quando usados
+  (o timelapse na primeira abertura; a janela do World quando o servidor do mundo está configurado ou ao abri-la).
+  O pedaço principal do client (`app-*.js`) caiu de 718.878 bytes (236.489 com gzip) para 524.796 (173.383 com gzip); somando todo o JS carregado
+  na abertura da página, de 827.223 (277.827 com gzip) para 769.582 (261.916 com gzip).
+- **Escritório:** móveis do prédio e árvores, cercas e flores do lado de fora são pintados uma vez e reaproveitados
+  a cada quadro, em vez de desenhados um a um: 72,8% → 58,5% de CPU a 30 quadros por segundo (medido com GPU).
+- **Escritório mais leve:** sem ninguém andando na tela, o escritório desenha a 10 quadros por segundo (5 sem foco)
+  em vez de 30; volta a 30 (15 sem foco) assim que alguém anda, uma sala é montada ou cai confete. Arrastar, dar zoom
+  e a câmera seguindo alguém continuam no ritmo do monitor. Medido com GPU: 79% → 35% de CPU.
+
 ### Adicionado
+
+- **Economia de energia** (Configurações › Escritório, desligada por padrão): desenha o escritório sempre a 10
+  quadros por segundo (5 com a janela sem foco), mesmo com gente andando, e o cenário em resolução menor e ampliado;
+  nomes e balões continuam na resolução da tela, nítidos, e com o zoom bem afastado (visão geral no celular) o cenário
+  ganha resolução para a pixel art não virar borrão. Mexer o mouse, a câmera ou o teclado volta ao ritmo do monitor
+  na hora. Medido com GPU, 1440×900 em densidade 2: 81% → 35% de CPU (15% sem foco).
+
+- **O cartão “Pede permissão” explica em linguagem simples o que o agente quer fazer, com um selo de risco.** Quem
+  aprova pelo escritório nem sempre é programador: em vez de só `Write`, o caminho e o diff, o cartão agora diz “O
+  agente quer gravar o arquivo estado.json no caderno interno do Claude Code (~/.claude).”, “O agente quer copiar o
+  arquivo consultas.sql para a pasta docs do projeto salesshark.” ou “O agente quer apagar a pasta dist e tudo que
+  há dentro, na pasta do projeto loja.”, com **Risco baixo** (verde), **médio** (amarelo) ou **alto** (vermelho) e o
+  porquê. Caminhos viram lugares (“na pasta do projeto X”, “na sua Área de Trabalho”, “nas suas chaves e senhas”);
+  num comando com várias partes vale o pior risco; a `description` do agente aparece junto (“O agente descreve: …”,
+  com o verbo traduzido quando vem em inglês). Tudo por regras, sem modelo de IA (`shared/explain.ts`), também nos
+  pedidos do Codex e no modo demonstração. O nome técnico, o caminho e o comando/diff ficam recolhidos em
+  **Detalhes técnicos** (um clique abre); nas perguntas do `AskUserQuestion` nada muda, e um servidor antigo (sem a
+  explicação) mostra o cartão como antes.
+- **`HABBLAUD_EXPLICAR=claude` (opcional, desligado por padrão):** o servidor pede ao Claude Code deste computador
+  (`claude -p --model haiku`, sem hooks, plugins nem sessão gravada; tempo limite de 8 s; cache por pedido) uma frase
+  melhor para cada pedido, por cima da explicação automática. Usa o plano de quem roda o Habblaud; o risco nunca
+  muda.
+
+- **Notificações no aparelho, com o Habblaud fechado (Web Push).** Em **Configurações › Notificações no aparelho**,
+  "Ligar notificações neste aparelho" inscreve o aparelho no serviço de push do próprio navegador (no iPhone, a web
+  app adicionada à tela de início) e "Enviar teste" manda uma notificação na hora. O corpo vai cifrado de ponta a
+  ponta (RFC 8291): nem o servidor de push lê o texto. A seção só aparece onde o navegador tem `PushManager`.
+  Desligado com `HABBLAUD_PUSH=0`; a identidade do servidor sai de `HABBLAUD_PUSH_VAPID_PRIVATE` ou de
+  `<dados>/push-vapid.json`, gerado na primeira vez a 600. Sem dependência nova: só `node:crypto`.
+- **O aviso "alguém precisa de você" chega ao celular com o Habblaud fechado.** O tipo `needs-you` dispara nos avisos
+  de nível `alert` do escritório e a notificação leva só o nome do agente ("Ana 2 precisa de você"): o motivo, a sala
+  e o caminho da pasta nunca saem do escritório, porque a notificação aparece na tela de bloqueio. Tocar nela abre o
+  Habblaud com o agente selecionado. No máximo um aviso por agente a cada minuto e dez a cada dez minutos; acima
+  disso vai um único "{N} avisos novos no Habblaud" e o resto fica na página. Cada tipo liga-se e desliga-se por
+  aparelho, nas Configurações.
+- **As notificações só vão para servidores de push conhecidos, e um endpoint mal formado é recusado.** O endereço
+  da inscrição passa a ser validado com `new URL` e o anfitrião tem de ser de um serviço de push de navegador
+  (`.push.apple.com`, `fcm.googleapis.com`, `.push.services.mozilla.com`; alargável com `HABBLAUD_PUSH_HOSTS`).
+  O envio não segue redirecionamentos e desiste depois de dez segundos. Há teto de dez aparelhos inscritos e de dez
+  pedidos de inscrição por minuto, e cada inscrição ou mudança de preferência deixa uma linha no log, sem o endereço
+  inteiro e sem as chaves.
+- **Cada tipo de aviso tem o seu teto.** Eram dez pushes por dez minutos no total, logo uma manhã de «alguém precisa
+  de você» engolia o aviso que se estava mesmo à espera. Agora o teto é por tipo, e o do processo (vinte por dez
+  minutos) fica só como travão. O resumo «{N} avisos novos» volta a sair na transbordagem seguinte da mesma janela, e
+  vai só aos aparelhos que têm ligado algum dos tipos que transbordaram.
+- **A seção de notificações diz por que não dá, em vez de desaparecer.** Quando o navegador não tem Push API, a app
+  não foi aberta pelo ícone da tela de início ou a sessão expirou, a seção continua visível com o motivo e uma linha
+  técnica (service worker, `display-mode`, `navigator.standalone`, código de `/api/push/status`).
+
+
+- **Perguntas e pedidos podem esperar no escritório sem limite de "ninguém olhando".** Configurações › Pedidos de
+  permissão ganhou **Devolver perguntas ao terminal quando ninguém estiver vendo** (ligada, como hoje). Desligada, uma
+  espera longa não volta ao terminal depois de 5 minutos sem página que possa responder: o pedido fica no escritório
+  até você responder ou até o tempo máximo do hook (`HABBLAUD_PERMISSION_TIMEOUT`, até 24 h). A escolha é salva no
+  servidor (`~/.habblaud/permissions-settings.json`; no Docker, `/data/permissions-settings.json`) e vale depois de
+  reiniciar, no computador e no celular com login.
+- **OpenCode no escritório.** As sessões do OpenCode (2.0 ou mais novo: TUI, `opencode run` e o app desktop) entram no
+  escritório como as do Claude Code e do Codex: personagem na sala do projeto, atividade ao vivo (lendo, editando,
+  rodando comandos...), tarefas, subagentes da ferramenta `task`, mão levantada quando ele pede permissão ou faz uma
+  pergunta, e "Concluiu em X" no fim de cada turno. A barra do topo ganha o cartão da conta **OpenCode** com o uso do
+  **OpenCode Go** (5 horas e semana nas barras, o mês na dica); sem o Go, o cartão diz "sem limites informados" em vez
+  de inventar um 0%. A caixa **Mandar mensagem** também funciona com eles: o texto entra na fila da sessão e vira o
+  próximo prompt quando o OpenCode terminar o que está fazendo. Não precisa instalar nada: o Habblaud fala com o serviço
+  em segundo plano do OpenCode (o endereço e a senha estão em `~/.local/state/opencode/service.json`), sem tocar no
+  banco de dados dele; no Docker, o `npm run docker:up` monta só esse arquivo, somente leitura. `HABBLAUD_OPENCODE=0`
+  desliga. Os agentes do OpenCode não sobem para o Habblaud World (o protocolo dele ainda não conhece o OpenCode), e o
+  histórico do Habblaud ainda não mostra as sessões encerradas dele.
+- **OpenCode: aprovar permissões, responder perguntas, terminal e sessões fixas.** Os pedidos de permissão do OpenCode
+  aparecem no cartão do agente como os do Claude Code: **Aprovar**, **Recusar** (com motivo) e **sempre permitir** com a
+  regra que o próprio OpenCode guardaria (ex.: `bash(git push *)`), sem precisar abrir um terminal. As perguntas dele
+  (a ferramenta `question`) também se respondem por ali, com as opções e o "Outro"; recusar cancela a pergunta. O pedido
+  continua no OpenCode (TUI ou app) e vale a primeira resposta. **Abrir terminal** passa a funcionar nos agentes do OpenCode: a conversa da sessão
+  ao vivo (pedidos, raciocínio, ferramentas e resultados), lida do serviço dele, com a caixa de mensagem embaixo, também
+  no Docker e no celular. E `HABBLAUD_OPENCODE_PINNED` (ids `ses_...` separados por vírgula) deixa sessões fixas no
+  escritório o tempo todo com o serviço no ar, em vez de saírem depois de 30 minutos paradas.
 
 - **Festa no escritório.** Um botão novo na barra do topo (e `POST /api/party`) chama todos os personagens presentes,
   principais e subagentes, para comemorar juntos numa sala: por padrão a que tem mais agentes, por 2 minutos (`room` e
@@ -41,6 +128,57 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **A conversa reaberta volta com o mesmo visual.** A aparência sorteada vinha do processo, então `claude --resume`
+  (ou fechar e abrir a sessão) trazia o nome de volta, mas com outra cara. Agora a aparência fica guardada com o nome
+  da sessão em `names.json`, inclusive a escolhida no editor, que não se perde quando outro agente da sala salva o dele.
+- **A sessão não perde mais o próprio nome por causa de um personagem que ela mesma salvou noutra sala** (ex.: num
+  worktree apagado depois). No reinício, o nome dela contava como ocupado e ela voltava com outro nome e sem o visual;
+  agora o personagem de uma sala nunca bloqueia a dona dele, e um nome trocado por conflito mantém a aparência.
+
+- **Cache de sprites sem engasgo ao encher:** quando um cache de sprites (personagens, móveis, pisos, avatares) enche,
+  ele agora descarta só a quarta parte mais antiga, em vez de zerar tudo e regenerar a tela toda de uma vez.
+- **Terminal mais leve, principalmente no celular.** O escritório continuava sendo desenhado atrás do terminal em tela
+  cheia e ocupava o aparelho inteiro: a digitação chegava com atraso. Agora, com o terminal aberto numa tela de até
+  600 px, o desenho do escritório para e volta quando o terminal fecha; nas telas maiores, onde o escritório segue à
+  vista, ele é desenhado a 30 quadros por segundo enquanto o terminal está aberto. A rolagem do histórico ficou
+  fluida: o terminal não usa mais `backdrop-filter` (com o fundo quase opaco o desfoque não aparecia e era refeito a
+  cada quadro) e, no celular, fica opaco e sem sombra.
+
+- **Entregas: o cache dos arquivos deixou de expulsar tudo depois de algumas leituras.** Duas leituras do mesmo
+  arquivo ao mesmo tempo (duas abas, ou a mesma imagem em dois lugares) somavam os bytes dele duas vezes no total do
+  cache, sem devolver os da entrada substituída. O total passava do teto de 80 MB sem o cache ter 80 MB e, a partir
+  daí, cada leitura nova descartava os arquivos antigos: a mesma entrega era lida do disco (ou pedida ao auxiliar do
+  computador) outra vez a cada clique. Agora quem remove uma entrada devolve os bytes dela, e o total é sempre a soma
+  real do que está guardado.
+
+- **Login remoto: uma tentativa errada de qualquer pessoa não tranca mais o dono:** o freio de senha era um só para
+  todos, então quem mandasse uma senha errada por janela mantinha o dono sem poder entrar (com o acesso remoto
+  exposto, qualquer um consegue isso). Agora o freio é por origem (o endereço do cliente; IPv6 por /64), com um teto global de
+  60 erros por 5 min para chute distribuído e no máximo 4 conferências de senha ao mesmo tempo. Atrás de um proxy
+  reverso, `HABBLAUD_REMOTE_TRUST_PROXY=<ip do proxy>` faz o Habblaud ler o endereço real no `X-Forwarded-For` (só vindo
+  desse proxy) e marca o cookie de sessão como `Secure` quando o proxy fala HTTPS (`X-Forwarded-Proto: https`). Sem a
+  variável, nada muda além do freio por origem.
+
+- **Segurança:** pedidos que mudam o escritório (mensagens, novo agente, permissões) só são aceitos da própria
+  página do Habblaud; uma página aberta em outra porta do computador não passa mais.
+
+- **Entregas: o filtro de segredos só conhecia nomes em inglês e deixava passar nomes em português.** Arquivos como
+  `credenciais.csv`, `chaves.csv`, `senhas.pdf`, `cofre.kdbx.png` e `api_key.txt` eram mostrados e lidos do disco
+  como se não fossem segredo. Agora o nome é lido em português e em inglês, antes da extensão de ver, e esses
+  arquivos ficam de fora.
+
+- **Entregas do OpenCode aparecem na caixa de entrada.** A lista de entregas só lia os transcripts do Claude Code e do
+  Codex; como o OpenCode guarda as conversas no serviço dele, o trabalho concluído por essas sessões nunca chegava à
+  caixa. Agora a fonte do OpenCode também fornece as sessões recentes e as mensagens delas ao índice de entregas —
+  inclusive as sessões que já saíram do escritório. Cada entrega sai com o selo do OpenCode e o nome do agente, como as
+  das outras ferramentas.
+- **Entregas: todas as contas aparecem e o painel filtra por agente.** As sessões do OpenCode vinham no fim da lista e
+  eram cortadas quando havia 30 ou mais sessões das outras ferramentas: agora o limite de 30 vale só para elas, e as
+  sessões do OpenCode entram sempre. Uma sessão muito ativa também podia ocupar as 60 vagas da caixa: cada sessão passa
+  a contribuir com no máximo 10 entregas (as mais recentes) e o total subiu para 150. O painel ganhou **Filtrar por
+  agente** (com "Todos os agentes" por padrão) no computador e no celular, com a escolha salva no navegador; o selo de
+  novidades e os avisos continuam contando a lista inteira.
+- **Celular: tocar na TV das salas volta a abrir a apresentação.** O toque abria a janela no `pointerup`, mas o `click` sintético que o navegador mandava em seguida caía no fundo do `<dialog>` e a fechava na hora — parecia que a TV piscava e sumia. Agora o clique no fundo só desliga depois de uma folga curta desde a abertura; o botão de desligar e o `Esc` continuam imediatos.
 - **Celular: a barra do topo voltou a caber numa linha, com o menu "⋮".** Com o botão da festa, os botões da direita
   passaram do espaço e a barra quebrou em duas linhas, cortando os cartões de uso. Até 600 px de largura, os botões
   agora ficam num menu: o "⋮" no canto direito abre a lista de todos (Visão geral, Meu dia, festa, Entregas, Novo

@@ -1,9 +1,12 @@
 // Rotas de /api/permissions: a trava (desligado / Host que não é local), o guard (JSON e Origin), os
 // status (400, 404, 405, 409), o fluxo completo (registrar → esperar → decidir), o long-poll sem decisão,
 // a resposta imediata sem páginas abertas, as perguntas do AskUserQuestion e os pedidos fictícios do demo.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { OfficeSnapshot, PermissionRequestInfo } from '../../shared/types';
 import { setQuiet } from '../log';
+import { tempDir } from '../test/fixtures';
 import { hookJson, MAIN, request, servePermissions, type PermissionServer } from '../test/permission-server';
 import { waitMs } from './http';
 
@@ -25,6 +28,8 @@ describe('trava local', () => {
       ['GET', '/api/permissions/x/wait'],
       ['POST', '/api/permissions/x/decision'],
       ['GET', '/api/permissions/x'],
+      ['GET', '/api/permissions/settings'],
+      ['POST', '/api/permissions/settings'],
     ]) {
       const r = await request(srv.base, path, { method, body: method === 'POST' ? {} : undefined });
       expect(r.status, `${method} ${path}`).toBe(403);
@@ -43,6 +48,7 @@ describe('trava local', () => {
     }
     // Host local com porta e localhost: valem.
     expect((await request(srv.base, '/api/permissions', { method: 'POST', body: hookJson(), headers: { Host: `localhost:${srv.port}` } })).status).toBe(201);
+    expect((await request(srv.base, '/api/permissions/settings', { headers: { Host: 'habblaud.lan' } })).status).toBe(403);
   });
 
   it('guard: POST sem JSON (415) ou de outra origem (403) é barrado antes da rota', async () => {
@@ -55,6 +61,44 @@ describe('trava local', () => {
     // Da própria página (Origin local): passa.
     const ok = await request(srv.base, `/api/permissions/${id}/decision`, { method: 'POST', body: { behavior: 'allow' }, headers: { Origin: srv.base } });
     expect(ok.status).toBe(200);
+    const formSetting = await request(srv.base, '/api/permissions/settings', { method: 'POST', body: 'x=1', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+    expect(formSetting.status).toBe(415);
+  });
+});
+
+describe('opção de devolução ao terminal', () => {
+  it('GET lê o padrão, POST muda e o valor novo chega no snapshot', async () => {
+    srv = await servePermissions();
+    expect((await request(srv.base, '/api/permissions/settings')).json).toEqual({ returnWhenUnwatched: true });
+    const post = await request(srv.base, '/api/permissions/settings', { method: 'POST', body: { returnWhenUnwatched: false } });
+    expect(post).toMatchObject({ status: 200, json: { ok: true, returnWhenUnwatched: false } });
+    expect((await request(srv.base, '/api/permissions/settings')).json).toEqual({ returnWhenUnwatched: false });
+    expect(srv.settings.get().returnWhenUnwatched).toBe(false);
+    await new Promise((ok) => setTimeout(ok, 50));
+    const snap = (await request(srv.base, '/api/snapshot')).json as OfficeSnapshot;
+    expect(snap.meta.permissions).toEqual({ returnWhenUnwatched: false });
+  });
+
+  it('persiste no arquivo do servidor e vale depois de reiniciar', async () => {
+    const tmp = tempDir();
+    try {
+      const file = join(tmp.dir, 'permissions-settings.json');
+      srv = await servePermissions({ settingsFile: file });
+      expect((await request(srv.base, '/api/permissions/settings', { method: 'POST', body: { returnWhenUnwatched: false } })).status).toBe(200);
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ returnWhenUnwatched: false });
+      await srv.close();
+      srv = await servePermissions({ settingsFile: file });
+      expect((await request(srv.base, '/api/permissions/settings')).json).toEqual({ returnWhenUnwatched: false });
+    } finally {
+      tmp.cleanup();
+    }
+  });
+
+  it('corpo inválido: 400; método errado: 405', async () => {
+    srv = await servePermissions();
+    expect((await request(srv.base, '/api/permissions/settings', { method: 'POST', body: {} })).status).toBe(400);
+    expect((await request(srv.base, '/api/permissions/settings', { method: 'POST', body: '{quebrado' })).status).toBe(400);
+    expect((await request(srv.base, '/api/permissions/settings', { method: 'DELETE', body: {} })).status).toBe(405);
   });
 });
 

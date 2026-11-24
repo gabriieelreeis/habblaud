@@ -288,7 +288,7 @@ credenciais › Instalar certificado › Certificado de CA), conferindo a impres
   em `https://<computador>.<tailnet>.ts.net`; ponha esse nome em `HABBLAUD_ALLOWED_HOSTS`. Aponte sempre para a porta
   remota, nunca para a 4747 (que não pede login).
 - **Sessão:** 30 dias; trocar a senha (rodar o setup de novo) derruba todas, e **Configurações › Acesso pelo celular ›
-  Sair** encerra a daquele aparelho. Depois de 5 senhas erradas seguidas, cada nova tentativa espera de 1 s até 5 min.
+  Sair** encerra a daquele aparelho. Depois de 5 senhas erradas seguidas do mesmo endereço, cada nova tentativa desse endereço espera de 1 s até 5 min; as senhas erradas de um endereço nunca atrasam outro, e cerca de 60 senhas erradas em 5 min somando todos os endereços pausam todo login até a janela acabar.
 - **IP mudou?** O `docker:up` refaz o certificado do servidor quando falta o IP novo ou quando faltam 30 dias para
   vencer, com a mesma CA (o celular segue confiando); o servidor troca o certificado sem reiniciar.
 - **Desligar:** `npm run remote:setup -- --off` e `npm run docker:up`.
@@ -296,6 +296,8 @@ credenciais › Instalar certificado › Certificado de CA), conferindo a impres
 Sem HTTPS a porta remota não sobe; `HABBLAUD_REMOTE_INSECURE_HTTP=1` força HTTP puro (senha e cookie à vista na
 rede). No modo Node: `HABBLAUD_REMOTE_PORT` e `HABBLAUD_REMOTE_HOST` (padrão `0.0.0.0:4748`) e
 `HABBLAUD_REMOTE_TLS_DIR` (padrão `~/.habblaud/remote-tls/server`).
+
+Atrás de um proxy reverso (ex.: Traefik terminando o HTTPS), `HABBLAUD_REMOTE_TRUST_PROXY=<ip>[,<ip>...]` (os IPs exatos do proxy **como o Habblaud os vê**; sem máscara) faz o freio do login usar o endereço real do cliente (`X-Forwarded-For`) e o cookie ganhar `Secure` quando o proxy fala HTTPS (`X-Forwarded-Proto: https`). Sem a variável, os dois cabeçalhos são ignorados, porque qualquer cliente os escreve, e todos os clientes atrás do proxy dividem o mesmo freio.
 
 ### Atualizar
 
@@ -509,8 +511,8 @@ chega à mesa; pular para outro ponto mostra todos já no lugar.
 Com o plugin de permissões instalado (`npm run mod:install`, que o instala junto com o mod; no Claude Code anterior
 ao 2.1.287, `npm run hooks:install`), quando um agente pede permissão — rodar um comando, editar um arquivo, abrir
 uma página — o pedido aparece no escritório: o personagem levanta a mão, um aviso com **Responder**
-surge na tela e, nos detalhes do agente, o cartão **Pede permissão** mostra o comando (ou o diff da edição) com os
-botões:
+surge na tela e, nos detalhes do agente, o cartão **Pede permissão** explica em linguagem simples o que o agente quer
+fazer e onde, com um selo de risco, e mostra os botões:
 
 - **Aprovar** — e, quando o Claude Code sugere, **Aprovar e não perguntar de novo** (a mesma regra que o terminal
   ofereceria, por exemplo `Bash(npm test:*)` neste projeto);
@@ -519,6 +521,32 @@ botões:
 
 O diálogo continua aparecendo no terminal ao mesmo tempo, e vale o que você responder primeiro: respondeu no
 terminal, o pedido some do escritório sozinho. O contador **precisam de você** (e a tecla `P`) leva até cada pedido.
+
+**Entender o que se aprova.** Quem usa o escritório nem sempre é programador, então o cartão traduz o pedido para
+palavras do dia a dia, sem modelo de IA (só regras, em `shared/explain.ts`): “O agente quer gravar o arquivo
+estado.json no caderno interno do Claude Code (~/.claude).”, “O agente quer copiar o arquivo consultas.sql para a
+pasta docs do projeto salesshark.”, “O agente quer apagar a pasta dist e tudo que há dentro, na pasta do projeto
+loja.”. Caminhos viram lugares (“na pasta do projeto X”, “na sua Área de Trabalho”, “nas suas chaves e senhas”), e
+um selo colorido diz o risco de aprovar:
+
+- **Risco baixo** (verde): ler; gravar ou editar dentro do projeto da sessão ou nas pastas internas do Claude Code,
+  do Codex e do Habblaud; rodar testes, build, lint e scripts do projeto.
+- **Risco médio** (amarelo): comando que cria ou altera fora do projeto, instalar pacote, `git commit`/`push`/`pull`,
+  acesso à internet, nuvem, encerrar programas, ferramentas MCP que mudam algo.
+- **Risco alto** (vermelho): apagar (`rm`, `git reset --hard`, `git clean`, force push, `DROP`/`DELETE`), `sudo`,
+  mandar mensagem ou e-mail, dinheiro, mexer em chaves e senhas (`~/.ssh`, `.env`, credenciais), baixar e executar
+  da internet.
+
+Num comando com várias partes vale o pior risco. A `description` que o agente manda junto com o comando aparece
+também (“O agente descreve: …”, com o verbo traduzido quando vem em inglês). O nome técnico da ferramenta, o caminho
+e o comando ou diff continuam no cartão, recolhidos em **Detalhes técnicos** (um clique abre). Nas perguntas do
+`AskUserQuestion` nada muda.
+
+Opcional: com `HABBLAUD_EXPLICAR=claude` no ambiente do servidor, o Habblaud pede ao Claude Code deste computador
+(`claude -p --model haiku`, sem hooks, plugins nem sessão gravada) uma frase melhor para cada pedido, por cima da
+explicação automática. Isso **usa o seu plano** (uma chamada curta por pedido, com cache), leva alguns segundos e o
+risco nunca muda: o modelo só reescreve o texto; sem resposta em 8 s fica a explicação automática. Desligado por
+padrão.
 
 **Perguntas do agente** (`AskUserQuestion`) também: o cartão de perguntas mostra cada pergunta com as
 opções e as descrições, como o terminal mostraria. Escolha uma opção (ou várias, quando a pergunta deixa) ou escreva
@@ -534,7 +562,10 @@ terminal** deixa a pergunta lá. A resposta chega ao agente como se você tivess
   `--port`, a porta). Em **subagentes em segundo plano** o Claude Code só mostra o diálogo no terminal depois que o
   hook termina: responda pelo escritório ou use **Responder no terminal**. Numa espera maior que 5 minutos, se nenhuma
   página que responda ficar aberta por 5 minutos (e nenhum [celular com login](#celular-com-login-e-https-aprovando-pedidos)
-  estiver configurado para responder), o pedido volta ao terminal.
+  estiver configurado para responder), o pedido volta ao terminal. Essa devolução por "ninguém olhando" pode ser
+  desligada em **Configurações › Pedidos de permissão**: com **Devolver perguntas ao terminal quando ninguém estiver
+  vendo** desligada, o pedido fica esperando no escritório até você responder ou até o tempo máximo do hook. A escolha
+  fica salva no servidor e vale depois de reiniciar.
 - Funciona com a mesma trava do terminal: só com o Habblaud acessível apenas pelo próprio
   computador e aberto por `http://localhost`. Confira com `npm run mod:status` (ou `npm run hooks:status`, no jeito
   antigo). Também funciona pelo [celular com login](#celular-com-login-e-https-aprovando-pedidos) (lá, é o padrão).
@@ -634,6 +665,38 @@ chip da conta do Codex é vazado e leva o selo **CODEX**.
   carregadas até um minuto depois de ficarem ociosas e sem ninguém olhando; por isso o personagem pode demorar um
   pouco para ir embora depois que você fecha o terminal.
 - Conversas da nuvem do ChatGPT (sem arquivo no computador) não aparecem. `HABBLAUD_CODEX=0` desliga o Codex.
+
+### OpenCode
+
+As sessões do [OpenCode](https://opencode.ai) (2.0 ou mais novo: a TUI, o `opencode run` e o app desktop, que falam
+todos com o **serviço em segundo plano** do OpenCode) aparecem no mesmo escritório: personagem na sala do projeto,
+atividade ao vivo, tarefas, subagentes (a ferramenta `task`) e a conta **OpenCode** na barra do topo. O chip da conta
+do OpenCode é vazado, de cantos redondos, com o selo **OPENCODE**.
+
+- **Sem instalar nada:** o Habblaud acha o serviço sozinho pelo arquivo que o OpenCode grava em
+  `~/.local/state/opencode/service.json` (endereço e senha do serviço local) e lê tudo do próprio serviço — sessões,
+  mensagens, eventos ao vivo e limites de uso —, sem tocar no banco de dados do OpenCode. Com o Habblaud no **Docker**,
+  o `npm run docker:up` monta **só esse arquivo** (somente leitura) e o container fala com o serviço pelo
+  `host.docker.internal`.
+- **Quem fica no escritório:** a sessão que está rodando, esperando você (uma permissão ou uma pergunta) ou que teve
+  atividade nos últimos 30 minutos. A sessão de um subagente aparece enquanto trabalha e entrega ao terminar. As
+  **sessões fixas** (`HABBLAUD_OPENCODE_PINNED`: ids `ses_...` separados por vírgula) ficam no escritório o tempo todo
+  com o serviço no ar, paradas ou não, como um colega fixo.
+- **Uso na barra do topo:** com o **OpenCode Go**, as barras de 5 horas e da semana (e o mês na dica), lidas do serviço
+  a cada minuto. Sem o Go, o cartão diz **sem limites informados** (nunca 0%): o limite próprio dos modelos grátis o
+  OpenCode não mostra; havendo um orçamento em dólares no workspace, ele aparece no lugar.
+- **Mandar mensagens:** a caixa **Mandar mensagem** põe o texto na fila da sessão pelo serviço (vira o próximo prompt
+  quando o OpenCode terminar o que está fazendo) — no modo Node e no Docker.
+- **Aprovar permissões:** os pedidos de permissão do OpenCode aparecem no cartão do agente como os do Claude Code:
+  **Aprovar**, **Recusar** (com motivo, se quiser) e **sempre permitir** com a regra que o próprio OpenCode guardaria
+  (ex.: `bash(git push *)`). As perguntas dele (a ferramenta `question`) também se respondem ali, com as opções e o
+  "Outro"; recusar cancela a pergunta. O pedido continua no OpenCode (TUI ou app): vale a primeira resposta. Sem "interromper" e
+  sem "Responder no terminal".
+- **Terminal:** **Abrir terminal** mostra a conversa da sessão ao vivo (pedidos, raciocínio, ferramentas e resultados),
+  lida do serviço a cada 1,5 s, com a caixa de mensagem embaixo — no modo Node, no Docker e no celular.
+- Ainda não: o histórico das sessões encerradas e o terminal interativo. Os agentes do OpenCode não sobem para o Habblaud World (o protocolo dele ainda não conhece o OpenCode).
+  `HABBLAUD_OPENCODE=0` desliga o OpenCode; `HABBLAUD_OPENCODE_URL` (+ `HABBLAUD_OPENCODE_PASSWORD`) aponta para um
+  serviço em outro lugar.
 
 ### GitHub no escritório
 
@@ -752,6 +815,7 @@ Tudo funciona sem configurar nada. Se precisar ajustar, use variáveis de ambien
 | `HABBLAUD_PTY` | desligado | `1` liga o terminal interativo (abrir, assumir e encerrar sessões do Claude Code pelo escritório; só com acesso local e fora do Docker) e o **Novo agente** (também no Docker, pelo `npm run codex:bridge`). Leia o aviso em [Privacidade e segurança](#privacidade-e-segurança). |
 | `HABBLAUD_CLAUDE_BIN` | `claude` do PATH | O executável do Claude Code que o terminal interativo e o Novo agente rodam. |
 | `HABBLAUD_REMOTE_ALLOW` | `permissions` | O que o [celular com login](#celular-com-login-e-https-aprovando-pedidos) pode fazer: `permissions`, `messages`, `terminal`, `spawn` (separados por vírgula) ou `none`. A festa no escritório vale sempre, menos com `none`. Os outros `HABBLAUD_REMOTE_*` são escritos pelo `npm run remote:setup`. |
+| `HABBLAUD_REMOTE_TRUST_PROXY` | — | IPs (separados por vírgula) do proxy reverso na frente da porta remota, para o freio do login usar o `X-Forwarded-For` e o cookie levar `Secure` com `X-Forwarded-Proto: https`. Sem ela os dois cabeçalhos são ignorados. |
 | `HABBLAUD_MENSAGENS` | ligado (com o terminal) | `0` desliga só as mensagens pelo escritório (a caixa no terminal e nos detalhes do agente). |
 | `HABBLAUD_PRESENTATIONS` | ligado | `0` desliga a [TV das salas](#tv-das-salas-apresentações) (apresentações). |
 | `HABBLAUD_MESSAGE_IMAGES` | ligado | `0` desliga as imagens nas [mensagens pelo escritório](#mandar-mensagens). |
@@ -759,6 +823,7 @@ Tudo funciona sem configurar nada. Se precisar ajustar, use variáveis de ambien
 | `HABBLAUD_CODEX_DIRS` | detecção automática | Pastas do Codex, separadas por vírgula (no lugar de `~/.codex*` e `CODEX_HOME`). |
 | `HABBLAUD_CODEX_BIN` | `codex` do PATH (no Windows, `codex.exe`) | O binário do Codex que entrega as mensagens (`codex queue`), no modo Node ou no `npm run codex:bridge`. |
 | `HABBLAUD_UPDATE_CHECK` | ligado | `0` desliga a verificação de versão nova (uma consulta às releases do repositório no GitHub a cada 6 h). |
+| `HABBLAUD_EXPLICAR` | desligado | `claude` refina a explicação em linguagem simples dos pedidos de permissão com o Claude Code deste computador (`claude -p --model haiku`; usa o seu plano). Ver [Responder pelo escritório](#responder-pelo-escritório). |
 | `HABBLAUD_LANG` | idioma do sistema (menos inglês), senão `pt-BR` | Idioma dos textos montados pelo servidor (atividades, avisos, logs): `pt-BR`, `en`, `es` ou `fr`. A interface segue o navegador ou a escolha em Configurações › Idioma. Ver [Idiomas](#idiomas). |
 | `HABBLAUD_ACCOUNTS` | — | JSON para personalizar nome, letra ou cor, casado pelo nome da pasta da conta. Ex.: `[{"id":".claude-conta2","name":"Trabalho","short":"T","color":"#5cc97b"}]`. |
 

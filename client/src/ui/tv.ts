@@ -25,6 +25,26 @@ const PLAY_ICON = pixelIcon(['##......', '####....', '######..', '########', '##
 const PAUSE_ICON = pixelIcon(['##..##', '##..##', '##..##', '##..##', '##..##', '##..##', '##..##']);
 const LIST_ICON = pixelIcon(['##.######', '.........', '##.######', '.........', '##.######', '.........', '##.######']);
 
+/**
+ * No celular, o toque na TV abre o `<dialog>` no `pointerup` e o navegador ainda dispara o `click`
+ * sintético em seguida — com o alvo já no fundo da janela aberta. Sem uma folga, esse clique fecha
+ * a TV no mesmo instante em que ela abriu (parece que pisca e some).
+ */
+const BACKDROP_GRACE_MS = 400;
+
+export class BackdropCloseGuard {
+  private openedAt: number | null = null;
+
+  /** Chamado logo antes de `showModal()`, também quando a TV já estava aberta. */
+  arm(now = Date.now()): void {
+    this.openedAt = now;
+  }
+
+  shouldClose(target: EventTarget | null, dialog: EventTarget | null, now = Date.now()): boolean {
+    return target === dialog && this.openedAt !== null && now - this.openedAt > BACKDROP_GRACE_MS;
+  }
+}
+
 type View =
   | { kind: 'loading' }
   | { kind: 'list' }
@@ -135,6 +155,7 @@ export class TvPlayer implements UiComponent {
   private sending = false;
   private status = '';
   private touch: { x: number; y: number } | null = null;
+  private readonly backdrop = new BackdropCloseGuard();
 
   constructor(private readonly ctx: UiContext) {
     this.roomLabel = h('span', { class: 'ui-tv__room' });
@@ -168,7 +189,7 @@ export class TvPlayer implements UiComponent {
     this.el = h('dialog', { class: 'ui-tv', attrs: { 'aria-label': tr('TV da sala') } }, set, h('div', { class: 'ui-tv__stand', attrs: { 'aria-hidden': 'true' } })) as HTMLDialogElement;
     this.el.addEventListener('close', () => this.onClose());
     this.el.addEventListener('click', (e) => {
-      if (e.target === this.el) this.el.close();
+      if (this.backdrop.shouldClose(e.target, this.el)) this.el.close();
     });
     this.el.addEventListener('keydown', (e) => this.onKey(e));
     this.screen.addEventListener('click', (e) => this.onScreenClick(e));
@@ -205,6 +226,7 @@ export class TvPlayer implements UiComponent {
     this.chosen = null;
     this.status = '';
     this.show({ kind: 'loading' });
+    this.backdrop.arm();
     if (!this.el.open) this.el.showModal();
     try {
       await this.loadList();
