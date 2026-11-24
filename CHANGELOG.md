@@ -14,8 +14,17 @@ do meio (0.**3**.0).
 
 - **Escritório:** móveis do prédio e árvores, cercas e flores do lado de fora são pintados uma vez e reaproveitados
   a cada quadro, em vez de desenhados um a um: 72,8% → 58,5% de CPU a 30 quadros por segundo (medido com GPU).
+- **Escritório mais leve:** sem ninguém andando na tela, o escritório desenha a 10 quadros por segundo (5 sem foco)
+  em vez de 30; volta a 30 (15 sem foco) assim que alguém anda, uma sala é montada ou cai confete. Arrastar, dar zoom
+  e a câmera seguindo alguém continuam no ritmo do monitor. Medido com GPU: 79% → 35% de CPU.
 
 ### Adicionado
+
+- **Economia de energia** (Configurações › Escritório, desligada por padrão): desenha o escritório sempre a 10
+  quadros por segundo (5 com a janela sem foco), mesmo com gente andando, e o cenário em resolução menor e ampliado;
+  nomes e balões continuam na resolução da tela, nítidos, e com o zoom bem afastado (visão geral no celular) o cenário
+  ganha resolução para a pixel art não virar borrão. Mexer o mouse, a câmera ou o teclado volta ao ritmo do monitor
+  na hora. Medido com GPU, 1440×900 em densidade 2: 81% → 35% de CPU (15% sem foco).
 
 - **O cartão “Pede permissão” explica em linguagem simples o que o agente quer fazer, com um selo de risco.** Quem
   aprova pelo escritório nem sempre é programador: em vez de só `Write`, o caminho e o diff, o cartão agora diz “O
