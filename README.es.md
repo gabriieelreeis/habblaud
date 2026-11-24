@@ -405,7 +405,7 @@ sesión, y un **chip de color con la letra de la cuenta** (C, D…).
 - **Feed:** las últimas actividades de toda la oficina.
 - **Configuración (⚙):** nombres, globos, cuánto pasean los ociosos, ciclo día/noche, sonidos, notificaciones del
   navegador, modo demostración y **Acerca de** (versión en uso y versión nueva). **Ayuda (?):** leyenda completa y
-  atajos.
+  atajos. Con el push activado, el dispositivo con la ventana del Habblaud enfocada no recibe avisos; **Enviar prueba** sigue funcionando.
 - **Mi día (📊):** adónde se fue el tiempo del día (consulta [Mi día](#mi-día)). **Timelapse** e **Historial** (los
   relojes de la barra superior): consulta [Timelapse del día](#timelapse-del-día) y [Terminal](#terminal).
 

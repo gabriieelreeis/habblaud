@@ -408,7 +408,7 @@ une **pastille colorée avec la lettre du compte** (C, D…).
 - **Fil d'activité :** les dernières activités de tout le bureau.
 - **Réglages (⚙) :** noms, bulles, à quel point les inactifs se promènent, cycle jour/nuit, sons, notifications du
   navigateur, mode démonstration et **À propos** (version utilisée et nouvelle version). **Aide (?) :** légende complète
-  et raccourcis.
+  et raccourcis. Avec le push activé, l'appareil dont la fenêtre du Habblaud est au premier plan ne reçoit aucune notification ; **Envoyer un test** fonctionne toujours.
 - **Ma journée (📊) :** où est passé le temps de la journée (voir [Ma journée](#ma-journée)). **Timelapse** et
   **Historique** (les horloges de la barre du haut) : voir [Timelapse de la journée](#timelapse-de-la-journée) et [Terminal](#terminal).
 

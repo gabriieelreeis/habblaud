@@ -309,3 +309,40 @@ describe('POST /api/push/state', () => {
     expect((await request(off.base, '/api/push/state', { method: 'POST', headers: LOCAL, body: { endpoint: ENDPOINT } })).status).toBe(404);
   });
 });
+
+describe('POST /api/push/focus', () => {
+  it('marks and clears focus without spending the subscription write budget', async () => {
+    const s = await up();
+    await request(s.base, '/api/push/subscribe', { method: 'POST', headers: LOCAL, body: { endpoint: ENDPOINT, keys: KEYS } });
+    for (let i = 0; i < WRITES_PER_MIN + 2; i++) {
+      const r = await request(s.base, '/api/push/focus', { method: 'POST', headers: LOCAL, body: { endpoint: ENDPOINT, focused: true, tab: `tab-${i % 3}` } });
+      expect(r.status).toBe(200);
+    }
+    expect(s.push!.focusedCount).toBe(1);
+    const off = await request(s.base, '/api/push/focus', { method: 'POST', headers: LOCAL, body: { endpoint: ENDPOINT, focused: false, tab: 'tab-0' } });
+    expect(off.status).toBe(200);
+    expect(s.push!.focusedCount).toBe(1);
+    await request(s.base, '/api/push/focus', { method: 'POST', headers: LOCAL, body: { endpoint: ENDPOINT, focused: false, tab: 'tab-1' } });
+    await request(s.base, '/api/push/focus', { method: 'POST', headers: LOCAL, body: { endpoint: ENDPOINT, focused: false, tab: 'tab-2' } });
+    expect(s.push!.focusedCount).toBe(0);
+  });
+
+  it('validates the body', async () => {
+    const s = await up();
+    for (const body of [
+      { endpoint: ENDPOINT, tab: 'tab-1' },
+      { endpoint: ENDPOINT, focused: true },
+      { endpoint: ENDPOINT, focused: true, tab: '' },
+      { endpoint: ENDPOINT, focused: true, tab: 'x'.repeat(65) },
+      { endpoint: 'https://example.com/x', focused: true, tab: 'tab-1' },
+    ]) {
+      expect((await request(s.base, '/api/push/focus', { method: 'POST', headers: LOCAL, body })).status).toBe(400);
+    }
+  });
+
+  it('only POST, and only from this origin', async () => {
+    const s = await up();
+    expect((await request(s.base, '/api/push/focus', { headers: LOCAL })).status).toBe(405);
+    expect((await request(s.base, '/api/push/focus', { method: 'POST', headers: { Host: 'habblaud.lan' }, body: { endpoint: ENDPOINT, focused: true, tab: 't' } })).status).toBe(403);
+  });
+});
