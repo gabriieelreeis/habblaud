@@ -3867,4 +3867,9 @@ export const ES: Readonly<Record<string, string>> = {
   "O esforço só muda em sessões do Claude Code": "El esfuerzo solo cambia en sesiones de Claude Code",
   "Enviando {0}…": "Enviando {0}…",
   "{0} enviado; entra quando a sessão estiver livre": "{0} enviado; se aplica cuando la sesión esté libre",
+
+  "Enviar agora": "Enviar ahora",
+  "Entra no turno em andamento, sem esperar o agente terminar; em Claude Code sem suporte, entra na fila": "Entra en el turno en curso, sin esperar a que el agente termine; en Claude Code sin soporte, entra en la cola",
+  "O envio imediato só funciona em sessões do Claude Code": "El envío inmediato solo funciona en sesiones de Claude Code",
+  "\"sendNow\" precisa ser verdadeiro ou falso": "\"sendNow\" debe ser verdadero o falso",
 };

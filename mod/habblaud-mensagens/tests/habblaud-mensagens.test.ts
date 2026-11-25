@@ -5,7 +5,7 @@
 // command.run (o comando de barra com nome e argumentos).
 import type { HttpResponse, On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
-import { accountIdOf, ackBody, configDirOf, inboxBody, MAX_REASON, normalizePath, parseInbox, portOf, reasonText, slashCommandOf, type InboxMessage } from '../hooks/register'
+import { accountIdOf, ackBody, configDirOf, inboxBody, MAX_REASON, normalizePath, parseInbox, portOf, promptArgsOf, reasonText, slashCommandOf, type InboxMessage } from '../hooks/register'
 
 const NOW = Date.parse('2026-10-09T12:00:00Z')
 const PORT = '4850'
@@ -152,6 +152,28 @@ describe('rodadas', () => {
         { id: 'c3', ok: true },
         { id: 'c4', ok: true },
       ],
+    })
+  })
+
+  test('sendNow entra no turno em andamento; sem a flag entra na fila; comando de barra segue por $.command.run', async ($, on) => {
+    const w = world(on, {
+      inbox: batches([
+        { id: 'n1', text: 'responde agora', sendNow: true },
+        { id: 'n2', text: 'pode esperar' },
+        { id: 'n3', text: '/effort high', sendNow: true },
+      ]),
+    })
+    await $.session.start(START)
+    await w.clock.advance(2_000)
+    const origin = { kind: 'plugin', name: 'habblaud-mensagens', asUser: true }
+    expect(w.submits).toEqual([
+      { text: 'responde agora', origin },
+      { text: 'pode esperar', origin },
+    ])
+    expect(w.commands).toEqual([{ command: 'effort', args: 'high' }])
+    expect(w.acks()[0]?.body).toEqual({
+      session: 'sess-1',
+      results: [{ id: 'n1', ok: true }, { id: 'n2', ok: true }, { id: 'n3', ok: true }],
     })
   })
 
@@ -307,6 +329,11 @@ describe('funções puras', () => {
       { id: 'a', text: ' x\n' },
       { id: 'b', text: '' },
     ])
+    expect(parseInbox(JSON.stringify({ messages: [{ id: 'n', text: 'oi', sendNow: true }, { id: 'f', text: 'oi', sendNow: false }, { id: 'x', text: 'oi', sendNow: 'sim' }] }))).toEqual([
+      { id: 'n', text: 'oi', sendNow: true },
+      { id: 'f', text: 'oi' },
+      { id: 'x', text: 'oi' },
+    ])
   })
 
   test('corpos das duas rotas', () => {
@@ -330,6 +357,11 @@ describe('funções puras', () => {
     const long = reasonText('x'.repeat(2_000), 'padrão')
     expect(long.length).toBe(MAX_REASON)
     expect(long.endsWith('…')).toBe(true)
+  })
+
+  test('argumentos do prompt: sendNow pede o turno em andamento; sem ele, entra na fila', () => {
+    expect(promptArgsOf('oi', false)).toEqual({ text: 'oi', asUser: true })
+    expect(promptArgsOf('oi', true)).toEqual({ text: 'oi', asUser: true, wait: false })
   })
 
   test('comando de barra: nome e argumentos, sem confundir texto comum', () => {

@@ -120,6 +120,7 @@ describe('MessageRegistry: mandar', () => {
     for (const bad of [null, {}, { agentId: MAIN }, { text: 'oi' }, { agentId: MAIN, text: 3 }]) expect(() => registry.send(bad)).toThrow(/agentId/);
     expect(() => registry.send({ agentId: MAIN, text: '  \n ' })).toThrow(/vazia/);
     expect(() => registry.send({ agentId: MAIN, text: 'x'.repeat(20_001) })).toThrow(/20\.000/);
+    for (const sendNow of ['sim', 1, null, {}]) expect(() => registry.send({ agentId: MAIN, text: 'oi', sendNow })).toThrow(/sendNow/);
     expect('message' in registry.send({ agentId: MAIN, text: 'x'.repeat(20_000) })).toBe(true);
   });
 
@@ -144,6 +145,22 @@ describe('MessageRegistry: mandar', () => {
     registry.ack({ session: SESSION, results: [{ id: batch[0].id, ok: true }] });
     expect(registry.get(ids[0])?.status).toBe('delivered');
     expect('message' in registry.send({ agentId: MAIN, text: 'agora cabe' })).toBe(true);
+  });
+
+  it('sendNow: a flag vai na resposta e na caixa de entrada; sem ela ou com false, fica de fora', () => {
+    const { registry } = setup();
+    registry.inbox({ session: SESSION });
+    const now = sent(registry.send({ agentId: MAIN, text: 'agora', sendNow: true }));
+    const later = sent(registry.send({ agentId: MAIN, text: 'depois' }));
+    const explicit = sent(registry.send({ agentId: MAIN, text: 'outro dia', sendNow: false }));
+    expect(registry.get(now)).toMatchObject({ sendNow: true });
+    expect(registry.get(later)!.sendNow).toBeUndefined();
+    expect(registry.get(explicit)!.sendNow).toBeUndefined();
+    expect(registry.inbox({ session: SESSION })).toEqual([
+      { id: now, text: 'agora', sendNow: true },
+      { id: later, text: 'depois' },
+      { id: explicit, text: 'outro dia' },
+    ]);
   });
 
   it('a resposta (201/GET) é só a situação: o texto nunca sai para a página', () => {

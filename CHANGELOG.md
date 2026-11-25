@@ -28,6 +28,12 @@ do meio (0.**3**.0).
   `high`, `xhigh` e `max`. Escolher um nível manda `/effort <nível>` pela fila de mensagens do escritório, como comando
   (não como texto); a linha mostra o envio e diz que o comando entra quando a sessão estiver livre. A linha aparece em
   todos os agentes e fica desativada nos que não são do Claude Code, onde o esforço não muda.
+- **Enviar agora:** a caixa de mensagem ganhou a opção **Enviar agora**: o texto entra no turno em andamento do
+  Claude Code, sem esperar o agente terminar o que está fazendo. Ela aparece só nas sessões do Claude Code (no Codex
+  e no OpenCode fica desativada) e a dica avisa que, num Claude Code sem suporte a esse campo, a mensagem entra na
+  fila como antes. Comandos de barra continuam indo pela fila. O plugin `habblaud-mensagens` subiu para **1.0.5**
+  (marketplace `habblaud`, versão do pacote e os três `plugin.json` também); em sessões que já tinham o plugin, rode
+  `claude plugin update habblaud-mensagens@habblaud` e `/reload-plugins` depois.
 - **Áudio nas perguntas e nas entregas:** quando a pergunta (ou a descrição de uma opção) do `AskUserQuestion` traz
   `Ouça: <caminho absoluto>` de um arquivo WAV, MP3, OGG/Opus ou M4A de até 25 MB, o cartão mostra um player com o
   nome do arquivo acima das opções. Nas entregas, anexos de áudio também tocam com um toque. Vale nas mesmas regras
@@ -210,6 +216,12 @@ do meio (0.**3**.0).
   notificação do navegador), a linha do tempo da gaveta, os Detalhes da atividade e o terminal também trazem a
   pergunta inteira, sem “…”, no computador e no celular (um texto muito longo rola dentro do aviso). A linha curta do
   feed diz só “Pergunta para você”, em vez de cortar a pergunta no meio.
+
+## [1.0.5] - 2026-11-25
+
+- Versão dos plugins e do marketplace alinhada em **1.0.5** para levar às sessões que já tinham o plugin instalado a
+  entrega imediata das mensagens e os comandos de barra. As mudanças visíveis desta rodada estão em **Não lançado**
+  acima.
 
 ## [1.0.3] - 2026-10-16
 

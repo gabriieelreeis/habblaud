@@ -164,6 +164,12 @@ describe('MessageRegistry: Codex no modo Node (o servidor roda o codex queue)', 
     expect(registry.inbox({ session: THREAD, account: '.codex' })).toEqual([]);
   });
 
+  it('sendNow não se aplica ao Codex: a flag não aparece na mensagem', () => {
+    const { registry } = setup({ run: () => Promise.resolve({ ok: true }) });
+    const id = sent(registry.send({ agentId: MAIN, text: 'oi', sendNow: true }));
+    expect(registry.get(id)!.sendNow).toBeUndefined();
+  });
+
   it.runIf(FAKE_CODEX_RUNS)('falha do codex queue vira failed com a 1ª linha do stderr', async () => {
     const { office, registry } = setup({ run: runner() });
     office.addMain({ id: `.codex:${GONE_THREAD}`, provider: 'codex', account: '.codex', sessionId: GONE_THREAD, cwd: '/p/x', role: 'Agente principal', startedAt: 0, status: 'idle' });

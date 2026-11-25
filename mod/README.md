@@ -93,6 +93,10 @@ esquema do `hooks.json`).
   chamada que executa o comando de verdade. Com a sessão no meio de um turno, o Claude Code guarda o envio e o roda
   num turno só dele quando o atual terminar. Um hook que recuse (`{drop}`) ou uma exceção viram falha, com o motivo,
   na página.
+- **Envio agora:** a opção **Enviar agora** na caixa manda a mensagem com `sendNow`; o plugin chama `$.prompt.submit`
+  com `wait: false` para ela entrar no turno em andamento. A opção só aparece para o Claude Code; Codex e OpenCode
+  continuam na fila deles. Num Claude Code sem esse campo na API, o host o ignora e a mensagem entra na fila como
+  antes — a dica da opção avisa. Comandos de barra seguem por `$.command.run`.
 - **Confirmação:** um `POST /api/mod/inbox/ack` com o resultado de cada uma (`{session, results: [{id, ok, error?}]}`).
   A espera por mensagem é de no máximo 2 s: passou disso, a sessão está ocupada, a mensagem está na fila dela e
   conta como entregue (as seguintes vão em seguida, na ordem). Assim uma rodada nunca passa de uns poucos segundos e
