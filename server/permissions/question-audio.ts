@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { AskQuestion } from '../../shared/types';
-import { checkFile, fileType } from '../deliveries/files';
+import { fileType, normalizedPath, pathProblem } from '../deliveries/files';
 
 const AUDIO_PATH_RE = /(?:[a-z]:\/|\/)[^\s"'`<>(){}|,;]*?\.(?:wav|mp3|ogg|opus|m4a)(?![a-z0-9])/gi;
 const AUDIO_TTL_MS = 30 * 60_000;
@@ -15,7 +15,6 @@ export interface QuestionAudioEntry {
 }
 
 export interface QuestionAudioOptions {
-  check?: typeof checkFile;
   id?: () => string;
   now?: () => number;
   ttlMs?: number;
@@ -29,15 +28,14 @@ export class QuestionAudioStore {
   constructor(private readonly opts: QuestionAudioOptions = {}) {}
 
   add(path: string): QuestionAudioEntry | undefined {
-    const checked = (this.opts.check ?? checkFile)(path);
-    if ('error' in checked) return undefined;
+    if (pathProblem(path)) return undefined;
     const type = fileType(path);
     if (!type?.type.startsWith('audio/')) return undefined;
     this.expire();
     const now = this.opts.now?.() ?? Date.now();
     const entry: QuestionAudioEntry = {
       id: this.opts.id?.() ?? randomBytes(9).toString('base64url'),
-      path: checked.path,
+      path: normalizedPath(path),
       type: type.type,
       name: path.split(/[\\/]/).filter(Boolean).pop()?.slice(0, 120) ?? 'audio',
       createdAt: now,
