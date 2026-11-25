@@ -133,7 +133,10 @@ do meio (0.**3**.0).
   escrita, a única montagem gravável. `HABBLAUD_MESSAGE_IMAGES=0` desliga.
 - **Comandos do Claude Code pela caixa de mensagem:** digitar `/effort high`, `/model opus` ou outro comando de barra
   no terminal do Habblaud agora executa o comando na sessão, como aconteceria digitando no terminal do Claude Code.
-  Antes o texto começado por `/` era recusado pelo Claude Code e aparecia como não entregue.
+  Antes o texto começado por `/` era recusado pelo Claude Code e aparecia como não entregue. O plugin
+  `habblaud-mensagens` subiu para **1.0.4** (marketplace `habblaud` também) para que as sessões que já tinham o plugin
+  instalado recebam a correção com `claude plugin update habblaud-mensagens@habblaud` — sessões abertas precisam de
+  `/reload-plugins` depois.
 
 ### Corrigido
 
