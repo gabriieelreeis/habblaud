@@ -597,6 +597,9 @@ son tour et attend la demande suivante, donner une nouvelle instruction ou corri
   `high`, `xhigh` ou `max` par la même file. Il apparaît pour tous les agents, mais ne change l'effort que dans les
   sessions Claude Code ; il reste désactivé ailleurs. La commande passant par la file, elle s'applique quand la
   session est libre.
+- **Envoyer maintenant :** cochez cette option dans la zone pour que le texte s'ajoute au tour en cours de Claude Code,
+  sans attendre la fin de l'agent. Elle n'apparaît que dans les sessions Claude Code ; Codex et OpenCode gardent leur
+  file. L'astuce prévient que sur un Claude Code sans prise en charge, le message retourne dans la file.
 - Le plugin tourne dans chaque session et ne parle à Habblaud que sur `127.0.0.1`. Sans lui (ou dans une session ouverte
   avant l'installation : utilisez `/reload-plugins`), l'astuce d'installation apparaît à la place de la zone. Les
   sous-agents ne reçoivent pas de messages.

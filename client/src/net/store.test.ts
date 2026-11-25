@@ -295,6 +295,23 @@ describe('fonte alternativa (timelapse)', () => {
   });
 });
 
+describe('mensagens pelo escritório (store)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('sendMessage: sendNow vai no corpo só quando pedido, junto com as imagens', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ id: 'm1', status: 'queued' }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const store = new OfficeStore();
+    const body = (i: number) => JSON.parse(String(fetchMock.mock.calls[i][1].body));
+    expect(await store.sendMessage('.claude:1', 'oi')).toMatchObject({ message: { id: 'm1' } });
+    expect(body(0)).toEqual({ agentId: '.claude:1', text: 'oi' });
+    await store.sendMessage('.claude:1', 'agora', [], true);
+    expect(body(1)).toEqual({ agentId: '.claude:1', text: 'agora', sendNow: true });
+    await store.sendMessage('.claude:1', 'com imagem', ['img-1'], true);
+    expect(body(2)).toEqual({ agentId: '.claude:1', text: 'com imagem', images: ['img-1'], sendNow: true });
+  });
+});
+
 describe('personagem do projeto (store)', () => {
   afterEach(() => vi.unstubAllGlobals());
 

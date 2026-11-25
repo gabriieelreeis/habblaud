@@ -181,7 +181,7 @@ describe('trava das rotas', () => {
 describe('rotas', () => {
   it('400 (corpo inválido, vazio, longo demais), 404 (agente ou mensagem desconhecidos), 405, 409 e 429', async () => {
     srv = await serveMessages();
-    for (const body of [{}, '{quebrado', { agentId: MAIN }, { agentId: MAIN, text: '   ' }, { agentId: MAIN, text: 'x'.repeat(20_001) }]) {
+    for (const body of [{}, '{quebrado', { agentId: MAIN }, { agentId: MAIN, text: '   ' }, { agentId: MAIN, text: 'x'.repeat(20_001) }, { agentId: MAIN, text: 'oi', sendNow: 'sim' }]) {
       const r = await post(srv, '/api/messages', body);
       expect(r.status, JSON.stringify(body).slice(0, 40)).toBe(400);
       expect(r.json).toMatchObject({ error: expect.any(String) });
@@ -239,6 +239,20 @@ describe('rotas', () => {
     expect(done.updatedAt).toBeGreaterThanOrEqual(done.createdAt);
     const agent = (await snapshot(srv)).agents.find((a) => a.id === MAIN)!;
     expect(agent.recent.at(-1)).toMatchObject({ icon: '✉️', text: 'Mensagem pelo Habblaud', detail: 'Agora roda os testes de novo e me diga o que falhou' });
+  });
+
+  it('sendNow: a flag chega ao plugin na caixa de entrada e volta na consulta; sem ela, fica de fora', async () => {
+    srv = await serveMessages();
+    await post(srv, '/api/mod/inbox', { session: SESSION, account: 'acc' });
+    const created = await post(srv, '/api/messages', { agentId: MAIN, text: 'entra agora', sendNow: true });
+    expect(created.status).toBe(201);
+    const msg = created.json as OutboxMessage;
+    expect(msg.sendNow).toBe(true);
+    expect(((await request(srv.base, `/api/messages/${encodeURIComponent(msg.id)}`)).json as OutboxMessage).sendNow).toBe(true);
+    const inbox = (await post(srv, '/api/mod/inbox', { session: SESSION, account: 'acc' })).json as { messages: InboxMessage[] };
+    expect(inbox.messages).toEqual([{ id: msg.id, text: 'entra agora', sendNow: true }]);
+    const plain = await post(srv, '/api/messages', { agentId: MAIN, text: 'normal' });
+    expect((plain.json as OutboxMessage).sendNow).toBeUndefined();
   });
 
   it('a sessão some (sem rodadas): canMessage volta a falso e a mensagem na fila falha no prazo', async () => {

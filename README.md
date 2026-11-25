@@ -568,6 +568,9 @@ and waits for the next request, give a new instruction or correct its course, wi
   `xhigh` or `max` through the same queue. It shows for every agent, but only changes the effort in Claude Code
   sessions; it stays disabled in the others. Since the command goes through the queue, it takes effect when the
   session is free.
+- **Send now:** check that option in the box to have the text enter the current Claude Code turn, without waiting for
+  the agent to finish. It only shows in Claude Code sessions; Codex and OpenCode keep using their queue. The option's
+  hint warns that on a Claude Code without support, the message goes back into the queue.
 - The plugin runs inside each session and only talks to Habblaud at `127.0.0.1`. Without it (or in a session opened before
   the install: use `/reload-plugins`), an install hint shows up in place of the box. Subagents don't receive
   messages.

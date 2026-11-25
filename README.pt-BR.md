@@ -592,6 +592,9 @@ e espera o próximo pedido, dar uma instrução nova ou corrigir o rumo, sem pro
 - **Esforço:** na gaveta do agente, abaixo de **Modelo**, o seletor **Esforço** manda `/effort low`, `medium`, `high`,
   `xhigh` ou `max` pela mesma fila. Ele aparece para todos os agentes, mas só muda o esforço nas sessões do Claude Code;
   nos outros fica desativado. Como o comando vai pela fila, ele entra quando a sessão estiver livre.
+- **Enviar agora:** marque essa opção na caixa para o texto entrar no turno em andamento do Claude Code, sem esperar o
+  agente terminar. Ela só aparece nas sessões do Claude Code; no Codex e no OpenCode a entrega continua na fila. A dica
+  da opção avisa que, num Claude Code sem suporte, a mensagem volta para a fila.
 - O plugin roda dentro de cada sessão e só fala com o Habblaud em `127.0.0.1`. Sem ele (ou numa sessão aberta antes
   da instalação: use `/reload-plugins`), aparece a dica de instalação no lugar da caixa. Subagentes não recebem
   mensagens.

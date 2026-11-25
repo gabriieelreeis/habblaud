@@ -9,6 +9,8 @@
 //   trocou (/clear, /resume): cada mensagem vale só para a sessão em que foi mandada;
 // - põe a atividade "Mensagem pelo Habblaud" no agente quando a sessão confirma a entrega;
 // - simula a entrega para os agentes do demo (nada vai a uma sessão de verdade).
+// Uma mensagem pode pedir entrega imediata (`sendNow`): a flag vai ao plugin na caixa de entrada e ele a entrega no
+// turno em andamento quando a API do Claude Code aceitar; em versões antigas entra na fila como qualquer outra.
 // O texto vai à sessão exatamente como foi digitado (é do próprio usuário) e nunca sai nas respostas da página nem
 // no log; só a atividade do feed leva o começo dele, mascarado e cortado.
 //
@@ -180,14 +182,15 @@ function unavailableReason(a: AgentInfo, reachable: boolean): string | undefined
   return undefined;
 }
 
-/** Corpo de POST /api/messages: `{agentId, text}`. O texto não é alterado (nem aparado). */
-export function parseSend(raw: unknown): { agentId: string; text: string } {
+/** Corpo de POST /api/messages: `{agentId, text, sendNow?}`. O texto não é alterado (nem aparado). */
+export function parseSend(raw: unknown): { agentId: string; text: string; sendNow: boolean } {
   const r = rec(raw);
   const agentId = shortStr(r?.agentId, ID_MAX);
-  if (!r || !agentId || typeof r.text !== 'string') throw new InvalidRequest('esperado {agentId, text}');
+  if (!r || !agentId || typeof r.text !== 'string') throw new InvalidRequest('esperado {agentId, text, sendNow?}');
   if (!r.text.trim()) throw new InvalidRequest(tr('a mensagem está vazia'));
   if (r.text.length > MAX_TEXT) throw new InvalidRequest(tr('a mensagem passa de 20.000 caracteres'));
-  return { agentId, text: r.text };
+  if (r.sendNow !== undefined && typeof r.sendNow !== 'boolean') throw new InvalidRequest(tr('"sendNow" precisa ser verdadeiro ou falso'));
+  return { agentId, text: r.text, sendNow: r.sendNow === true };
 }
 
 /** Resultados de uma confirmação ({results: [{id, ok, error?}]}): os válidos, até ACK_MAX. */
@@ -288,7 +291,7 @@ export class MessageRegistry {
    * (too-many). Corpo inválido: lança InvalidRequest.
    */
   send(raw: unknown, opts: { images?: number } = {}): SendResult {
-    const { agentId, text } = parseSend(raw);
+    const { agentId, text, sendNow } = parseSend(raw);
     const real = this.opts.office.get(agentId);
     const demo = real ? undefined : this.opts.demoAgent?.(agentId);
     const agent = real ?? demo;
@@ -301,7 +304,14 @@ export class MessageRegistry {
 
     const now = this.now();
     const id = `m-${now.toString(36)}-${++this.seq}-${randomBytes(9).toString('base64url')}`;
-    const entry: Entry = { msg: { id, agentId, status: 'queued', createdAt: now, updatedAt: now }, text, activity: describeMessage(text, opts.images ?? 0), target: agent.sessionId };
+    // Só o plugin do Claude Code sabe entregar no turno em andamento; Codex e OpenCode seguem na fila deles.
+    const immediate = sendNow && (!real || (real.provider ?? 'claude') === 'claude');
+    const entry: Entry = {
+      msg: { id, agentId, status: 'queued', createdAt: now, updatedAt: now, ...(immediate ? { sendNow: true } : {}) },
+      text,
+      activity: describeMessage(text, opts.images ?? 0),
+      target: agent.sessionId,
+    };
     if (demo) entry.demo = true;
     else if (real?.provider === 'codex') entry.codex = true;
     else if (real?.provider === 'opencode') entry.opencode = true;
@@ -346,7 +356,7 @@ export class MessageRegistry {
       this.setStatus(e, 'sent', now);
       e.session = session;
       e.sentAt = now;
-      out.push({ id: e.msg.id, text: e.text });
+      out.push({ id: e.msg.id, text: e.text, ...(e.msg.sendNow ? { sendNow: true } : {}) });
     }
     return out;
   }

@@ -791,6 +791,8 @@ export interface OutboxMessage {
   createdAt: number;
   /** Última mudança de status. */
   updatedAt: number;
+  /** Entrega pedida no turno em andamento; em Claude Code sem suporte, entra na fila como sempre. */
+  sendNow?: boolean;
 }
 
 /** Estado do terminal interativo (OfficeSnapshot.meta.pty). */
@@ -822,4 +824,6 @@ export interface InboxMessage {
   id: string;
   /** O texto como foi digitado: o plugin o manda à sessão como se você o tivesse digitado. */
   text: string;
+  /** Pedido de entrega no turno em andamento (só no Claude Code; ausente = entra na fila). */
+  sendNow?: boolean;
 }

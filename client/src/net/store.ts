@@ -382,12 +382,14 @@ export class OfficeStore {
   /**
    * Manda uma mensagem a um agente (POST /api/messages): a mensagem criada (status `queued`) ou o erro do servidor
    * (agente que não recebe mensagens, fila cheia, acesso que não é local...). Sem conexão com o servidor: lança.
+   * `sendNow` pede a entrega no turno em andamento; em versões antigas do Claude Code a mensagem entra na fila.
    * No ?mock=1 a entrega é fictícia (o simulador põe a atividade no agente).
    */
-  async sendMessage(agentId: string, text: string, images: readonly string[] = []): Promise<{ message: OutboxMessage } | { error: string }> {
+  async sendMessage(agentId: string, text: string, images: readonly string[] = [], sendNow = false): Promise<{ message: OutboxMessage } | { error: string }> {
     if (this.mock) return this.mockSend(agentId, text);
-    // `images`: ids das imagens já enviadas (POST /api/messages/images); com elas o texto pode ir vazio
-    const payload = images.length ? { agentId, text, images } : { agentId, text };
+    // `images`: ids das imagens já enviadas (POST /api/messages/images); com elas o texto pode ir vazio.
+    // `sendNow`: entrega no turno em andamento, quando o Claude Code da sessão tiver essa API.
+    const payload = { agentId, text, ...(images.length ? { images } : {}), ...(sendNow ? { sendNow: true } : {}) };
     const res = await fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     let body: unknown;
     try {

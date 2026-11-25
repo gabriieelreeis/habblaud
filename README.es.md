@@ -598,6 +598,9 @@ ventana correcta.
   `high`, `xhigh` o `max` por la misma cola. Aparece para todos los agentes, pero solo cambia el esfuerzo en las
   sesiones de Claude Code; en las demás queda desactivado. Como el comando va por la cola, se aplica cuando la sesión
   está libre.
+- **Enviar ahora:** marca esa opción en el cuadro para que el texto entre en el turno en curso de Claude Code, sin
+  esperar a que el agente termine. Solo aparece en las sesiones de Claude Code; Codex y OpenCode siguen usando su cola.
+  La sugerencia avisa de que, en un Claude Code sin soporte, el mensaje vuelve a la cola.
 - El plugin se ejecuta dentro de cada sesión y solo habla con Habblaud en `127.0.0.1`. Sin él (o en una sesión abierta
   antes de la instalación: usa `/reload-plugins`), aparece la sugerencia de instalación en lugar del cuadro. Los
   subagentes no reciben mensajes.
