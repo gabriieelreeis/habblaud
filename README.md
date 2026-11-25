@@ -273,7 +273,7 @@ Install a certificate › CA certificate), checking the fingerprint the setup sh
   `none` (view only, no party). The party works with any list except `none`. The interactive terminal never works from
   the phone.
 - **Deliveries** (phone, with `terminal` allowed): the box button in the top bar lists what each agent finished, with
-  a summary and attachments (screenshots, PDFs, files it sent) that open with a tap.
+  a summary and attachments (screenshots, PDFs, files it sent, including audio) that open with a tap.
 - **New agent** (the **+** button): starts a Claude Code session in the background on the computer (`claude --bg`, in
   the chosen folder), which shows up in the office and receives messages and permission requests through Habblaud. In
   a folder Claude Code doesn't trust yet, it opens the Claude app's new-session screen filled in, and you press Enter
@@ -525,7 +525,10 @@ The dialog keeps showing in the terminal at the same time, and whichever answer 
 terminal, the request disappears from the office on its own. The **need you** counter (and the `P` key) takes you to each request.
 
 **The agent's questions** (`AskUserQuestion`) work too: the questions card shows each question with its
-options and descriptions, as the terminal would. Pick an option (or several, when the question allows it) or write
+options and descriptions, as the terminal would. If the question (or an option's description) contains
+`Ouça: <absolute path>` to an audio file (WAV, MP3, OGG/Opus or M4A, up to 25 MB), the card shows a player with the
+file name above the options; the audio comes from Habblaud itself and only works for that question. On the phone,
+`permissions` must be allowed to play it. Pick an option (or several, when the question allows it) or write
 your own in **Other**, and use **Reply**; **Deny…** tells the agent you don't want to answer, and **Answer in
 terminal** leaves the question there. The answer reaches the agent as if you had chosen it in the terminal.
 

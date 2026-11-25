@@ -13,6 +13,7 @@ import { NameStore } from '../model/names';
 import { Office } from '../model/office';
 import { createPermissionRoutes } from '../permissions/http';
 import { PermissionRegistry, type RegistryOptions } from '../permissions/registry';
+import { QuestionAudioStore } from '../permissions/question-audio';
 import { PermissionSettingsStore } from '../permissions/settings';
 import type { CodexLive } from '../sources/codex/live';
 import { tempDir } from './fixtures';
@@ -42,6 +43,7 @@ export async function servePermissions(
   let viewers = opts.viewers ?? 1;
   const settings = new PermissionSettingsStore(opts.settingsFile ?? null, () => office.markDirty());
   settings.load();
+  const questionAudio = new QuestionAudioStore();
   const late: { registry?: PermissionRegistry } = {};
   const office = new Office({
     names: new NameStore(null),
@@ -62,6 +64,7 @@ export async function servePermissions(
         returnWhenUnwatched: () => settings.get().returnWhenUnwatched,
         demoDecide: (id, d) => office.decideDemoPermission(id, d),
         demoDetail: (id) => office.demoPermission(id),
+        questionAudio,
         tickMs: 50,
         ...opts.registry,
       })
@@ -78,6 +81,7 @@ export async function servePermissions(
     inDocker: false,
     terminal: enabled,
     permissions: registry ? createPermissionRoutes(registry, settings) : undefined,
+    questionAudio,
     codexLive: opts.codexLive,
   });
   const guard = createRequestGuard({ allowedHosts: new Set(['habblaud.lan']) });

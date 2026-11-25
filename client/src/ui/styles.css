@@ -6639,6 +6639,25 @@ html.is-replay #world {
   clear: both;
 }
 
+.ui-perm-ask__audio {
+  clear: both;
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ui-perm-ask__audio-name {
+  font-size: 12px;
+  color: #fff3df;
+  overflow-wrap: anywhere;
+}
+
+.ui-perm-ask__player {
+  width: 100%;
+  max-width: 340px;
+  height: 34px;
+}
+
 .ui-perm-ask__opt {
   display: flex;
   align-items: flex-start;
@@ -9126,6 +9145,11 @@ html.is-replay #world {
   max-height: 100%;
   object-fit: contain;
   border-radius: 6px;
+}
+
+.ui-deliv-viewer__audio {
+  width: 100%;
+  max-width: 460px;
 }
 
 .ui-deliv-viewer__img {

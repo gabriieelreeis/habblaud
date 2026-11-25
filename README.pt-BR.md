@@ -271,7 +271,7 @@ credenciais › Instalar certificado › Certificado de CA), conferindo a impres
   vírgula, ou `none` (só ver, sem festa). A festa vale com qualquer lista, menos `none`. O terminal interativo nunca
   funciona pelo celular.
 - **Entregas** (celular, com `terminal` liberado): o botão da caixinha no topo lista o que cada agente terminou, com
-  resumo e anexos (prints, PDFs, arquivos que ele mandou) que abrem com um toque.
+  resumo e anexos (prints, PDFs, arquivos que ele mandou, inclusive áudio) que abrem com um toque.
 - **Novo agente** (botão **+**): começa uma sessão do Claude Code em segundo plano no computador (`claude --bg`, na
   pasta escolhida), que aparece no escritório e recebe mensagens e pedidos de permissão pelo Habblaud. Numa pasta que
   o Claude Code ainda não conhece, abre a tela de sessão nova do app do Claude preenchida, e você aperta Enter lá.
@@ -549,7 +549,10 @@ risco nunca muda: o modelo só reescreve o texto; sem resposta em 8 s fica a exp
 padrão.
 
 **Perguntas do agente** (`AskUserQuestion`) também: o cartão de perguntas mostra cada pergunta com as
-opções e as descrições, como o terminal mostraria. Escolha uma opção (ou várias, quando a pergunta deixa) ou escreva
+opções e as descrições, como o terminal mostraria. Se a pergunta (ou a descrição de uma opção) trouxer
+`Ouça: <caminho absoluto>` de um áudio (WAV, MP3, OGG/Opus ou M4A, até 25 MB), o cartão mostra um player com o nome
+do arquivo acima das opções; o áudio vem do próprio Habblaud e só vale para aquela pergunta. No celular, é preciso
+ter `permissions` liberado para ouvir. Escolha uma opção (ou várias, quando a pergunta deixa) ou escreva
 a sua em **Outro**, e use **Responder**; **Recusar…** diz ao agente que você não quer responder, e **Responder no
 terminal** deixa a pergunta lá. A resposta chega ao agente como se você tivesse escolhido no terminal.
 

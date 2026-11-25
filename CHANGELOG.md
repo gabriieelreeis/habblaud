@@ -24,6 +24,12 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- **Áudio nas perguntas e nas entregas:** quando a pergunta (ou a descrição de uma opção) do `AskUserQuestion` traz
+  `Ouça: <caminho absoluto>` de um arquivo WAV, MP3, OGG/Opus ou M4A de até 25 MB, o cartão mostra um player com o
+  nome do arquivo acima das opções. Nas entregas, anexos de áudio também tocam com um toque. Vale nas mesmas regras
+  dos outros arquivos que aparecem no escritório (nada com cara de segredo, só caminho absoluto) e o áudio fica
+  liberado só para aquela pergunta. No celular, é preciso ter `permissions` liberado; o arquivo vem do próprio
+  Habblaud, com o tipo certo e busca por faixa para tocar no Safari do iPhone.
 - **Economia de energia** (Configurações › Escritório, desligada por padrão): desenha o escritório sempre a 10
   quadros por segundo (5 com a janela sem foco), mesmo com gente andando, e o cenário em resolução menor e ampliado;
   nomes e balões continuam na resolução da tela, nítidos, e com o zoom bem afastado (visão geral no celular) o cenário

@@ -31,6 +31,7 @@ import { NEEDS_YOU, noticePush } from './push/notices';
 import { createPushRoutes } from './push/routes';
 import { createPushService } from './push/service';
 import { PermissionRegistry } from './permissions/registry';
+import { QuestionAudioStore } from './permissions/question-audio';
 import { PermissionSettingsStore } from './permissions/settings';
 import { codexAccountOf } from './codex/http';
 import { createCodexQueueRunner, findCodexBin } from './messages/codex';
@@ -268,6 +269,7 @@ if (explicar === 'claude') {
 const permissionSettings = new PermissionSettingsStore(join(config.dataDir, 'permissions-settings.json'), () => office.markDirty());
 permissionSettings.load();
 late.permissionSettings = permissionSettings;
+const questionAudio = new QuestionAudioStore();
 const permissions = config.terminal
   ? new PermissionRegistry({
       office,
@@ -282,6 +284,7 @@ const permissions = config.terminal
       demoDetail: (id) => office.demoPermission(id),
       home: () => config.home,
       refine: explainRefiner,
+      questionAudio,
     })
   : undefined;
 late.permissions = permissions;
@@ -448,6 +451,7 @@ const api = createApiHandler({
   sessions: history,
   timeline: createTimelineHandler({ dir: timelineDir, recording: !!timeline }),
   permissions: permissions ? createPermissionRoutes(permissions, permissionSettings) : undefined,
+  questionAudio,
   messages: messages ? createMessageRoutes(messages, messageImages) : undefined,
   messageImages: !!messages && !!messageImages,
   pty: ptys ? createPtyRoutes(ptys) : undefined,
