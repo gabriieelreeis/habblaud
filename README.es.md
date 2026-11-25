@@ -591,6 +591,9 @@ ventana correcta.
 - El cuadro muestra el estado: **en cola** (la sesión busca los mensajes cada 2 segundos), **entregado** o **no se
   entregó**, con el motivo. Con el agente ocupado, el mensaje espera y entra cuando termine su turno, como un prompt
   escrito con el agente trabajando.
+- En los agentes de Claude, los comandos de barra como `/effort high` o `/model opus` también funcionan aquí: el plugin los
+  envía como comando, no como texto, para que Claude los ejecute de verdad. Un comando desconocido aparece como
+  **no se entregó**, con el motivo.
 - El plugin se ejecuta dentro de cada sesión y solo habla con Habblaud en `127.0.0.1`. Sin él (o en una sesión abierta
   antes de la instalación: usa `/reload-plugins`), aparece la sugerencia de instalación en lugar del cuadro. Los
   subagentes no reciben mensajes.

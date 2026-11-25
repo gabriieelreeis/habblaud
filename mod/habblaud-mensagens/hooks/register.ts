@@ -9,9 +9,10 @@
 //    {session, account}. A pergunta também marca a presença da sessão: é ela que acende, no escritório, a caixa de
 //    mensagem deste agente. Fora do ar, ou respondendo qualquer coisa que não seja 2xx (403 = mensagens desligadas
 //    no Habblaud; 404 = uma versão sem a rota), passa a perguntar a cada 30 s até ele voltar.
-// 2. Cada mensagem, na ordem, vai para a sessão por `$.prompt.submit({ text, asUser: true })`: o modelo a lê como
-//    sua, sem o "The habblaud-mensagens plugin sent a message" (o registro da sessão ainda nomeia o plugin). O
-//    texto vai exatamente como chegou. `{drop}` (um hook recusou) ou exceção = falha, com o motivo.
+// 2. Cada mensagem, na ordem, entra na sessão: texto por `$.prompt.submit({ text, asUser: true })`, o modelo a lê
+//    como sua, sem o "The habblaud-mensagens plugin sent a message" (o registro ainda nomeia o plugin); comando
+//    de barra (ex.: `/effort high`) por `$.command.run({ command, args })`, que é a única chamada que o Claude
+//    Code aceita para comandos. O texto vai exatamente como chegou. `{drop}` ou exceção = falha, com o motivo.
 //    Com a sessão no meio de um turno, o Claude Code guarda o prompt até ela ficar livre e a chamada pode demorar a
 //    voltar: a espera por mensagem é de no máximo 2 s. Passou disso, a mensagem está na fila da sessão e conta
 //    como entregue, e as seguintes da mesma rodada vão em seguida, na ordem, sem esperar. Assim a rodada nunca
@@ -124,6 +125,12 @@ export function portOf(raw: string | undefined): number {
   return Number.isInteger(n) && n > 0 && n < 65_536 ? n : DEFAULT_PORT
 }
 
+/** Texto que começa com `/` é comando: `$.prompt.submit` recusa, então entra na sessão por `$.command.run`. */
+export function slashCommandOf(text: string): { command: string; args: string } | undefined {
+  const m = /^\/([a-zA-Z0-9_][a-zA-Z0-9._-]*)(?:\s+([\s\S]*))?$/.exec(text)
+  return m ? { command: m[1]!, args: m[2] ?? '' } : undefined
+}
+
 /** Corpo de POST /api/mod/inbox: a conta só quando se sabe qual é. */
 export function inboxBody(session: string, account: string | undefined): string {
   return JSON.stringify(account ? { session, account } : { session })
@@ -224,6 +231,11 @@ async function postJson($: EngineInterface, port: number, path: string, body: st
 /** Uma mensagem para a sessão, como se você a tivesse digitado. Nunca lança. */
 async function submitOne($: EngineInterface, text: string): Promise<Submitted> {
   try {
+    const cmd = slashCommandOf(text)
+    if (cmd) {
+      await $.command.run({ command: cmd.command, args: cmd.args })
+      return { ok: true }
+    }
     const r = await $.prompt.submit({ text, asUser: true })
     if (typeof r?.drop === 'string') return { ok: false, error: reasonText(r.drop, 'um hook da sessão recusou a mensagem') }
     return { ok: true }

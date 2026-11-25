@@ -590,6 +590,9 @@ son tour et attend la demande suivante, donner une nouvelle instruction ou corri
 - La zone indique l'état : **en file** (la session récupère les messages toutes les 2 secondes), **remis** ou **non
   remis**, avec la raison. Si l'agent est occupé, le message attend et entre quand il finit son tour, comme un
   prompt tapé pendant que l'agent travaille.
+- Avec les agents Claude, les commandes slash comme `/effort high` ou `/model opus` fonctionnent aussi ici : le plugin les
+  envoie comme commande, et non comme texte, pour que Claude les exécute vraiment. Une commande inconnue apparaît
+  comme **non remise**, avec la raison.
 - Le plugin tourne dans chaque session et ne parle à Habblaud que sur `127.0.0.1`. Sans lui (ou dans une session ouverte
   avant l'installation : utilisez `/reload-plugins`), l'astuce d'installation apparaît à la place de la zone. Les
   sous-agents ne reçoivent pas de messages.
