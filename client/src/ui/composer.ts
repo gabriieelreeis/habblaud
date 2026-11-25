@@ -250,6 +250,11 @@ export class MessageComposer {
     return mode.kind;
   }
 
+  /** A caixa está pronta para mandar mensagens ao agente aberto agora. */
+  get ready(): boolean {
+    return this.mode.kind === 'ready';
+  }
+
   // ---------------------------------------------------------------- internos
 
   private onKey(e: KeyboardEvent): void {

@@ -24,6 +24,10 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- **Seletor de esforço na gaveta do agente:** a linha **Esforço** fica logo abaixo de **Modelo**, com `low`, `medium`,
+  `high`, `xhigh` e `max`. Escolher um nível manda `/effort <nível>` pela fila de mensagens do escritório, como comando
+  (não como texto); a linha mostra o envio e diz que o comando entra quando a sessão estiver livre. A linha aparece em
+  todos os agentes e fica desativada nos que não são do Claude Code, onde o esforço não muda.
 - **Áudio nas perguntas e nas entregas:** quando a pergunta (ou a descrição de uma opção) do `AskUserQuestion` traz
   `Ouça: <caminho absoluto>` de um arquivo WAV, MP3, OGG/Opus ou M4A de até 25 MB, o cartão mostra um player com o
   nome do arquivo acima das opções. Nas entregas, anexos de áudio também tocam com um toque. Vale nas mesmas regras

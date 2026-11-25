@@ -3858,4 +3858,12 @@ export const EN: Readonly<Record<string, string>> = {
   "ÁUDIO": "AUDIO",
   "Ouça: {0}": "Listen: {0}",
   "áudio da pergunta desconhecido": "unknown question audio",
+
+  "Esforço": "Effort",
+  "Esforço do agente": "Agent effort",
+  "Trocar esforço…": "Change effort…",
+  "Muda o esforço da sessão com /effort": "Changes the session effort with /effort",
+  "O esforço só muda em sessões do Claude Code": "Effort can only be changed in Claude Code sessions",
+  "Enviando {0}…": "Sending {0}…",
+  "{0} enviado; entra quando a sessão estiver livre": "{0} sent; it takes effect when the session is free",
 };

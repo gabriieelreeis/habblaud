@@ -593,6 +593,10 @@ son tour et attend la demande suivante, donner une nouvelle instruction ou corri
 - Avec les agents Claude, les commandes slash comme `/effort high` ou `/model opus` fonctionnent aussi ici : le plugin les
   envoie comme commande, et non comme texte, pour que Claude les exécute vraiment. Une commande inconnue apparaît
   comme **non remise**, avec la raison.
+- **Effort :** dans les détails de l'agent, sous **Modèle**, le sélecteur **Effort** envoie `/effort low`, `medium`,
+  `high`, `xhigh` ou `max` par la même file. Il apparaît pour tous les agents, mais ne change l'effort que dans les
+  sessions Claude Code ; il reste désactivé ailleurs. La commande passant par la file, elle s'applique quand la
+  session est libre.
 - Le plugin tourne dans chaque session et ne parle à Habblaud que sur `127.0.0.1`. Sans lui (ou dans une session ouverte
   avant l'installation : utilisez `/reload-plugins`), l'astuce d'installation apparaît à la place de la zone. Les
   sous-agents ne reçoivent pas de messages.
