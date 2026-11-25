@@ -562,6 +562,8 @@ and waits for the next request, give a new instruction or correct its course, wi
 - The box shows the status: **queued** (the session fetches messages every 2 seconds), **delivered** or **not
   delivered**, with the reason. With the agent busy, the message waits and goes in when it finishes its turn, like a
   prompt typed while the agent is working.
+- In Claude agents, slash commands such as `/effort high` or `/model opus` work here too: the plugin sends them as a
+  command, not as text, so Claude actually runs them. An unknown command shows up as **not delivered**, with the reason.
 - The plugin runs inside each session and only talks to Habblaud at `127.0.0.1`. Without it (or in a session opened before
   the install: use `/reload-plugins`), an install hint shows up in place of the box. Subagents don't receive
   messages.

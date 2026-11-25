@@ -586,6 +586,9 @@ e espera o próximo pedido, dar uma instrução nova ou corrigir o rumo, sem pro
 - A caixa mostra a situação: **na fila** (a sessão busca as mensagens a cada 2 segundos), **entregue** ou **não
   entregue**, com o motivo. Com o agente ocupado, a mensagem espera e entra quando ele terminar o turno, como um
   prompt digitado com o agente trabalhando.
+- Nos agentes do Claude, comandos de barra como `/effort high` ou `/model opus` também entram por aqui: o plugin os manda
+  como comando, não como texto, e o Claude executa de verdade. Comando que a sessão não conhece aparece como
+  **não entregue**, com o motivo.
 - O plugin roda dentro de cada sessão e só fala com o Habblaud em `127.0.0.1`. Sem ele (ou numa sessão aberta antes
   da instalação: use `/reload-plugins`), aparece a dica de instalação no lugar da caixa. Subagentes não recebem
   mensagens.

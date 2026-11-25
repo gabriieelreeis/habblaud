@@ -131,6 +131,9 @@ do meio (0.**3**.0).
   mandar só a imagem, sem texto). O `npm run mod:install` pergunta antes de liberar a leitura só dessa pasta sem pedir
   permissão (`--imagens`/`--sem-imagens` respondem sem perguntar); no Docker, o `npm run docker:up` monta essa pasta com
   escrita, a única montagem gravável. `HABBLAUD_MESSAGE_IMAGES=0` desliga.
+- **Comandos do Claude Code pela caixa de mensagem:** digitar `/effort high`, `/model opus` ou outro comando de barra
+  no terminal do Habblaud agora executa o comando na sessão, como aconteceria digitando no terminal do Claude Code.
+  Antes o texto começado por `/` era recusado pelo Claude Code e aparecia como não entregue.
 
 ### Corrigido
 

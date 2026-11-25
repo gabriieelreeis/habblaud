@@ -86,11 +86,13 @@ esquema do `hooks.json`).
   sessão como presente: é ela que mostra, na página, a caixa de mensagem do agente (sem o plugin, a página dá a dica
   de instalar). Fora do ar, ou respondendo outra coisa (403 com as mensagens desligadas, 404 numa versão sem a
   rota), passa a perguntar a cada 30 s até ele voltar.
-- **Entrega:** cada mensagem, na ordem, vai por `$.prompt.submit({ text, asUser: true })`. O modelo lê o texto como
-  seu, sem o "The habblaud-mensagens plugin sent a message" (o registro da sessão ainda diz que veio do plugin), e o
-  texto vai exatamente como foi digitado. Com a sessão no meio de um turno, o Claude Code guarda o prompt e o roda
-  num turno só dele quando o atual terminar (um prompt de plugin nunca entra no meio do turno, como um digitado
-  pode entrar). Um hook que recuse a mensagem (`{drop}`) ou uma exceção viram falha, com o motivo, na página.
+- **Entrega:** cada mensagem, na ordem, entra na sessão. Texto vai por `$.prompt.submit({ text, asUser: true })`: o
+  modelo o lê como seu, sem o "The habblaud-mensagens plugin sent a message" (o registro da sessão ainda diz que veio
+  do plugin), e vai exatamente como foi digitado. Comando de barra (ex.: `/effort high`) vai por
+  `$.command.run({ command, args })`: o Claude Code recusa texto que começa com `/` no `prompt.submit`, e é essa a
+  chamada que executa o comando de verdade. Com a sessão no meio de um turno, o Claude Code guarda o envio e o roda
+  num turno só dele quando o atual terminar. Um hook que recuse (`{drop}`) ou uma exceção viram falha, com o motivo,
+  na página.
 - **Confirmação:** um `POST /api/mod/inbox/ack` com o resultado de cada uma (`{session, results: [{id, ok, error?}]}`).
   A espera por mensagem é de no máximo 2 s: passou disso, a sessão está ocupada, a mensagem está na fila dela e
   conta como entregue (as seguintes vão em seguida, na ordem). Assim uma rodada nunca passa de uns poucos segundos e
@@ -108,15 +110,15 @@ Saída de `claude plugin validate --strict mod/habblaud-mensagens`:
 
 ```
 ❯ ./register.ts hooks: session.start
-❯ ./register.ts calls: $.clock.after (via waitAtMost), $.clock.every (via schedule), $.env.get (via readEnv), $.http.fetch (via postJson), $.prompt.submit (via submitOne), $.session.id (via round), $.session.surfaces (via round)
+❯ ./register.ts calls: $.clock.after (via waitAtMost), $.clock.every (via schedule), $.command.run (via submitOne), $.env.get (via readEnv), $.http.fetch (via postJson), $.prompt.submit (via submitOne), $.session.id (via round), $.session.surfaces (via round)
 ❯ ./register.ts env writes: nothing
 ❯ ./register.ts env reads: CLAUDE_CODE_ENTRYPOINT, CLAUDE_CONFIG_DIR, HABBLAUD_PORT, HOME, USERPROFILE
 ```
 
 Em palavras: um hook só (`session.start`, que liga o relógio das rodadas); a única ação na sessão é o
-`$.prompt.submit` das mensagens; não lê a conversa, não grava arquivo nenhum, fala só com `127.0.0.1` e lê quatro
-variáveis de ambiente (a conta sai do `CLAUDE_CONFIG_DIR`, como no mod). `$.clock.after` é o prazo de 2 s de cada
-pedido ao Habblaud e de cada `$.prompt.submit`.
+`$.prompt.submit` das mensagens e o `$.command.run` dos comandos de barra; não lê a conversa, não grava arquivo
+nenhum, fala só com `127.0.0.1` e lê quatro variáveis de ambiente (a conta sai do `CLAUDE_CONFIG_DIR`, como no mod).
+`$.clock.after` é o prazo de 2 s de cada pedido ao Habblaud e de cada envio à sessão.
 
 Porta: `HABBLAUD_PORT` (padrão 4747). Precisa do Claude Code 2.1.287+ e de um Habblaud com as mensagens ligadas: a
 mesma trava do terminal e das permissões (porta presa ao `127.0.0.1` e cabeçalho Host local) e `HABBLAUD_MENSAGENS`
