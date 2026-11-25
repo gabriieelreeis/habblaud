@@ -13,6 +13,7 @@ import {
   OPENCODE_PERMISSION_NOTE,
   permissionOptions,
   plainView,
+  questionAudio,
   type AskChoice,
 } from './permission';
 
@@ -150,6 +151,15 @@ describe('cartão de pergunta (AskUserQuestion)', () => {
     expect(isQuestionRequest(undefined)).toBe(false);
     // O Codex não pergunta pelo escritório: nunca vira cartão de pergunta.
     expect(isQuestionRequest({ tool: 'AskUserQuestion', questions: [single], provider: 'codex' })).toBe(false);
+  });
+
+  it('questionAudio: only a local audio URL from this server becomes a player', () => {
+    const url = '/api/permissions/audio/abc123XYZ';
+    expect(questionAudio({ ...single, audio: { name: 'voz.wav', url } })).toEqual({ name: 'voz.wav', url });
+    expect(questionAudio(single)).toBeUndefined();
+    expect(questionAudio({ ...single, audio: { name: '', url } })).toBeUndefined();
+    expect(questionAudio({ ...single, audio: { name: 'voz.wav', url: 'https://example.com/voz.wav' } })).toBeUndefined();
+    expect(questionAudio({ ...single, audio: { name: 'voz.wav', url: '/api/deliveries/file/abc123' } })).toBeUndefined();
   });
 
   it('answerFor: escolha única = a opção OU o "Outro"; várias = tudo junto; "Outro" sem texto = sem resposta', () => {

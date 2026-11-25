@@ -31,6 +31,7 @@ import { errMsg, log } from '../log';
 import { toolView } from '../sources/terminal';
 import { codexToolView } from './codex';
 import { callSignature, scanToolCall } from './transcript';
+import { withQuestionAudio, type QuestionAudioStore } from './question-audio';
 import { tr } from '../../shared/i18n';
 
 /** Tempo que o hook espera por padrão (ele manda o próprio em `timeout_ms`). */
@@ -100,6 +101,8 @@ export interface RegistryOptions {
    * `what` novo ou undefined para ficar com o heurístico. Roda depois do registro; o risco nunca muda.
    */
   refine?: (info: PermissionRequestInfo, plain: PlainExplanation) => Promise<string | undefined>;
+  /** Áudios citados nas perguntas, liberados só pelo pedido que os trouxe. */
+  questionAudio?: QuestionAudioStore;
   now?: () => number;
   /** Intervalo do relógio interno (start). */
   tickMs?: number;
@@ -434,8 +437,9 @@ export class PermissionRegistry {
     const req = parseHookInput(raw);
     const codex = req.provider === 'codex';
     const desc = codex ? codexToolView(req.tool, req.input, req.cwd) : describeTool(req.tool, req.input);
-    const questions = 'questions' in desc ? desc.questions : undefined;
+    const shownQuestions = 'questions' in desc ? desc.questions : undefined;
     const ask = isQuestion(req);
+    const questions = ask && shownQuestions && this.opts.questionAudio ? withQuestionAudio(shownQuestions, req.input.questions, this.opts.questionAudio) : shownQuestions;
     // Pergunta: todas precisam aparecer no escritório (o hook só responde se cada uma tiver resposta).
     if (ask && (!questions?.length || questions.length !== askCount(req.input.questions))) return { skip: 'unsupported-tool' };
     if (this.opts.viewers() <= 0) return { skip: 'no-viewers' };
@@ -505,7 +509,7 @@ export class PermissionRegistry {
     if (v.input) info.input = v.input;
     if (v.inputKind) info.inputKind = v.inputKind;
     if (v.suggestions?.length) info.suggestions = v.suggestions;
-    if (v.questions?.length) info.questions = v.questions;
+    if (v.questions?.length) info.questions = this.opts.questionAudio ? withQuestionAudio(v.questions, v.questions, this.opts.questionAudio) : v.questions;
     if (req.subagent) info.subagent = req.subagent;
     this.pending.set(id, { info, agentId: req.agentId, sessionId: '', signature: '', lastScanAt: 0, waiters: new Set(), idleSince: now, external: { key: req.key, deliver: req.deliver } });
     this.announce({ id: req.agentId, subagent: req.subagent }, info, v.text);

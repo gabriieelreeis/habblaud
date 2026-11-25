@@ -24,7 +24,7 @@ const TOAST_MS = 9_000;
 
 // ---------------------------------------------------------------- modelo (puro)
 
-const KINDS = new Set(['image', 'pdf', 'video', 'page', 'text', 'file']);
+const KINDS = new Set(['image', 'pdf', 'video', 'audio', 'page', 'text', 'file']);
 
 function isAttachment(v: unknown): v is DeliveryAttachment {
   const a = v as Partial<DeliveryAttachment> | null;
@@ -84,6 +84,8 @@ function kindLabel(kind: DeliveryAttachment['kind']): string {
       return 'PDF';
     case 'video':
       return tr('VÍDEO');
+    case 'audio':
+      return tr('ÁUDIO');
     case 'page':
       return tr('PÁGINA');
     case 'text':
@@ -471,6 +473,7 @@ export class Deliveries implements UiComponent {
       body = img;
     }
     else if (a.kind === 'video') body = h('video', { class: 'ui-deliv-viewer__video', attrs: { src: url, controls: true, playsinline: true } });
+    else if (a.kind === 'audio') body = h('audio', { class: 'ui-deliv-viewer__audio', attrs: { src: url, controls: true, preload: 'metadata' } });
     else if (a.kind === 'pdf' || a.kind === 'page') body = h('iframe', { class: 'ui-deliv-viewer__frame', attrs: { src: url, title: a.name } });
     else if (a.kind === 'text') {
       body = h('pre', { class: 'ui-deliv-viewer__text', text: tr('Carregando…') });

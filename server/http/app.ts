@@ -21,6 +21,7 @@ import type { SpawnFolder } from '../spawn/folders';
 import { AUDIO_BODY_MAX, type DictationService } from '../dictation/dictation';
 import type { DeliveryIndex } from '../deliveries/deliveries';
 import type { FileFetcher } from '../deliveries/fetcher';
+import type { QuestionAudioStore } from '../permissions/question-audio';
 import { HOST_WAIT_MS } from '../host-wait';
 import { parsePartyRequest } from '../../shared/party';
 import type { PresentationStore } from '../presentations/store';
@@ -48,6 +49,8 @@ export interface ApiDeps {
    * local (ServerConfig.terminal); a trava do Host local é conferida aqui antes de chamá-las.
    */
   permissions?: (req: IncomingMessage, res: ServerResponse, path: string) => void;
+  /** Áudio das perguntas (/api/permissions/audio/:id); a mesma trava das respostas pelo escritório. */
+  questionAudio?: QuestionAudioStore;
   /**
    * Rotas das mensagens pelo escritório (/api/messages, a caixa de entrada do plugin em /api/mod/inbox e a do auxiliar
    * do Codex em /api/codex/bridge/*, server/messages/http.ts). Só existem com ServerConfig.messages (a trava do
@@ -181,17 +184,29 @@ export function sendJson(res: ServerResponse, status: number, body: unknown): vo
  * Anexo de entrega. Páginas e SVG vêm numa sandbox sem scripts (CSP), para não rodarem com o login do escritório;
  * PDF e imagens podem abrir dentro do modal (mesma origem).
  */
-function sendFile(res: ServerResponse, data: Buffer, type: string, name: string): void {
+export function sendFile(res: ServerResponse, data: Buffer, type: string, name: string, range?: string): void {
   const active = /^text\/html|^image\/svg/.test(type);
-  res.writeHead(200, {
+  const headers = {
     'Content-Type': type,
-    'Content-Length': data.length,
     'Cache-Control': 'private, max-age=300',
+    'Accept-Ranges': 'bytes',
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'SAMEORIGIN',
     'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(name)}`,
     ...(active ? { 'Content-Security-Policy': "sandbox; default-src 'none'; img-src data: blob: 'self'; style-src 'unsafe-inline'; media-src 'self'" } : {}),
-  });
+  };
+  const m = typeof range === 'string' ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+  if (m && (m[1] || m[2])) {
+    const suffix = !m[1] && !!m[2];
+    const start = suffix ? Math.max(0, data.length - Number(m[2])) : Number(m[1]);
+    const end = suffix || !m[2] ? data.length - 1 : Math.min(Number(m[2]), data.length - 1);
+    if (Number.isSafeInteger(start) && Number.isSafeInteger(end) && start <= end) {
+      res.writeHead(206, { ...headers, 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${data.length}` });
+      res.end(data.subarray(start, end + 1));
+      return;
+    }
+  }
+  res.writeHead(200, { ...headers, 'Content-Length': data.length });
   res.end(data);
 }
 
@@ -356,7 +371,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
     }
     if (sub === '/image') {
       store.image(id, url.searchParams.get('src') ?? '').then(
-        (r) => ('data' in r ? sendFile(res, r.data, r.type, r.name) : sendJson(res, r.status, { error: r.error })),
+        (r) => ('data' in r ? sendFile(res, r.data, r.type, r.name, req.headers.range) : sendJson(res, r.status, { error: r.error })),
         (err) => fail(res, err),
       );
       return;
@@ -544,6 +559,21 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         sendJson(res, 403, { error: tr('responder pelo escritório desligado: só funciona com o Habblaud acessível apenas pelo próprio computador') });
       } else if (!trusted(req, 'permissions')) {
         sendJson(res, 403, { error: denied(req, tr('pedidos de permissão só são respondidos pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
+      } else if (path.startsWith('/api/permissions/audio/')) {
+        let id = '';
+        try {
+          id = decodeURIComponent(path.slice('/api/permissions/audio/'.length));
+        } catch {
+          id = '';
+        }
+        const audio = id ? deps.questionAudio?.get(id) : undefined;
+        if (!audio) sendJson(res, 404, { error: tr('áudio da pergunta desconhecido') });
+        else if (!deps.files) sendJson(res, 404, { error: tr('arquivos desligados') });
+        else
+          deps.files.get(audio.path).then(
+            (r) => ('data' in r ? sendFile(res, r.data, audio.type, audio.name, req.headers.range) : sendJson(res, r.status, { error: r.error })),
+            (err) => fail(res, err),
+          );
       } else {
         deps.permissions(req, res, path);
       }
@@ -660,11 +690,11 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       else if (path.startsWith('/api/deliveries/file/')) {
         const att = deliveries.attachment(decodeURIComponent(path.slice('/api/deliveries/file/'.length)));
         if (!att) sendJson(res, 404, { error: tr('anexo desconhecido: atualize a lista de entregas') });
-        else if (att.kind === 'capture') sendFile(res, att.data, att.type, att.name);
+        else if (att.kind === 'capture') sendFile(res, att.data, att.type, att.name, req.headers.range);
         else if (!deps.files) sendJson(res, 404, { error: tr('arquivos desligados') });
         else
           deps.files.get(att.path).then(
-            (r) => ('data' in r ? sendFile(res, r.data, att.type, att.name) : sendJson(res, r.status, { error: r.error })),
+            (r) => ('data' in r ? sendFile(res, r.data, att.type, att.name, req.headers.range) : sendJson(res, r.status, { error: r.error })),
             (err) => fail(res, err),
           );
       } else sendJson(res, 404, { error: tr('rota desconhecida') });

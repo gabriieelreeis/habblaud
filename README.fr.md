@@ -283,8 +283,8 @@ en vérifiant l'empreinte que le setup a affichée.
   des virgules, ou `none` (consultation seule, sans fête). La fête marche avec n'importe quelle liste, sauf `none`. Le
   terminal interactif ne fonctionne jamais depuis le téléphone.
 - **Livraisons** (téléphone, avec `terminal` autorisé) : le bouton en forme de boîte dans la barre du haut liste ce que
-  chaque agent a terminé, avec un résumé et des pièces jointes (captures d'écran, PDF, fichiers qu'il a envoyés) qui
-  s'ouvrent d'un simple toucher.
+  chaque agent a terminé, avec un résumé et des pièces jointes (captures d'écran, PDF, fichiers qu'il a envoyés, y
+  compris de l'audio) qui s'ouvrent d'un simple toucher.
 - **Nouvel agent** (le bouton **+**) : lance une session Claude Code en arrière-plan sur l'ordinateur (`claude --bg`,
   dans le dossier choisi), qui apparaît dans le bureau et reçoit les messages et les demandes de permission via
   Habblaud. Dans un dossier auquel Claude Code ne fait pas encore confiance, il ouvre, déjà rempli, l'écran de nouvelle
@@ -550,7 +550,10 @@ répondez dans le terminal, la demande disparaît toute seule du bureau. Le comp
 `P`) vous emmène à chaque demande.
 
 Les **questions de l'agent** (`AskUserQuestion`) aussi : la carte de questions montre chaque question avec ses
-options et leurs descriptions, comme le terminal les afficherait. Choisissez une option (ou plusieurs, quand la question
+options et leurs descriptions, comme le terminal les afficherait. Si la question (ou la description d'une option)
+contient `Ouça: <chemin absolu>` vers un audio (WAV, MP3, OGG/Opus ou M4A, jusqu'à 25 Mo), la carte affiche un lecteur
+avec le nom du fichier au-dessus des options ; l'audio vient du Habblaud lui-même et n'est valable que pour cette
+question. Sur le téléphone, `permissions` doit être autorisé pour l'écouter. Choisissez une option (ou plusieurs, quand la question
 le permet) ou écrivez la vôtre dans **Autre**, puis utilisez **Répondre** ; **Refuser…** indique à l'agent que vous ne
 voulez pas répondre, et **Répondre dans le terminal** laisse la question là-bas. La réponse arrive à l'agent comme si
 vous l'aviez choisie dans le terminal.

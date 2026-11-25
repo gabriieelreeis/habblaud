@@ -112,6 +112,8 @@ export interface AskQuestion {
   multiSelect?: boolean;
   /** `index` = posição da opção em `options` do original: é ela que volta na resposta (PermissionAnswer). */
   options: Array<{ index: number; label: string; description?: string }>;
+  /** Áudio citado na pergunta (ou numa descrição), liberado só por este pedido. */
+  audio?: { name: string; url: string };
 }
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed';
@@ -613,7 +615,7 @@ export interface RecentSession {
 // ------------------------------------------------------------------ entregas
 
 /** Tipo de um anexo de entrega, para escolher o visualizador. */
-export type DeliveryAttachmentKind = 'image' | 'pdf' | 'video' | 'page' | 'text' | 'file';
+export type DeliveryAttachmentKind = 'image' | 'pdf' | 'video' | 'audio' | 'page' | 'text' | 'file';
 
 /** Arquivo que o agente entregou (SendUserFile, link na resposta) ou uma tela capturada no fim do trabalho. */
 export interface DeliveryAttachment {

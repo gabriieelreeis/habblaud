@@ -3854,4 +3854,9 @@ export const ES: Readonly<Record<string, string>> = {
   "{0} precisa de você": "{0} te necesita",
   "Um agente precisa de você": "Un agente te necesita",
   "{0} avisos novos no Habblaud": "{0} avisos nuevos en Habblaud",
+
+  // audio in questions and deliveries
+  "ÁUDIO": "AUDIO",
+  "Ouça: {0}": "Escucha: {0}",
+  "áudio da pergunta desconhecido": "audio de la pregunta desconocido",
 };
