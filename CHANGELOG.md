@@ -134,6 +134,7 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Player de áudio nas perguntas funciona com arquivos fora das pastas montadas no Docker.** Antes o cartão só mostrava o player quando o arquivo existia dentro do container, então um áudio numa pasta comum do computador não aparecia. Agora o player aparece para qualquer caminho absoluto permitido e o arquivo é lido pelo auxiliar do computador na hora de tocar, com as mesmas regras de tipo, tamanho e segredo.
 - **Push só quando o Habblaud não está em foco.** Com as notificações ligadas, o aparelho que tem a janela do Habblaud em foco deixa de receber push: o aviso já está na tela. Os outros aparelhos continuam avisando, e o botão **Enviar teste** continua funcionando. A página avisa o servidor quando a janela entra ou sai do foco; se fechar sem avisar, a marca expira em 45 segundos.
 - **Imagem quebrada na TV agora vira aviso.** Se uma imagem citada nos slides não carrega — arquivo de fora da pasta que sumiu, auxiliar do computador parado no Docker — a TV mostra no lugar um aviso com o nome do arquivo e o que fazer: copiar a imagem para a pasta da apresentação ou deixar `npm run codex:bridge` rodando. Antes ficava só a quebra com a legenda.
 - **A conversa reaberta volta com o mesmo visual.** A aparência sorteada vinha do processo, então `claude --resume`
