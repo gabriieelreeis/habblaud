@@ -594,6 +594,10 @@ ventana correcta.
 - En los agentes de Claude, los comandos de barra como `/effort high` o `/model opus` también funcionan aquí: el plugin los
   envía como comando, no como texto, para que Claude los ejecute de verdad. Un comando desconocido aparece como
   **no se entregó**, con el motivo.
+- **Esfuerzo:** en los detalles del agente, debajo de **Modelo**, el selector **Esfuerzo** envía `/effort low`, `medium`,
+  `high`, `xhigh` o `max` por la misma cola. Aparece para todos los agentes, pero solo cambia el esfuerzo en las
+  sesiones de Claude Code; en las demás queda desactivado. Como el comando va por la cola, se aplica cuando la sesión
+  está libre.
 - El plugin se ejecuta dentro de cada sesión y solo habla con Habblaud en `127.0.0.1`. Sin él (o en una sesión abierta
   antes de la instalación: usa `/reload-plugins`), aparece la sugerencia de instalación en lugar del cuadro. Los
   subagentes no reciben mensajes.

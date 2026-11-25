@@ -564,6 +564,10 @@ and waits for the next request, give a new instruction or correct its course, wi
   prompt typed while the agent is working.
 - In Claude agents, slash commands such as `/effort high` or `/model opus` work here too: the plugin sends them as a
   command, not as text, so Claude actually runs them. An unknown command shows up as **not delivered**, with the reason.
+- **Effort:** in the agent drawer, below **Model**, the **Effort** selector sends `/effort low`, `medium`, `high`,
+  `xhigh` or `max` through the same queue. It shows for every agent, but only changes the effort in Claude Code
+  sessions; it stays disabled in the others. Since the command goes through the queue, it takes effect when the
+  session is free.
 - The plugin runs inside each session and only talks to Habblaud at `127.0.0.1`. Without it (or in a session opened before
   the install: use `/reload-plugins`), an install hint shows up in place of the box. Subagents don't receive
   messages.

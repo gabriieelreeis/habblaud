@@ -589,6 +589,9 @@ e espera o próximo pedido, dar uma instrução nova ou corrigir o rumo, sem pro
 - Nos agentes do Claude, comandos de barra como `/effort high` ou `/model opus` também entram por aqui: o plugin os manda
   como comando, não como texto, e o Claude executa de verdade. Comando que a sessão não conhece aparece como
   **não entregue**, com o motivo.
+- **Esforço:** na gaveta do agente, abaixo de **Modelo**, o seletor **Esforço** manda `/effort low`, `medium`, `high`,
+  `xhigh` ou `max` pela mesma fila. Ele aparece para todos os agentes, mas só muda o esforço nas sessões do Claude Code;
+  nos outros fica desativado. Como o comando vai pela fila, ele entra quando a sessão estiver livre.
 - O plugin roda dentro de cada sessão e só fala com o Habblaud em `127.0.0.1`. Sem ele (ou numa sessão aberta antes
   da instalação: use `/reload-plugins`), aparece a dica de instalação no lugar da caixa. Subagentes não recebem
   mensagens.
