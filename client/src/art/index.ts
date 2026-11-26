@@ -33,6 +33,8 @@ import { renderIcon } from './icons';
 import { scale2x } from './core/scale2x';
 import { renderIsoFurniture } from './iso/index';
 import { renderIsoWall, renderLowWall } from './iso/walls';
+import { renderIsoCar } from './iso/car';
+import { renderTallElevator } from './iso/elevator';
 import { CHUNK_PX, floorChunk } from './surfaces/floor';
 import { WALL_CAP_H, WALL_FACE_H, capColor, southWallTile, wallFaceTile } from './surfaces/walls';
 import { renderRug } from './surfaces/rug';
@@ -172,6 +174,18 @@ export function isoWall(style: WallStyle, spec: IsoWallSpec): Sprite {
         : renderIsoWall(style, { facing: spec.facing, length: spec.length, height: spec.height, thickness: spec.thickness, doorways: spec.doorways, seed: spec.seed }),
     ),
   );
+}
+
+/** Itens de parede próprios da visão isométrica (o elevador alto); null = o de sempre. */
+export function isoWallSprite(kind: FurnitureKind, _variant: string | undefined, state: number, _seed: number): Sprite | null {
+  if (kind !== 'elevator') return null;
+  const st = Math.max(0, Math.min(4, Math.round(state)));
+  return isoWallCache.get(`elevator|${st}`, () => toSprite(renderTallElevator(st)));
+}
+
+/** Carro da rua na visão isométrica. */
+export function isoCarSprite(variant: number, dir: 1 | -1): Sprite {
+  return isoWallCache.get(`car|${variant % 6}|${dir}`, () => toSprite(renderIsoCar(variant, dir)));
 }
 
 export function iconSprite(name: IconName): Sprite {
@@ -362,6 +376,8 @@ const _contract: ArtModule = {
   isoFurnitureSprites,
   isoCharacterSprite,
   isoWall,
+  isoWallSprite,
+  isoCarSprite,
 };
 void _contract;
 

@@ -396,6 +396,13 @@ export interface ArtModule {
   isoCharacterSprite?(req: CharacterFrameRequest): Sprite;
   /** (Opcional, aditivo) Parede isométrica; âncora no canto de trás do footprint (comprimento x espessura). */
   isoWall?(style: WallStyle, spec: IsoWallSpec): Sprite;
+  /**
+   * (Opcional, aditivo) Item de parede redesenhado para a visão isométrica (de frente; o mundo inclina no plano da
+   * parede), ou null para usar o de sempre. Hoje: o elevador, na altura dos personagens.
+   */
+  isoWallSprite?(kind: FurnitureKind, variant: string | undefined, state: number, seed: number): Sprite | null;
+  /** (Opcional, aditivo) Carro andando ao longo de x (1 = leste, −1 = oeste); âncora no centro do carro no chão. */
+  isoCarSprite?(variant: number, dir: 1 | -1): Sprite;
   /** Avatar (cabeça + ombros) ampliado para a UI. `parts`: peças do personagem editado (ver AgentInfo.parts). */
   avatarCanvas(seed: number, opts?: { look?: 'f' | 'm'; sub?: boolean; scale?: number; parts?: AppearanceParts }): HTMLCanvasElement;
 }

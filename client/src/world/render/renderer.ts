@@ -56,6 +56,8 @@ interface StaticLayer {
   y: number;
   rect: Rect;
   items: Piece[];
+  /** Índices dos itens por célula GRID x GRID do plano isométrico. */
+  grid: Map<number, number[]>;
   /** Áreas que estavam estáveis quando a camada foi pintada (e as fachadas dos lotes vazios). */
   key: string;
   dyn: FurnVis[];
@@ -85,6 +87,9 @@ export interface HeadInfo {
 }
 
 const TV_MODES: ScreenMode[] = ['browser', 'idle', 'chat', 'code'];
+
+/** Chave de uma célula da grade (cabe com folga nos limites do plano isométrico do escritório). */
+const cellKey = (gx: number, gy: number): number => (gx + 4096) * 8192 + (gy + 4096);
 /**
  * Boca do balde de pipoca (px relativos aos pés, na arte 1x) na pose 'wait' sentada, por direção — segue o rig
  * da arte: abraçado no peito de frente, ao lado do quadril de costas, no colo de perfil.
@@ -104,6 +109,10 @@ const CHAR_R = 4;
 const SEAT_LIFT = 4;
 /** Margem do canvas de rascunho dos itens de parede (contorno da TV nova passa da tela). */
 const SCRATCH_M = 3;
+/** Ritmo (ms) em que o conteúdo animado de cada item de parede é refeito; 0 = só quando o estado muda. */
+const OVERLAY_PERIOD: Partial<Record<string, number>> = { clock: 0, sign: 0, light_switch: 0, elevator: 0, window: 400, whiteboard: 500, tv: 125, mirror: 150 };
+/** Lado (px) das células da grade da camada estática (busca do que redesenhar na frente de cada entidade). */
+const GRID = 64;
 
 export class Renderer {
   ctx: CanvasRenderingContext2D;
@@ -129,6 +138,9 @@ export class Renderer {
   private layer: StaticLayer | null = null;
   private stable: AreaVis[] = [];
   private redrawn: Piece[] = [];
+  private cand: number[] = [];
+  private seen = new Uint32Array(0);
+  private stamp = 0;
   private baseCols = -1;
   private layoutVersion = -1;
   private assetsVersion = 0;
@@ -165,8 +177,6 @@ export class Renderer {
   private clearColor = '#7fae62';
   private grass: CanvasPattern | null = null;
   private theme: SeasonalTheme = 'none';
-  private scratch: HTMLCanvasElement | null = null;
-  private sctx: CanvasRenderingContext2D | null = null;
   /** Retângulo visível no plano isométrico (atualizado por quadro). */
   private view = { x0: 0, y0: 0, x1: 0, y1: 0 };
   /** O mesmo, no plano de mundo (caixa envolvente), para o que ainda desenha no plano do chão. */
@@ -765,35 +775,23 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** Rascunho para os itens de parede: desenhados de frente (nítidos) e depois inclinados no plano da parede. */
-  private scratchFor(w: number, h: number): CanvasRenderingContext2D {
-    if (!this.scratch) {
-      this.scratch = document.createElement('canvas');
-      this.sctx = this.scratch.getContext('2d')!;
-    }
-    const c = this.scratch;
-    if (c.width < w || c.height < h) {
-      c.width = Math.max(c.width, Math.ceil(w));
-      c.height = Math.max(c.height, Math.ceil(h));
-    }
-    const s = this.sctx!;
-    s.setTransform(1, 0, 0, 1, 0, 0);
-    s.clearRect(0, 0, Math.ceil(w), Math.ceil(h));
-    s.imageSmoothingEnabled = false;
-    return s;
+  /** Item de parede animado: pintado de frente num canvas próprio e inclinado no plano da parede. */
+  private overlayCache = new WeakMap<WallOverlay, { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D; key: string; at: number }>();
+
+  /** Sprite de um item de parede na visão isométrica (o elevador alto, quando a arte tem). */
+  private wallSprite(kind: WallVis['kind'], variant: string | undefined, state: number, seed: number): Sprite | null {
+    const tall = kind === 'elevator' ? this.art.isoWallSprite?.(kind, variant, state, seed) : null;
+    return tall ?? wallSprites(this.art, kind, variant, state, seed)?.base ?? null;
   }
 
-  /** Item de parede animado: pinta de frente no rascunho e inclina no plano da parede. */
   private drawOverlay(o: WallOverlay, vis: AreaVis | null, now: number, hour: number, alpha: number): void {
     const { ctx } = this;
     const w = o.w;
     const variant = w.kind === 'light_switch' ? ((vis?.room ? vis.room.lightOn : true) ? 'on' : 'off') : w.variant;
     const state = w.kind === 'elevator' ? (this.sim.elevators[this.elevatorVis.indexOf(w)]?.state ?? 0) : 0;
-    const s = wallSprites(this.art, w.kind, variant, state, w.seed)?.base;
+    const s = this.wallSprite(w.kind, variant, state, w.seed);
     if (!s) return;
     const M = SCRATCH_M;
-    const sc = this.scratchFor(s.canvas.width + 2 * M, s.canvas.height + 2 * M);
-    sc.translate(M, M);
     const skew = o.on === 'face' ? 0.5 : 0;
     // TV das apresentações: guarda a tela (no plano isométrico) para o clique
     if (w.kind === 'tv' && vis?.room) {
@@ -804,9 +802,32 @@ export class Renderer {
         this.tvRects.set(vis.room.info.id, { x: x - 1, y: y - 1, w: r.w + 2, h: r.h + skew * r.w + 3 });
       }
     }
-    if (w.kind === 'window') this.paintWindow(sc, s, hour, now, w.seed);
-    else this.paintWallItem(sc, vis, w, s, now);
-    sc.setTransform(1, 0, 0, 1, 0, 0);
+    // conteúdo pintado num canvas próprio do item, refeito só quando muda (ou no ritmo da animação dele)
+    const cw = s.canvas.width + 2 * M;
+    const ch = s.canvas.height + 2 * M;
+    let cache = this.overlayCache.get(o);
+    if (!cache || cache.c.width !== cw || cache.c.height !== ch) {
+      const c = document.createElement('canvas');
+      c.width = cw;
+      c.height = ch;
+      cache = { c, ctx: c.getContext('2d')!, key: '', at: -1e9 };
+      this.overlayCache.set(o, cache);
+    }
+    const key = this.overlayKey(w, vis, variant, state, hour);
+    const period = OVERLAY_PERIOD[w.kind] ?? 1000;
+    const slow = this.camera.zoom < 1.2 ? 3 : 1;
+    if (key !== cache.key || (period > 0 && now - cache.at >= period * slow)) {
+      cache.key = key;
+      cache.at = now;
+      const sc = cache.ctx;
+      sc.setTransform(1, 0, 0, 1, 0, 0);
+      sc.clearRect(0, 0, cw, ch);
+      sc.imageSmoothingEnabled = false;
+      sc.translate(M, M);
+      if (w.kind === 'window') this.paintWindow(sc, s, hour, now, w.seed);
+      else this.paintWallItem(sc, vis, w, s, now);
+      sc.setTransform(1, 0, 0, 1, 0, 0);
+    }
     ctx.save();
     if (alpha < 1) ctx.globalAlpha = alpha;
     if (o.on === 'face') ctx.transform(...shearMatrix(o.ax, o.ay, { ax: s.ax + M, ay: s.ay + M }, skew));
@@ -815,8 +836,26 @@ export class Renderer {
       const b = opaqueBounds(s.canvas);
       ctx.translate(Math.round(o.ax - (b.x + b.w / 2) - M), Math.round(o.ay - (b.y + b.h) - M));
     }
-    ctx.drawImage(this.scratch!, 0, 0, s.canvas.width + 2 * M, s.canvas.height + 2 * M, 0, 0, s.canvas.width + 2 * M, s.canvas.height + 2 * M);
+    ctx.drawImage(cache.c, 0, 0);
     ctx.restore();
+  }
+
+  /** O que muda o desenho de um item de parede (além do ritmo da animação dele). */
+  private overlayKey(w: WallVis, vis: AreaVis | null, variant: string | undefined, state: number, hour: number): string {
+    switch (w.kind) {
+      case 'clock':
+        return `${this.date.getHours()}:${this.date.getMinutes()}`;
+      case 'window':
+        return `${Math.round(hour * 12)}|${this.theme}`;
+      case 'whiteboard':
+        return (vis?.room?.board ?? []).map((b) => b.status[0]).join('');
+      case 'tv':
+        return vis?.room ? `${vis.room.info.tv?.state ?? 'off'}|${this.sim.tvAudience.roomId === vis.room.info.id}` : 'lounge';
+      case 'elevator':
+        return `${state}|${this.theme}`;
+      default:
+        return variant ?? '';
+    }
   }
 
   private paintWallItem(sc: CanvasRenderingContext2D, vis: AreaVis | null, w: WallVis, s: Sprite, now: number): void {
@@ -1083,7 +1122,19 @@ export class Renderer {
     const cx = c.getContext('2d')!;
     cx.imageSmoothingEnabled = false;
     for (const it of order) cx.drawImage(it.src, it.sx, it.sy, it.sw, it.sh, Math.round(it.dx - x0), Math.round(it.dy - y0), it.sw, it.sh);
-    l = { c, x: x0, y: y0, rect: { x: x0, y: y0, w: c.width, h: c.height }, items: order, key, dyn, dynState };
+    const grid = new Map<number, number[]>();
+    order.forEach((it, i) => {
+      for (let gy = Math.floor(it.rect.y / GRID); gy <= Math.floor((it.rect.y + it.rect.h) / GRID); gy++) {
+        for (let gx = Math.floor(it.rect.x / GRID); gx <= Math.floor((it.rect.x + it.rect.w) / GRID); gx++) {
+          const k = cellKey(gx, gy);
+          let a = grid.get(k);
+          if (!a) grid.set(k, (a = []));
+          a.push(i);
+        }
+      }
+    });
+    this.seen = new Uint32Array(order.length);
+    l = { c, x: x0, y: y0, rect: { x: x0, y: y0, w: c.width, h: c.height }, items: order, grid, key, dyn, dynState };
     this.layer = l;
     return l;
   }
@@ -1103,11 +1154,31 @@ export class Renderer {
   private redrawInFront(e: Ent, now: number): void {
     const l = this.layer;
     if (!l || !overlaps(e.rect, l.rect)) return;
+    // candidatos: itens das células em volta do desenho (com folga para a cascata), na ordem da camada
+    const cand = this.cand;
+    cand.length = 0;
+    const stamp = ++this.stamp;
+    const seen = this.seen;
+    const m = GRID;
+    for (let gy = Math.floor((e.rect.y - m) / GRID); gy <= Math.floor((e.rect.y + e.rect.h + m) / GRID); gy++) {
+      for (let gx = Math.floor((e.rect.x - m) / GRID); gx <= Math.floor((e.rect.x + e.rect.w + m) / GRID); gx++) {
+        const a = l.grid.get(cellKey(gx, gy));
+        if (!a) continue;
+        for (const i of a) {
+          if (seen[i] === stamp) continue;
+          seen[i] = stamp;
+          cand.push(i);
+        }
+      }
+    }
+    if (!cand.length) return;
+    cand.sort((a, b) => a - b);
     const out = this.redrawn;
     out.length = 0;
-    for (const it of l.items) {
+    for (const i of cand) {
+      const it = l.items[i];
       let pick = overlaps(it.rect, e.rect) && drawsBefore(e, it);
-      for (let i = 0; i < out.length && !pick; i++) pick = overlaps(it.rect, out[i].rect);
+      for (let k = 0; k < out.length && !pick; k++) pick = overlaps(it.rect, out[k].rect);
       if (pick) out.push(it);
     }
     for (const it of out) {
@@ -1185,19 +1256,40 @@ export class Renderer {
       }
       if (!mode) continue;
       const seed = f.kind === 'arcade' ? (this.sim.social.arcadeSeed() ?? f.seed) : f.seed;
-      this.drawSkewedScreen(dx + r.x, dy + r.y, r.w, r.h, r.skew ?? 0, mode, now, seed);
+      this.drawSkewedScreen(`${f.id}:${name}`, dx + r.x, dy + r.y, r.w, r.h, r.skew ?? 0, mode, now, seed);
     }
   }
 
-  /** Conteúdo de tela desenhado de frente no rascunho e inclinado para a face do móvel. */
-  private drawSkewedScreen(x: number, y: number, w: number, h: number, skew: number, mode: ScreenMode, now: number, seed: number): void {
+  private screenCache = new Map<string, { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D; mode: ScreenMode; at: number }>();
+
+  /**
+   * Conteúdo de tela desenhado de frente num canvas próprio (refeito ~7 vezes por segundo, ou já quando o modo muda)
+   * e inclinado para a face do móvel.
+   */
+  private drawSkewedScreen(id: string, x: number, y: number, w: number, h: number, skew: number, mode: ScreenMode, now: number, seed: number): void {
     if (w <= 0 || h <= 0) return;
-    const sc = this.scratchFor(w, h);
-    this.safe(() => this.art.drawScreen(sc, { x: 0, y: 0, w, h }, mode, now, seed));
+    let e = this.screenCache.get(id);
+    if (!e || e.c.width !== w || e.c.height !== h) {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      e = { c, ctx: c.getContext('2d')!, mode, at: -1e9 };
+      this.screenCache.set(id, e);
+    }
+    const period = (mode === 'off' || mode === 'standby' ? 1000 : 140) * (this.camera.zoom < 1.2 ? 3 : 1);
+    if (e.mode !== mode || now - e.at >= period + (seed % 40)) {
+      e.mode = mode;
+      e.at = now;
+      const sc = e.ctx;
+      sc.setTransform(1, 0, 0, 1, 0, 0);
+      sc.clearRect(0, 0, w, h);
+      sc.imageSmoothingEnabled = false;
+      this.safe(() => this.art.drawScreen(sc, { x: 0, y: 0, w, h }, mode, now, seed));
+    }
     const { ctx } = this;
     ctx.save();
     ctx.transform(1, skew, 0, 1, x, y);
-    ctx.drawImage(this.scratch!, 0, 0, w, h, 0, 0, w, h);
+    ctx.drawImage(e.c, 0, 0);
     ctx.restore();
   }
 
@@ -1538,7 +1630,7 @@ export class Renderer {
   }
 
   private drawCar(car: Car): void {
-    const s = carSprite(car.variant, car.dir < 0);
+    const s = this.art.isoCarSprite?.(car.variant, car.dir) ?? carSprite(car.variant, car.dir < 0);
     this.ctx.drawImage(s.canvas, Math.round(isoX(car.x, car.y) - s.ax), Math.round(isoY(car.x, car.y) - s.ay));
   }
 
