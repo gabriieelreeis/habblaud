@@ -107,17 +107,20 @@ export class Layer {
 const HI = 0.075;
 const SH = -0.115;
 
-/** Pinta a camada no buffer; `mirror` espelha em torno do eixo da folha. */
-export function composite(buf: PixelBuf, L: Layer, mirror: boolean): void {
+/** Pinta a camada no buffer; `mirror` espelha em torno do eixo da folha; (dx, dy) desloca antes do espelho. */
+export function composite(buf: PixelBuf, L: Layer, mirror: boolean, dx = 0, dy = 0): void {
   const W = SHEET_W;
   const H = SHEET_H;
   const col = new Array<string | undefined>(W * H);
   const fx = new Uint8Array(W * H);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      const sx = mirror ? W - 1 - x : x;
-      col[idx(sx, y)] = L.col[idx(x, y)];
-      fx[idx(sx, y)] = L.fx[idx(x, y)];
+      const tx = x + dx;
+      const ty = y + dy;
+      if (tx < 0 || ty < 0 || tx >= W || ty >= H) continue;
+      const sx = mirror ? W - 1 - tx : tx;
+      col[idx(sx, ty)] = L.col[idx(x, y)];
+      fx[idx(sx, ty)] = L.fx[idx(x, y)];
     }
   }
   const has = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && col[idx(x, y)] !== undefined;

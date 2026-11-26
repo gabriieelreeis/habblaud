@@ -1,8 +1,9 @@
 // Esqueleto e projeção: o personagem vive num espaço (l, f, z) — l = lateral (para a direita da tela quando de frente),
 // f = para a frente do personagem, z = altura do chão — e `proj` leva um ponto dele para a tela, para um ângulo de giro
 // phi (0 = de frente para o observador, 90 = olhando para a esquerda da tela, 180 = de costas).
-// Cada pose é uma função (quadro) -> Rig; poses novas (sentar, acenar...) só precisam devolver outro Rig.
+// As poses (poses.ts) só devolvem um Rig; braços e pernas são resolvidos por cinemática inversa de dois ossos.
 import type { PixelBuf } from '../core/pixbuf';
+import type { CharacterFrameRequest, HeldItem } from '../api';
 import type { Look } from './look';
 import { AX, AY } from './paint';
 
@@ -23,13 +24,23 @@ export interface Joint {
   z: number;
 }
 
-export interface LimbRig {
+/** Membro de dois ossos: raiz (ombro/quadril), articulação (cotovelo/joelho) e ponta (mão/tornozelo). */
+export interface Limb {
   root: Joint;
+  mid: Joint;
   end: Joint;
 }
 
+/** Fantasia de época (o tipo do campo costume da API do jogo). */
+export type Costume = NonNullable<CharacterFrameRequest['costume']>;
+export type Eyes = 'open' | 'half' | 'closed' | 'arc';
+export type Mouth = 'smile' | 'flat' | 'frown' | 'open' | 'small';
+export type Brow = 'normal' | 'up' | 'down' | 'sad';
+/** Item na mão: os da API mais o punho fechado do jokenpô sem item. */
+export type ItemKind = HeldItem | 'fist';
+
 export interface Rig {
-  /** Corpo inteiro acima do chão (o passo "alto" da caminhada). */
+  /** Corpo inteiro acima do chão (passo alto, pulo) e abaixado (sentado). */
   lift: number;
   /** Quanto o tronco de cima desce (respiração). */
   breath: number;
@@ -37,9 +48,22 @@ export interface Rig {
   torsoBot: number;
   /** Altura do centro da cabeça. */
   headZ: number;
+  /** Cabeça para a frente em relação ao tronco (px no eixo f). */
+  headF: number;
+  /** Tronco de cima para a frente (px no eixo f). */
+  lean: number;
+  seated: boolean;
   /** [esquerda do personagem (l > 0 de frente), direita]. */
-  legs: [LimbRig, LimbRig];
-  arms: [LimbRig, LimbRig];
+  legs: [Limb, Limb];
+  arms: [Limb, Limb];
+  eyes: Eyes;
+  mouth: Mouth;
+  brow: Brow;
+  item: ItemKind;
+  /** Onde o item aparece (ponto de empunhadura); null = sem item. */
+  itemAt: Joint | null;
+  /** Item segurado com as duas mãos. */
+  itemTwo: boolean;
 }
 
 export interface Ctx {
@@ -48,10 +72,16 @@ export interface Ctx {
   rig: Rig;
   buf: PixelBuf;
   mirror: boolean;
+  costume?: Costume;
+  /** Deslocamento de tela (antes do espelho) aplicado às peças pintadas agora: inclinação do tronco e da cabeça. */
+  dx: number;
+  dy: number;
+  /** Quadro da animação (para detalhes como o pé batendo). */
+  frame: number;
 }
 
 /** Inclinação isométrica: o que está mais perto do observador aparece um pouco mais baixo. */
-const TILT = 0.3;
+export const TILT = 0.3;
 
 export function proj(v: View, l: number, f: number, z: number): { x: number; y: number; d: number } {
   const d = f * v.c + l * v.s;
@@ -61,61 +91,56 @@ export function proj(v: View, l: number, f: number, z: number): { x: number; y: 
 export const TORSO_TOP = 27;
 export const TORSO_BOT = 14;
 export const HEAD_Z = 36.5;
-const LEG_L = 2.5;
-const FOOT_L = 3;
-const ARM_L = 6.4;
-const ANKLE_Z = 3;
+/** Queda do corpo ao sentar. */
+export const SEAT_DROP = 5;
+export const ARM_L = 6.4;
+export const BONE_ARM = 5.3;
+export const BONE_LEG = 4.85;
+export const HIP_L = 2.5;
+export const FOOT_L = 3.2;
+export const ANKLE_Z = 3;
 
-const J = (l: number, f: number, z: number): Joint => ({ l, f, z });
+export const J = (l: number, f: number, z: number): Joint => ({ l, f, z });
 
-interface Step {
-  bob: number;
-  lf: number;
-  ll: number;
-  rf: number;
-  rl: number;
-  al: number;
-  ar: number;
-}
-
-// quatro quadros: contato (esquerda à frente), passagem, contato (direita à frente), passagem
-const WALK: Step[] = [
-  { bob: 0, lf: 3, ll: 0, rf: -3, rl: 0.5, al: -2.6, ar: 2.6 },
-  { bob: 1, lf: 0, ll: 0, rf: 0.8, rl: 1.8, al: 0.3, ar: -0.3 },
-  { bob: 0, lf: -3, ll: 0.5, rf: 3, rl: 0, al: 2.6, ar: -2.6 },
-  { bob: 1, lf: 0.8, ll: 1.8, rf: 0, rl: 0, al: -0.3, ar: 0.3 },
-];
-
-function build(lift: number, breath: number, s: Step | null): Rig {
-  const top = TORSO_TOP + lift - breath;
-  const hipZ = TORSO_BOT - 1.5 + lift;
-  const armRoot = top - 1.4;
-  const handZ = TORSO_TOP + lift - 1.4 - 10.6;
-  const st = s ?? { bob: 0, lf: 0.3, ll: 0, rf: 0.3, rl: 0, al: 0, ar: 0 };
+/**
+ * Cinemática inversa de dois ossos: devolve cotovelo/joelho e a ponta (o alvo é encurtado se não alcançar).
+ * `pole` é uma direção (relativa à raiz) para onde a articulação aponta.
+ */
+export function ik(root: Joint, target: Joint, l1: number, l2: number, pole: Joint): { mid: Joint; end: Joint } {
+  let dl = target.l - root.l;
+  let df = target.f - root.f;
+  let dz = target.z - root.z;
+  let d = Math.hypot(dl, df, dz);
+  const reach = l1 + l2 - 0.02;
+  if (d > reach) {
+    const k = reach / d;
+    dl *= k;
+    df *= k;
+    dz *= k;
+    d = reach;
+  }
+  if (d < 0.5) d = 0.5;
+  const ul = dl / d;
+  const uf = df / d;
+  const uz = dz / d;
+  const a = (d * d + l1 * l1 - l2 * l2) / (2 * d);
+  const h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+  // componente do polo perpendicular ao eixo raiz -> alvo
+  const pd = pole.l * ul + pole.f * uf + pole.z * uz;
+  let pl = pole.l - pd * ul;
+  let pf = pole.f - pd * uf;
+  let pz = pole.z - pd * uz;
+  const pn = Math.hypot(pl, pf, pz) || 1;
+  pl /= pn;
+  pf /= pn;
+  pz /= pn;
   return {
-    lift,
-    breath,
-    torsoTop: top,
-    torsoBot: TORSO_BOT + lift,
-    headZ: HEAD_Z + lift - breath,
-    legs: [
-      { root: J(LEG_L, 0, hipZ), end: J(FOOT_L, st.lf, ANKLE_Z + st.ll) },
-      { root: J(-LEG_L, 0, hipZ), end: J(-FOOT_L, st.rf, ANKLE_Z + st.rl) },
-    ],
-    arms: [
-      { root: J(ARM_L, 0, armRoot), end: J(ARM_L + 0.3, st.al, handZ) },
-      { root: J(-ARM_L, 0, armRoot), end: J(-ARM_L - 0.3, st.ar, handZ) },
-    ],
+    mid: J(root.l + ul * a + pl * h, root.f + uf * a + pf * h, root.z + uz * a + pz * h),
+    end: J(root.l + dl, root.f + df, root.z + dz),
   };
 }
 
-export type Pose = 'stand' | 'walk';
-
-export const POSE_FRAMES: Record<Pose, number> = { stand: 2, walk: 4 };
-
-export function makeRig(pose: Pose, frame: number): Rig {
-  const n = POSE_FRAMES[pose];
-  const k = ((frame % n) + n) % n;
-  if (pose === 'walk') return build(WALK[k].bob, 0, WALK[k]);
-  return build(0, k % 2, null);
+export function limb(root: Joint, target: Joint, l1: number, l2: number, pole: Joint): Limb {
+  const r = ik(root, target, l1, l2, pole);
+  return { root, mid: r.mid, end: r.end };
 }

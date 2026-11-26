@@ -8,13 +8,18 @@ import { appearanceFromSeed } from '../client/src/art/character/appearance';
 import { renderIsoCharacter } from '../client/src/art/character-iso/render';
 import { PixelBuf } from '../client/src/art/core/pixbuf';
 import { renderIsoFurniture } from '../client/src/art/iso/index';
-import { SCREEN_DIRS, renderAvatar, type ScreenDir } from '../client/src/art/avatar/render';
-import { makeLook, type Look } from '../client/src/art/avatar/look';
+import type { HeldItem, Pose } from '../client/src/art/api';
+import { AVATAR_SEAT_HIP_Z, POSE_FRAMES, SCREEN_DIRS, isAvatarSeated, renderAvatar, type AvatarRequest, type ScreenDir } from '../client/src/art/avatar/render';
+import { BOTTOMS, EXTRAS, GLASSES, HAIRS, HATS, SHOES, TOPS, BEARDS, makeLook, type Look } from '../client/src/art/avatar/look';
 
 const args = process.argv.slice(2);
 const si = args.indexOf('--scale');
 const scale = si >= 0 ? Number(args[si + 1]) : 4;
-const rest = args.filter((_a, i) => !(si >= 0 && (i === si || i === si + 1)));
+const oi = args.indexOf('--only');
+const only = oi >= 0 ? args[oi + 1] : '';
+const rest = args.filter((_a, i) => !(si >= 0 && (i === si || i === si + 1)) && !(oi >= 0 && (i === oi || i === oi + 1)));
+/** Escala dos catálogos (3, ou a de --scale). */
+const sc = si >= 0 ? scale : 3;
 const out = rest[0] ?? '.';
 mkdirSync(out, { recursive: true });
 
@@ -113,11 +118,21 @@ function grid(rows: PixelBuf[][], gap = 2, bg = '#d8d2c6'): PixelBuf {
 }
 
 /** Célula com o personagem sobre um tile (âncora no centro do losango). */
-function cell(look: Look, dir: ScreenDir, pose: 'stand' | 'walk', frame: number): PixelBuf {
-  const s = renderAvatar(look, dir, pose, frame);
+function cell(look: Look, dir: ScreenDir, pose: Pose, frame: number, extra: Partial<AvatarRequest> = {}): PixelBuf {
+  const s = renderAvatar(look, dir, { pose, frame, ...extra });
   const b = new PixelBuf(s.buf.w, s.buf.h);
   floor(b, s.ax, s.ay - 8, 1, 1);
-  // um tile só: o resto do piso fica claro
+  // sentado: um banco simples na altura que o jogo usa para assentar o boneco
+  if (isAvatarSeated(pose, extra.seated)) {
+    const top = s.ay - AVATAR_SEAT_HIP_Z;
+    for (let y = top - 4; y <= s.ay; y++) {
+      for (let x = s.ax - 9; x <= s.ax + 9; x++) {
+        const u = (x + 0.5 - s.ax) / 9;
+        const v = (y + 0.5 - top) / 4.4;
+        if (y <= top + 0.5 ? u * u + v * v <= 1 : Math.abs(u) < 0.62 && y < s.ay - 1) b.set(x, y, y <= top + 0.5 ? '#6a5a8a' : '#4a4466');
+      }
+    }
+  }
   b.draw(s.buf, 0, 0);
   return b;
 }
@@ -167,7 +182,7 @@ function scaleSheet(): void {
   furn(b, 'office_chair', 'blue', ox, oy, 8, 16, 'front');
   const put = (look: Look, dir: ScreenDir, wx: number, wy: number) => {
     const [x, y] = S(ox, oy, wx, wy);
-    const s = renderAvatar(look, dir, 'stand', 0);
+    const s = renderAvatar(look, dir, { pose: 'stand', frame: 0 });
     b.draw(s.buf, Math.round(x - s.ax), Math.round(y - s.ay));
   };
   // antigo (esquerda) e dois novos lado a lado, no mesmo piso, para comparar a escala
@@ -179,6 +194,69 @@ function scaleSheet(): void {
   save('escala', b);
 }
 
-castSheet();
-walkSheet();
-scaleSheet();
+// ------------------------------------------------------------ poses, itens, fantasias e catálogo
+
+const HERO = makeLook({ skin: '#e6b48c', hair: 'side_part', hairColor: '#4a3020', top: 'shirt_tie', topColor: '#6f9ad8', accent: '#b8334a', bottom: 'slacks', bottomColor: '#35466e', shoes: 'dress', shoesColor: '#3a2a24', beard: 'stubble', lanyard: '#e0a030' });
+const ALL_POSES = Object.keys(POSE_FRAMES) as Pose[];
+const POSE_ITEM: Partial<Record<Pose, HeldItem>> = { drink: 'coffee', play: 'paddle', game: 'controller', rps: 'rock', groom: 'lipstick', read: 'book' };
+
+function posesSheet(): void {
+  const rows: PixelBuf[][] = [];
+  for (const half of [ALL_POSES.slice(0, 10), ALL_POSES.slice(10)]) {
+    for (const seated of [false, true]) {
+      rows.push(half.map((p) => (seated && !isAvatarSeated(p, true) ? new PixelBuf(40, 64) : cell(HERO, 'sw', p, 1, { seated, held: POSE_ITEM[p] }))));
+    }
+  }
+  save('poses', grid(rows, 1, BG), sc);
+}
+
+const ITEM_POSE: [HeldItem, Pose][] = [
+  ['coffee', 'drink'], ['water', 'drink'], ['papers', 'read'], ['laptop', 'stand'], ['book', 'read'], ['box', 'stand'], ['paddle', 'play'], ['popcorn', 'wait'],
+  ['controller', 'game'], ['rock', 'rps'], ['paper', 'rps'], ['scissors', 'rps'], ['phone', 'read'], ['lipstick', 'groom'], ['comb', 'groom'],
+];
+
+function itemsSheet(): void {
+  const rows: PixelBuf[][] = [];
+  for (const dirs of [['sw', 'ne'], ['s', 'n']] as ScreenDir[][]) {
+    for (const part of [ITEM_POSE.slice(0, 8), ITEM_POSE.slice(8)]) {
+      rows.push(part.flatMap(([it, pose]) => dirs.map((d) => cell(HERO, d, pose, 0, { held: it }).crop(4, 12, 32, 42))));
+    }
+  }
+  save('itens', grid(rows, 1, BG), si >= 0 ? scale : 4);
+}
+
+function costumesSheet(): void {
+  const rows = (['santa', 'witch', 'pumpkin', 'vampire'] as const).map((costume) => (['s', 'sw', 'w', 'nw', 'n'] as ScreenDir[]).map((d) => cell(HERO, d, 'stand', 0, { costume })));
+  save('fantasias', grid(rows, 1, BG), sc);
+}
+
+function hairSheet(): void {
+  const rows: PixelBuf[][] = [];
+  for (const d of ['s', 'sw', 'n'] as ScreenDir[]) {
+    for (let i = 0; i < HAIRS.length; i += 7) rows.push(HAIRS.slice(i, i + 7).map((h) => cell(makeLook({ skin: '#e6b48c', hair: h.id, hairColor: '#6b3f26', top: 'tee', topColor: '#6f9ad8' }), d, 'stand', 0)));
+  }
+  save('catalogo-cabelos', grid(rows, 1, BG), sc);
+}
+
+function clothesSheet(): void {
+  const base = makeLook({ skin: '#e6b48c', hair: 'short', hairColor: '#4a3020' });
+  const row = (list: readonly { id: string }[], key: keyof Look, dir: ScreenDir, over: Partial<Look> = {}) => list.map((o) => cell({ ...base, ...over, [key]: o.id } as Look, dir, 'stand', 0));
+  const colored: Partial<Look> = { hatColor: '#d9a441', extraColor: '#c8453b' };
+  const rows = [
+    row(TOPS, 'top', 's', { topColor: '#4f86d0' }),
+    row(TOPS, 'top', 'sw', { topColor: '#4f86d0' }),
+    row(BOTTOMS, 'bottom', 's'),
+    row(SHOES, 'shoes', 'sw', { shoesColor: '#8a4a3a' }),
+    row(EXTRAS, 'extra', 's', colored),
+    row(EXTRAS, 'extra', 'n', colored),
+    row(HATS, 'hat', 's', colored),
+    row(HATS, 'hat', 'sw', colored),
+    row(GLASSES, 'glasses', 's'),
+    row(BEARDS, 'beard', 's'),
+    row(BEARDS, 'beard', 'sw'),
+  ];
+  save('catalogo-roupas', grid(rows, 1, BG), sc);
+}
+
+const SHEETS: Record<string, () => void> = { elenco: castSheet, andando: walkSheet, escala: scaleSheet, poses: posesSheet, itens: itemsSheet, fantasias: costumesSheet, cabelos: hairSheet, roupas: clothesSheet };
+for (const [name, fn] of Object.entries(SHEETS)) if (!only || only === name) fn();

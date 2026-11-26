@@ -1,22 +1,33 @@
-// Personagem isométrico por peças (puro, sem DOM): folha fixa de SHEET_W x SHEET_H com a âncora no centro dos pés.
-// 8 direções de TELA; só 5 são desenhadas (s, sw, w, nw, n) e ne, e, se são o espelho de nw, w, sw — o espelho é feito
-// na composição, antes do sombreamento, então a luz continua vindo de cima/esquerda.
+// Personagem isométrico por peças (puro, sem DOM): folha fixa de SHEET_W x SHEET_H com a âncora no centro dos pés (ou no
+// chão sob o quadril, quando sentado). 8 direções de TELA; só 5 são desenhadas (s, sw, w, nw, n) e ne, e, se são o
+// espelho de nw, w, sw — o espelho é feito na composição, antes do sombreamento, então a luz continua de cima/esquerda.
+import type { HeldItem, Pose } from '../api';
 import { PixelBuf } from '../core/pixbuf';
 import type { BufSprite } from '../core/sprite';
 import { drawArm, drawHood, drawLeg, drawNeck, drawPelvis, drawShoe, drawSkirt, drawTorso, hoodDepth, put } from './body';
-import { extraLayers, glassesLayer, hatLayers } from './gear';
+import { costumeLayers, extraLayers, glassesLayer, hatLayers, lanyardLayers } from './gear';
 import { hairBack, hairFront, type HairLayer, type Stage } from './hair';
 import { drawHead } from './head';
+import { itemLayer } from './items';
 import type { Look } from './look';
-import { AX, AY, SHEET_H, SHEET_W, composite } from './paint';
-import { POSE_FRAMES, makeRig, makeView, type Ctx, type Pose } from './rig';
+import { AX, AY, SHEET_H, SHEET_W, composite, rnd } from './paint';
+import { AVATAR_SEAT_HIP_Z, POSE_FRAMES, avatarFrames, isAvatarSeated, makeRig } from './poses';
+import { TILT, makeView, proj, type Costume, type Ctx } from './rig';
 
 export { AX as AVATAR_AX, AY as AVATAR_AY, SHEET_H as AVATAR_H, SHEET_W as AVATAR_W };
-export { POSE_FRAMES, type Pose };
+export { AVATAR_SEAT_HIP_Z, POSE_FRAMES, avatarFrames, isAvatarSeated, type Pose };
 
 export type ScreenDir = 's' | 'sw' | 'w' | 'nw' | 'n' | 'ne' | 'e' | 'se';
 
 export const SCREEN_DIRS: readonly ScreenDir[] = ['s', 'sw', 'w', 'nw', 'n', 'ne', 'e', 'se'];
+
+export interface AvatarRequest {
+  pose: Pose;
+  frame: number;
+  held?: HeldItem;
+  seated?: boolean;
+  costume?: Costume;
+}
 
 /** Ângulo de giro desenhado e se a direção é o espelho de uma desenhada. */
 const DIRS: Record<ScreenDir, { phi: number; mirror: boolean }> = {
@@ -30,42 +41,70 @@ const DIRS: Record<ScreenDir, { phi: number; mirror: boolean }> = {
   se: { phi: 45, mirror: true },
 };
 
-export function renderAvatar(look: Look, dir: ScreenDir, pose: Pose, frame: number): BufSprite {
+export function renderAvatar(look: Look, dir: ScreenDir, req: AvatarRequest): BufSprite {
   const d = DIRS[dir];
   const buf = new PixelBuf(SHEET_W, SHEET_H);
   const v = makeView(d.phi);
-  const rig = makeRig(pose, frame);
-  const c: Ctx = { look, v, rig, buf, mirror: d.mirror };
+  const rig = makeRig(req.pose, req.frame, req.seated, req.held);
+  const c: Ctx = { look, v, rig, buf, mirror: d.mirror, costume: req.costume, dx: 0, dy: 0, frame: req.frame };
+
+  // inclinação: o tronco de cima e a cabeça se deslocam em tela (antes do espelho); pernas e pelvis ficam
+  const shiftOf = (f: number): [number, number] => [rnd(-f * v.s), rnd(TILT * f * v.c)];
+  const upper = shiftOf(rig.lean);
+  const head = shiftOf(rig.lean + rig.headF);
+  const setShift = (s: [number, number]) => {
+    c.dx = s[0];
+    c.dy = s[1];
+  };
 
   const placed: Record<Stage, HairLayer[]> = { behind: [], mid: [], after: [] };
   const add = (list: HairLayer[]) => {
     for (const p of list) placed[p.stage].push(p);
   };
+  // fantasias de chapéu substituem o chapéu do visual
+  const hatCostume = req.costume === 'santa' || req.costume === 'witch' || req.costume === 'pumpkin';
   add(hairBack(c));
-  add(hatLayers(c));
+  if (!hatCostume) add(hatLayers(c));
   add(extraLayers(c));
+  add(lanyardLayers(c));
+  add(costumeLayers(c));
   const glasses = glassesLayer(c);
   const front = hairFront(c);
+  const item = itemLayer(c);
+  if (item?.behind) placed.behind.push({ L: item.L, stage: 'behind', body: true });
   const flush = (stage: Stage) => {
-    for (const p of placed[stage]) composite(buf, p.L, d.mirror);
+    for (const p of placed[stage]) {
+      setShift(p.body ? upper : head);
+      put(c, p.L);
+    }
   };
 
+  const depthOf = (j: { l: number; f: number; z: number }): number => proj(v, j.l, j.f, j.z).d;
+  const armDepth = (i: 0 | 1) => (depthOf(rig.arms[i].mid) + depthOf(rig.arms[i].end)) / 2;
+  const armBehind = (i: 0 | 1) => armDepth(i) < -1.2;
+  const armOverHead = (i: 0 | 1) => !armBehind(i) && rig.arms[i].end.z > rig.headZ - 10 && depthOf(rig.arms[i].end) > 1;
+  const byDepth = (a: 0 | 1, b: 0 | 1) => armDepth(a) - armDepth(b);
+  const idx = [0, 1] as const;
+
   // 1) atrás de tudo
+  setShift(upper);
   const hoodBehind = look.top === 'hoodie' && hoodDepth(c) < 0;
   if (hoodBehind) drawHood(c);
   flush('behind');
 
-  // 2) braço de trás, pernas (de trás para a frente), quadril, saia, pescoço e tronco
-  const armD = (i: 0 | 1) => rig.arms[i].root.l * v.s;
-  const far = ([0, 1] as const).filter((i) => armD(i) < -0.3);
-  const near = ([0, 1] as const).filter((i) => armD(i) >= -0.3).sort((a, b) => armD(a) - armD(b));
-  for (const i of far) drawArm(c, i, false);
-  const legs = ([0, 1] as const).slice().sort((a, b) => rig.legs[a].root.l * v.s - rig.legs[b].root.l * v.s);
-  for (const i of legs) {
-    drawLeg(c, i);
-    drawShoe(c, i);
+  // 2) braços de trás, pernas (de trás para a frente), quadril, saia, pescoço e tronco
+  for (const i of idx.filter(armBehind).sort(byDepth)) drawArm(c, i, false);
+  setShift([0, 0]);
+  if (!(rig.seated && v.c < -0.2)) {
+    // sentado de costas as pernas ficam escondidas pelo assento
+    const legs = idx.slice().sort((a, b) => rig.legs[a].root.l * v.s - rig.legs[b].root.l * v.s);
+    for (const i of legs) {
+      drawLeg(c, i);
+      drawShoe(c, i);
+    }
   }
   drawPelvis(c);
+  setShift(upper);
   drawSkirt(c);
   drawNeck(c);
   drawTorso(c);
@@ -73,14 +112,21 @@ export function renderAvatar(look: Look, dir: ScreenDir, pose: Pose, frame: numb
   flush('mid');
 
   // 3) braços da frente, cabeça e o que vai por cima dela
-  for (const i of near) drawArm(c, i, true);
+  for (const i of idx.filter((k) => !armBehind(k) && !armOverHead(k)).sort(byDepth)) drawArm(c, i, true);
+  setShift(head);
   drawHead(c);
   if (front) {
     front.inner = true;
     put(c, front);
   }
   flush('after');
-  if (glasses) put(c, glasses);
+  setShift(upper);
+  for (const i of idx.filter(armOverHead).sort(byDepth)) drawArm(c, i, true);
+  if (item && !item.behind) put(c, item.L);
+  if (glasses) {
+    setShift(head);
+    put(c, glasses);
+  }
 
   buf.outline();
   buf.shadow(AX, AY, 6.5, 2.7, '#1c2034', 0.22);
