@@ -1193,6 +1193,7 @@ export class Renderer {
     l = { c, x: comp.x, y: comp.y, rect: { x: comp.x, y: comp.y, w: comp.w, h: comp.h }, items: order, grid: buildGrid(order), key, ids };
     this.layer = l;
     this.patchCache = new WeakMap();
+    this.entCache = new WeakMap();
     return l;
   }
 
@@ -1234,60 +1235,116 @@ export class Renderer {
   /** Recorte da camada com só os pixels do cenário que ficam na frente de cada entidade (refeito quando muda). */
   private patchCache = new WeakMap<object, { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D; mask: HTMLCanvasElement; mctx: CanvasRenderingContext2D; sig: string }>();
   private maskBuf = new Uint8ClampedArray(0);
+  /** Entidade já com o cenário da frente por cima, em pixels da tela (reaproveitada enquanto nada muda). */
+  private entCache = new WeakMap<object, { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D; sig: string }>();
 
   /**
-   * Desenha uma entidade por cima da camada e, onde o cenário fica na frente dela (o dono do pixel na camada está na
-   * frente pela ordem de profundidade), devolve os pixels da própria camada. O cenário nunca é redesenhado a partir dos
-   * sprites: os pixels devolvidos são exatamente os da camada pintada na abertura.
+   * Desenha uma entidade por cima da camada. Onde o cenário fica na frente dela (o dono do pixel na camada está na
+   * frente pela ordem de profundidade), ela é desenhada num recorte e os pixels da própria camada entram por cima, só
+   * onde ela pintou ('source-atop'): o cenário nunca é redesenhado a partir dos sprites, o resto do quadro fica igual
+   * ao cenário vazio e, atrás de vidro (garrafão do bebedouro), ela aparece através dele.
    */
   private paintMasked(e: Ent, p: Paint): void {
-    p.paint();
     const l = this.layer;
-    if (!l || !overlaps(e.rect, l.rect)) return;
+    if (!l || !overlaps(e.rect, l.rect)) return p.paint();
     const flags = this.flags;
     const front = markFront(e, l.items, l.grid, flags, this.frontList);
     try {
-      if (!front.n) return;
+      if (!front.n) return p.paint();
       const x = Math.floor(e.rect.x) - 2;
       const y = Math.floor(e.rect.y) - 2;
       const w = Math.ceil(e.rect.w) + 4;
       const h = Math.ceil(e.rect.h) + 4;
       const key = (e.ref as object | null) ?? e;
-      const sig = `${x},${y},${w},${h}#${front.sig}`;
-      let patch = this.patchCache.get(key);
-      if (!patch || patch.sig !== sig) {
-        if (!patch) {
-          const c = document.createElement('canvas');
-          const mask = document.createElement('canvas');
-          patch = { c, ctx: c.getContext('2d')!, mask, mctx: mask.getContext('2d')!, sig: '' };
-          this.patchCache.set(key, patch);
-        }
-        patch.sig = sig;
-        for (const cv of [patch.c, patch.mask]) {
-          if (cv.width < w || cv.height < h) {
-            cv.width = Math.max(cv.width, w);
-            cv.height = Math.max(cv.height, h);
-          }
-        }
-        if (this.maskBuf.length < w * h * 4) this.maskBuf = new Uint8ClampedArray(w * h * 4);
-        const m = frontMask(x, y, w, h, l.ids, flags, this.maskBuf);
-        patch.mctx.clearRect(0, 0, patch.mask.width, patch.mask.height);
-        patch.mctx.putImageData(new ImageData(m.slice(0, w * h * 4) as Uint8ClampedArray<ArrayBuffer>, w, h), 0, 0);
-        const pc = patch.ctx;
-        pc.save();
-        pc.globalCompositeOperation = 'copy';
-        pc.imageSmoothingEnabled = false;
-        pc.clearRect(0, 0, patch.c.width, patch.c.height);
-        pc.drawImage(l.c, x - l.x, y - l.y, w, h, 0, 0, w, h);
-        pc.globalCompositeOperation = 'destination-in';
-        pc.drawImage(patch.mask, 0, 0, w, h, 0, 0, w, h);
-        pc.restore();
+      const patch = this.frontPatch(key, l, x, y, w, h, front.sig);
+      const main = this.ctx;
+      const m = main.getTransform();
+      if (m.b !== 0 || m.c !== 0 || m.a <= 0 || m.d <= 0) {
+        p.paint();
+        main.drawImage(patch, 0, 0, w, h, x, y, w, h);
+        return;
       }
-      this.ctx.drawImage(patch.c, 0, 0, w, h, x, y, w, h);
+      // o recorte fica alinhado aos pixels da tela: o mesmo desenho que sairia direto no quadro
+      const X0 = Math.floor(m.a * x + m.e);
+      const Y0 = Math.floor(m.d * y + m.f);
+      const W = Math.ceil(m.a * (x + w) + m.e) - X0;
+      const H = Math.ceil(m.d * (y + h) + m.f) - Y0;
+      if (W <= 0 || H <= 0) return;
+      const sig = p.sig === undefined ? null : `${p.sig}#${front.sig}#${x},${y},${w},${h}#${m.a},${m.d},${m.e - X0},${m.f - Y0}`;
+      let slot = this.entCache.get(key);
+      if (!slot || sig === null || slot.sig !== sig) {
+        if (!slot) {
+          const c = document.createElement('canvas');
+          slot = { c, ctx: c.getContext('2d')!, sig: '' };
+          this.entCache.set(key, slot);
+        }
+        if (slot.c.width < W || slot.c.height < H) {
+          slot.c.width = Math.max(slot.c.width, W);
+          slot.c.height = Math.max(slot.c.height, H);
+        }
+        const oc = slot.ctx;
+        oc.setTransform(1, 0, 0, 1, 0, 0);
+        oc.globalAlpha = 1;
+        oc.globalCompositeOperation = 'source-over';
+        oc.clearRect(0, 0, W, H);
+        oc.imageSmoothingEnabled = main.imageSmoothingEnabled;
+        oc.setTransform(m.a, 0, 0, m.d, m.e - X0, m.f - Y0);
+        this.ctx = oc;
+        try {
+          p.paint();
+        } finally {
+          this.ctx = main;
+        }
+        oc.globalAlpha = 1;
+        oc.globalCompositeOperation = 'source-atop';
+        oc.imageSmoothingEnabled = false;
+        oc.drawImage(patch, 0, 0, w, h, x, y, w, h);
+        oc.globalCompositeOperation = 'source-over';
+        slot.sig = sig ?? '';
+      }
+      main.save();
+      main.setTransform(1, 0, 0, 1, 0, 0);
+      main.globalAlpha = 1;
+      main.globalCompositeOperation = 'source-over';
+      main.drawImage(slot.c, 0, 0, W, H, X0, Y0, W, H);
+      main.restore();
     } finally {
       for (const i of this.frontList) flags[i] = 0;
       this.frontList.length = 0;
     }
+  }
+
+  /** Os pixels da camada (escala 1) cujo dono está marcado em `flags`, no retângulo (x, y, w, h). */
+  private frontPatch(key: object, l: StaticLayer, x: number, y: number, w: number, h: number, frontSig: number): HTMLCanvasElement {
+    const sig = `${x},${y},${w},${h}#${frontSig}`;
+    let patch = this.patchCache.get(key);
+    if (patch && patch.sig === sig) return patch.c;
+    if (!patch) {
+      const c = document.createElement('canvas');
+      const mask = document.createElement('canvas');
+      patch = { c, ctx: c.getContext('2d')!, mask, mctx: mask.getContext('2d')!, sig: '' };
+      this.patchCache.set(key, patch);
+    }
+    patch.sig = sig;
+    for (const cv of [patch.c, patch.mask]) {
+      if (cv.width < w || cv.height < h) {
+        cv.width = Math.max(cv.width, w);
+        cv.height = Math.max(cv.height, h);
+      }
+    }
+    if (this.maskBuf.length < w * h * 4) this.maskBuf = new Uint8ClampedArray(w * h * 4);
+    const m = frontMask(x, y, w, h, l.ids, this.flags, this.maskBuf);
+    patch.mctx.clearRect(0, 0, patch.mask.width, patch.mask.height);
+    patch.mctx.putImageData(new ImageData(m.slice(0, w * h * 4) as Uint8ClampedArray<ArrayBuffer>, w, h), 0, 0);
+    const pc = patch.ctx;
+    pc.save();
+    pc.imageSmoothingEnabled = false;
+    pc.clearRect(0, 0, patch.c.width, patch.c.height);
+    pc.drawImage(l.c, x - l.x, y - l.y, w, h, 0, 0, w, h);
+    pc.globalCompositeOperation = 'destination-in';
+    pc.drawImage(patch.mask, 0, 0, w, h, 0, 0, w, h);
+    pc.restore();
+    return patch.c;
   }
 
   /** Pedaço fora da camada (área em montagem): parede subindo com transparência, móvel crescendo da âncora. */

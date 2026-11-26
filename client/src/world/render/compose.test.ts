@@ -12,7 +12,7 @@ import { furnitureFacing } from '../layout/facing';
 import { layoutProjectRoom } from '../layout/room';
 import type { AreaLayout } from '../layout/types';
 import { roomTheme } from '../../art/theme';
-import { blendOnto, buildGrid, composeLayer, frontMask, markFront, maskBehind, restoreFront, type Composite, type LayerItem } from './compose';
+import { atopFront, blendOnto, buildGrid, composeLayer, markFront, maskBehind, type Composite, type LayerItem } from './compose';
 import { wallPlan } from './wall-plan';
 
 const px = (s: BufSprite) => ({ data: s.buf.data, w: s.buf.w, h: s.buf.h });
@@ -78,15 +78,12 @@ function withPerson(c: Composite, x: number, y: number) {
       const id = c.ids[ly * c.w + lx];
       if (id && flags[id - 1]) byOwner.set(id - 1, (byOwner.get(id - 1) ?? 0) + 1);
     }
-  // como o renderizador: desenha a pessoa inteira e devolve os pixels da camada onde o cenário fica na frente
+  // como o renderizador: o cenário da frente por cima da pessoa, só onde ela tem pixel, e o resultado sobre a camada
   const frame = new Uint8ClampedArray(c.rgba);
-  blendOnto(frame, c, person.buf.data, w, h, ex, ey);
-  restoreFront(frame, c, frontMask(ex, ey, w, h, c, flags), ex, ey, w, h);
-  // o mesmo que esconder os pixels dela ali
+  blendOnto(frame, c, atopFront(person.buf.data, w, h, ex, ey, c, flags), w, h, ex, ey);
+  // pixels dela que o cenário da frente cobre (os escondidos ficam com alfa 0 em `sprite`)
   const hidden = maskBehind(sprite, w, h, ex, ey, c, flags);
-  const direct = new Uint8ClampedArray(c.rgba);
-  blendOnto(direct, c, sprite, w, h, ex, ey);
-  return { frame, direct, sprite, ex, ey, w, h, hidden, front: front.n, byOwner };
+  return { frame, sprite, ex, ey, w, h, hidden, front: front.n, byOwner, flags };
 }
 
 /** Todos os pontos (px de mundo) de uma faixa de tiles, de 4 em 4 px. */
@@ -107,6 +104,21 @@ describe('camada com dono por pixel', () => {
     expect(c.rgba[2]).toBeGreaterThan(0);
   });
 
+  it('atrás de vidro: aparece através dele; onde não pinta, o vidro não muda', () => {
+    const glass = { data: new Uint8ClampedArray([200, 230, 255, 160, 200, 230, 255, 160]), w: 2, h: 1 };
+    const c = composeLayer([{ box: { x0: 0, y0: 10, x1: 2, y1: 12 }, rect: { x: 0, y: 0, w: 2, h: 1 }, px: glass, sx: 0, sy: 0, sw: 2, sh: 1, dx: 0, dy: 0 }])!;
+    expect([...c.ids]).toEqual([1, 1]);
+    const flags = new Uint8Array([1]);
+    // a pessoa (vermelha, opaca) só no primeiro pixel
+    const person2 = new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 0, 0]);
+    const frame = new Uint8ClampedArray(c.rgba);
+    blendOnto(frame, c, atopFront(person2, 2, 1, 0, 0, c, flags), 2, 1, 0, 0);
+    expect(frame[3]).toBe(255);
+    expect(frame[0]).toBeGreaterThan(200);
+    expect(frame[1]).toBeGreaterThan(100);
+    expect([...frame.slice(4)]).toEqual([...c.rgba.slice(4)]);
+  });
+
   it('com alguém em qualquer lugar (bebedouro do corredor, copa, sala), o cenário fora do desenho dele fica idêntico', () => {
     const c = scene.comp;
     // corredor (bebedouros e bancos), copa e salas: centenas de posições; confere uma janela de 48 px em volta dele
@@ -114,18 +126,6 @@ describe('camada com dono por pixel', () => {
     let checked = 0;
     for (const [x, y] of spots) {
       const r = withPerson(c, x, y);
-      // devolver os pixels da camada dá o mesmo quadro que esconder os pixels da pessoa
-      if (checked % 10 === 0) {
-        let same = 0;
-        let total = 0;
-        for (let j = Math.max(0, r.ey - c.y); j < Math.min(c.h, r.ey + r.h - c.y); j++)
-          for (let i = Math.max(0, r.ex - c.x); i < Math.min(c.w, r.ex + r.w - c.x); i++) {
-            const k = (j * c.w + i) * 4;
-            total++;
-            if (r.frame[k] === r.direct[k] && r.frame[k + 1] === r.direct[k + 1] && r.frame[k + 2] === r.direct[k + 2] && r.frame[k + 3] === r.direct[k + 3]) same++;
-          }
-        expect(same, `(${x},${y}) devolver a camada = esconder a pessoa`).toBe(total);
-      }
       const j0 = Math.max(0, r.ey - 48 - c.y);
       const j1 = Math.min(c.h, r.ey + r.h + 48 - c.y);
       const i0 = Math.max(0, r.ex - 48 - c.x);
@@ -137,11 +137,13 @@ describe('camada com dono por pixel', () => {
           const tx = i + c.x;
           const k = (j * c.w + i) * 4;
           if (r.frame[k] === c.rgba[k] && r.frame[k + 1] === c.rgba[k + 1] && r.frame[k + 2] === c.rgba[k + 2] && r.frame[k + 3] === c.rgba[k + 3]) continue;
-          // mudou: só pode ser um pixel visível do próprio personagem
+          // mudou: só pode ser um pixel do próprio personagem, e não atrás de cenário opaco que fica na frente dele
           const inside = insideY && tx >= r.ex && tx < r.ex + r.w;
           expect(inside, `(${x},${y}) mudou o cenário em ${tx},${ty}`).toBe(true);
           const s = ((ty - r.ey) * r.w + (tx - r.ex)) * 4 + 3;
-          expect(r.sprite[s], `(${x},${y}) pixel ${tx},${ty}`).toBeGreaterThan(0);
+          expect(person.buf.data[s], `(${x},${y}) pixel ${tx},${ty}`).toBeGreaterThan(0);
+          const id = c.ids[j * c.w + i];
+          expect(!!id && !!r.flags[id - 1] && c.rgba[k + 3] === 255, `(${x},${y}) atrás do cenário em ${tx},${ty}`).toBe(false);
         }
       }
       checked++;

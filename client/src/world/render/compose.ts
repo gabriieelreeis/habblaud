@@ -205,22 +205,31 @@ export function frontMask(x: number, y: number, w: number, h: number, layer: Pic
   return m;
 }
 
-/** Devolve ao quadro (buffer do tamanho da camada) os pixels da camada onde a máscara marca o cenário na frente. */
-export function restoreFront(frame: Uint8ClampedArray, layer: Pick<Composite, 'x' | 'y' | 'w' | 'h' | 'rgba'>, mask: Uint8ClampedArray, x: number, y: number, w: number, h: number): void {
+/**
+ * O que o renderizador faz na placa de vídeo ('source-atop'): os pixels da camada cujo dono está marcado em `flags`
+ * entram por cima do desenho RGBA de uma entidade (canto em ex, ey), só onde ela tem pixel, e o alfa continua o dela.
+ * Onde ela não pinta, o quadro fica igual ao cenário; atrás de vidro, ela aparece através dele.
+ */
+export function atopFront(src: Uint8ClampedArray, w: number, h: number, ex: number, ey: number, layer: Pick<Composite, 'x' | 'y' | 'w' | 'h' | 'ids' | 'rgba'>, flags: Uint8Array): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(src);
   for (let j = 0; j < h; j++) {
-    const ty = y + j - layer.y;
-    if (ty < 0 || ty >= layer.h) continue;
+    const ly = ey + j - layer.y;
+    if (ly < 0 || ly >= layer.h) continue;
     for (let i = 0; i < w; i++) {
-      if (!mask[(j * w + i) * 4 + 3]) continue;
-      const tx = x + i - layer.x;
-      if (tx < 0 || tx >= layer.w) continue;
-      const d = (ty * layer.w + tx) * 4;
-      frame[d] = layer.rgba[d];
-      frame[d + 1] = layer.rgba[d + 1];
-      frame[d + 2] = layer.rgba[d + 2];
-      frame[d + 3] = layer.rgba[d + 3];
+      const k = (j * w + i) * 4;
+      if (!out[k + 3]) continue;
+      const lx = ex + i - layer.x;
+      if (lx < 0 || lx >= layer.w) continue;
+      const id = layer.ids[ly * layer.w + lx];
+      if (!id || !flags[id - 1]) continue;
+      const d = (ly * layer.w + lx) * 4;
+      const sa = layer.rgba[d + 3] / 255;
+      out[k] = layer.rgba[d] * sa + out[k] * (1 - sa);
+      out[k + 1] = layer.rgba[d + 1] * sa + out[k + 1] * (1 - sa);
+      out[k + 2] = layer.rgba[d + 2] * sa + out[k + 2] * (1 - sa);
     }
   }
+  return out;
 }
 
 /** Mistura um desenho RGBA (canto em ex, ey) sobre um buffer do tamanho da camada (para testes e prévias). */
