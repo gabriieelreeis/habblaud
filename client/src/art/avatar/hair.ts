@@ -271,13 +271,19 @@ export function hairFront(c: Ctx): Layer | null {
       crest.vw = 0.3;
       const wc = Math.max(2, rnd(2.4 * Math.abs(v.c) + 1.2));
       let i = 0;
-      for (let f = -1; f <= 0.94; f += 0.04, i++) {
-        const z = rig.headZ + HEAD_RZ * Math.sqrt(1 - f * f);
-        const h = 5.6 - 3.2 * Math.abs(f - 0.05) + (i % 2 ? 1.4 : 0);
+      // só o alto da cabeça (de frente, a crista não desce pela testa), mais larga na base e com pontas em cima
+      for (let f = -0.82; f <= 0.6; f += 0.04, i++) {
+        const z = rig.headZ + Math.max(HEAD_RZ * Math.sqrt(1 - f * f), HEAD_RZ * 0.68);
+        const h = 4.4 - 2.4 * Math.abs(f + 0.08) + (Math.floor(i / 3) % 2 ? 1.6 : 0);
         const base = proj(v, 0, f * 7.6, z - 1);
         const top = proj(v, 0, f * 7.6, z + h);
-        const left = AX + rnd(base.x - AX - wc / 2);
-        for (let y = Math.round(top.y); y <= Math.round(base.y); y++) for (let k = 0; k < wc; k++) crest.fill(left + k, y, col);
+        const y0 = Math.round(top.y);
+        const y1 = Math.round(base.y);
+        for (let y = y0; y <= y1; y++) {
+          const w = wc + (y1 - y <= 1 ? 2 : y - y0 <= 1 ? -1 : 0);
+          const left = AX + rnd(base.x - AX - w / 2);
+          for (let k = 0; k < w; k++) crest.fill(left + k, y, col);
+        }
       }
       for (let k = 0; k < crest.col.length; k++) {
         const cc = crest.col[k];
