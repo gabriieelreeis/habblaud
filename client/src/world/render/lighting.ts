@@ -171,6 +171,8 @@ export class Lighting {
   private isoKey = '';
   private isoX0 = 0;
   private isoY0 = 0;
+  /** Recorte da vista (ver drawAmbientIso). */
+  private viewC: HTMLCanvasElement | null = null;
   /** Luz por presença das áreas comuns (0 = penumbra, 1 = acesa), com transição. */
   private coreLevel = new Map<string, number>();
   private coreBusy = new Map<string, boolean>();
@@ -264,35 +266,36 @@ export class Lighting {
     if (isNeutral(amb)) return;
     const map = this.ensureMap(scene, now);
     if (!map) return;
-    const key = `${this.mapKey}|${scene.planesVersion ?? 0}|${map.width}x${map.height}`;
+    // a cor de fora entra na chave: o fundo do mapa projetado e o preenchimento além dele precisam ser iguais
+    const outside = rgbCss(amb.outside);
+    const key = `${this.mapKey}|${scene.planesVersion ?? 0}|${map.width}x${map.height}|${outside}`;
     if (key !== this.isoKey || !this.iso) {
       this.isoKey = key;
-      this.projectIso(map, scene, rgbCss(amb.outside));
+      this.projectIso(map, scene, outside);
     }
     const iso = this.iso;
     if (!iso) return;
+    // um canvas do tamanho da vista (na resolução do mapa), todo preenchido: o lado de fora e o mapa recortado,
+    // multiplicado de uma vez sobre a cena (sem emendas na borda do mapa)
     const S = ISO_SCALE;
-    const x0 = this.isoX0;
-    const y0 = this.isoY0;
-    const x1 = x0 + iso.width * S;
-    const y1 = y0 + iso.height * S;
+    const bx = Math.floor(view.x0 / S) * S - S;
+    const by = Math.floor(view.y0 / S) * S - S;
+    const vw = Math.ceil((view.x1 - bx) / S) + 2;
+    const vh = Math.ceil((view.y1 - by) / S) + 2;
+    if (!this.viewC) this.viewC = document.createElement('canvas');
+    const vc = this.viewC;
+    if (vc.width !== vw || vc.height !== vh) {
+      vc.width = vw;
+      vc.height = vh;
+    }
+    const vctx = vc.getContext('2d')!;
+    vctx.imageSmoothingEnabled = false;
+    vctx.fillStyle = outside;
+    vctx.fillRect(0, 0, vw, vh);
+    vctx.drawImage(iso, (this.isoX0 - bx) / S, (this.isoY0 - by) / S);
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
-    const sx = Math.max(0, Math.floor((view.x0 - x0) / S) - 1);
-    const sy = Math.max(0, Math.floor((view.y0 - y0) / S) - 1);
-    const ex = Math.min(iso.width, Math.ceil((view.x1 - x0) / S) + 1);
-    const ey = Math.min(iso.height, Math.ceil((view.y1 - y0) / S) + 1);
-    if (ex > sx && ey > sy) ctx.drawImage(iso, sx, sy, ex - sx, ey - sy, x0 + sx * S, y0 + sy * S, (ex - sx) * S, (ey - sy) * S);
-    ctx.fillStyle = rgbCss(amb.outside);
-    const w = view.x1 - view.x0 + 4;
-    if (view.y0 < y0) ctx.fillRect(view.x0 - 2, view.y0 - 2, w, y0 - view.y0 + 2);
-    if (view.y1 > y1) ctx.fillRect(view.x0 - 2, y1, w, view.y1 - y1 + 2);
-    const top = Math.max(view.y0 - 2, y0);
-    const bottom = Math.min(view.y1 + 2, y1);
-    if (bottom > top) {
-      if (view.x0 < x0) ctx.fillRect(view.x0 - 2, top, x0 - view.x0 + 2, bottom - top);
-      if (view.x1 > x1) ctx.fillRect(x1, top, view.x1 - x1 + 2, bottom - top);
-    }
+    ctx.drawImage(vc, bx, by, vw * S, vh * S);
     ctx.restore();
   }
 
@@ -305,8 +308,8 @@ export class Lighting {
     const ww = map.width * M;
     const wh = map.height * M;
     // caixa do mapa no plano isométrico, com folga em cima para as paredes
-    const ix0 = Math.floor(mx - (my + wh));
-    const iy0 = Math.floor((mx + my) / 2) - 96;
+    const ix0 = Math.floor((mx - (my + wh)) / S) * S;
+    const iy0 = Math.floor(((mx + my) / 2 - 96) / S) * S;
     const iw = Math.ceil(ww + wh) + 2;
     const ih = Math.ceil((ww + wh) / 2) + 98;
     try {
