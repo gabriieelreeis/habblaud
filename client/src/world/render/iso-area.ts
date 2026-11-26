@@ -1,11 +1,12 @@
 // Visuais isométricos de uma área: piso projetado, paredes fatiadas por tile (com os itens fixos já pintados) e
 // os itens de parede animados, cada um com a caixa do chão usada na ordem de desenho (../iso.ts).
-import { TILE, type ArtModule, type FurnitureKind, type Sprite, type WallStyle } from '../../art/api';
-import { FLOOR_MATRIX, LOW_WALL_H, WALL_H, WALL_T, isoBounds, isoX, isoY, type Box, type IsoRect, type Sortable } from '../iso';
-import type { AreaLayout, WallSegment } from '../layout/types';
+import { TILE, type ArtModule, type FurnitureKind, type Sprite } from '../../art/api';
+import { FLOOR_MATRIX, LOW_WALL_H, WALL_H, WALL_T, isoBounds, isoX, isoY, wallSlices, type Box, type IsoRect, type Sortable } from '../iso';
+import type { AreaLayout } from '../layout/types';
 import type { SeasonalTheme } from '../api';
 import type { WorldAssets } from '../assets';
 import { seasonalWallStyle } from './seasonal';
+import { wallPlan } from './wall-plan';
 import { pickWallArt, toWallVis, wallSprites, type FurnVis, type WallVis } from './scene';
 
 export const enum PieceKind {
@@ -98,32 +99,20 @@ interface Plane {
 
 /** Fatias de 1 tile de um sprite de parede, cada uma com a sua caixa no chão. */
 function slices(sp: Sprite, src: CanvasImageSource, plane: Plane, thick: number, kind: PieceKind, areaId: string, bias = 0): Piece[] {
-  const out: Piece[] = [];
-  const cw = sp.canvas.width;
-  const ch = sp.canvas.height;
-  const south = plane.facing === 'south';
-  // canto de trás do footprint da parede no mundo
-  const bx = south ? plane.a0 : plane.at - thick;
-  const by = south ? plane.at - thick : plane.a0;
-  const ox = isoX(bx, by) - sp.ax;
-  const oy = isoY(bx, by) - sp.ay;
-  const len = plane.a1 - plane.a0;
-  const n = Math.max(1, Math.ceil(len / TILE - 1e-6));
-  for (let k = 0; k < n; k++) {
-    const a = k * TILE;
-    const b = Math.min(len, a + TILE);
-    let sx0 = south ? sp.ax + a - thick : sp.ax + thick - b;
-    let sx1 = south ? sp.ax + b - thick : sp.ax + thick - a;
-    if (south ? k === 0 : k === n - 1) sx0 = 0;
-    if (south ? k === n - 1 : k === 0) sx1 = cw;
-    sx0 = Math.max(0, Math.round(sx0));
-    sx1 = Math.min(cw, Math.round(sx1));
-    if (sx1 <= sx0) continue;
-    const box: Box = south ? { x0: plane.a0 + a, y0: plane.at - thick, x1: plane.a0 + b, y1: plane.at } : { x0: plane.at - thick, y0: plane.a0 + a, x1: plane.at, y1: plane.a0 + b };
-    const rect: IsoRect = { x: ox + sx0, y: oy, w: sx1 - sx0, h: ch };
-    out.push({ kind, src, sx: sx0, sy: 0, sw: sx1 - sx0, sh: ch, dx: ox + sx0, dy: oy, box, rect, bias, areaId });
-  }
-  return out;
+  return wallSlices(sp.ax, sp.ay, sp.canvas.width, sp.canvas.height, plane, thick, TILE).map((q) => ({
+    kind,
+    src,
+    sx: q.sx0,
+    sy: 0,
+    sw: q.sx1 - q.sx0,
+    sh: sp.canvas.height,
+    dx: q.dx,
+    dy: q.dy,
+    box: q.box,
+    rect: q.rect,
+    bias,
+    areaId,
+  }));
 }
 
 /** Copia um sprite num canvas próprio (os do cache são compartilhados). */
@@ -141,10 +130,6 @@ function bakeItem(ctx: CanvasRenderingContext2D, wallSp: Sprite, plane: Plane, i
   ctx.setTransform(...shearMatrix(X, Y, s));
   ctx.drawImage(s.canvas, 0, 0);
   ctx.restore();
-}
-
-function doorsOf(seg: { x: number; w: number; doorways?: { x: number; w: number }[] }): [number, number][] {
-  return (seg.doorways ?? []).map((d) => [d.x - seg.x, d.x - seg.x + d.w]);
 }
 
 /**
@@ -173,68 +158,40 @@ export function buildIsoArea(art: ArtModule, layout: AreaLayout, floorSrc: HTMLC
   const overlays: WallOverlay[] = [];
   const planes: IsoAreaVis['planes'] = [];
   const items = layout.wallItems.map((it) => toWallVis(it, layout.id));
-  const centerX = px.x + px.w / 2;
-  const faceTop = Math.min(...layout.walls.filter((w) => w.kind === 'face').map((w) => w.y + 2 * TILE), Infinity);
   const isoWall = art.isoWall?.bind(art);
   if (!isoWall) return { floor: pf.c, fx: pf.x, fy: pf.y, walls, overlays, planes };
-  for (const raw of layout.walls) {
-    const seg: WallSegment = { ...raw, style: seasonalWallStyle(theme, raw.style) } as WallSegment;
-    const style: WallStyle = seg.style;
-    if (seg.kind === 'face') {
-      const plane: Plane = { facing: 'south', at: seg.y + 2 * TILE, a0: seg.x, a1: seg.x + seg.w };
-      planes.push({ ...plane, height: WALL_H });
-      const sp = isoWall(style, { facing: 'south', length: seg.w, height: WALL_H, thickness: WALL_T, doorways: doorsOf(seg), seed: Math.round(seg.x) });
-      const [c, ctx] = own(sp);
-      for (const it of items) {
-        if (it.on !== 'face' || Math.abs(it.baseY - plane.at) > 1 || it.cx < plane.a0 - 1 || it.cx > plane.a1 + 1) continue;
-        if (it.kind === 'door_frame') continue;
-        if (DYNAMIC_WALL.has(it.kind)) {
-          overlays.push(overlayFor(art, it, plane, 'face'));
-          continue;
+  for (const p of wallPlan(layout)) {
+    const plane = p.plane;
+    const sp = isoWall(seasonalWallStyle(theme, p.seg.style), p.spec);
+    if (p.tall) planes.push({ ...plane, height: WALL_H });
+    if (p.seg.kind !== 'face') {
+      walls.push(...slices(sp, sp.canvas, plane, p.thick, p.tall ? PieceKind.Wall : PieceKind.Low, layout.id));
+      if (p.seg.kind === 'south')
+        for (const it of items) {
+          if (it.on !== 'south' || it.cx < plane.a0 - 1 || it.cx > plane.a1 + 1) continue;
+          overlays.push(overlayFor(art, it, plane, 'low'));
         }
-        const ai = it.kind === 'painting' || it.kind === 'poster' ? pickWallArt(assets, it.kind, it.kind === 'poster' ? 1 : it.variant === 'wide' ? 4 : 2, it.variant, it.seed) : null;
-        const img = ai ? (ai.framed ?? (ai.kind === 'poster' ? ai : null)) : null;
-        if (img) {
-          // arte pronta: topo 28 px acima do rodapé, como na vista de cima
-          bakeItem(ctx, sp, plane, it, { canvas: img.img as unknown as HTMLCanvasElement, ax: Math.round(img.w / 2), ay: 28 }, WALL_T);
-          continue;
-        }
-        const ws = wallSprites(art, it.kind, it.variant === 'wide' ? undefined : it.variant, 0, it.seed);
-        if (ws) bakeItem(ctx, sp, plane, it, ws.base, WALL_T);
-      }
-      walls.push(...slices(sp, c, plane, WALL_T, PieceKind.Wall, layout.id));
-    } else if (seg.kind === 'south') {
-      const yc = seg.y + TILE / 2;
-      const plane: Plane = { facing: 'south', at: yc + 2, a0: seg.x, a1: seg.x + seg.w };
-      const sp = isoWall(style, { facing: 'south', low: true, length: seg.w, height: LOW_WALL_H, thickness: 4, doorways: doorsOf(seg) });
-      walls.push(...slices(sp, sp.canvas, plane, 4, PieceKind.Low, layout.id));
-      for (const it of items) {
-        if (it.on !== 'south' || it.cx < plane.a0 - 1 || it.cx > plane.a1 + 1) continue;
-        overlays.push(overlayFor(art, it, plane, 'low'));
-      }
-    } else if (seg.h >= seg.w) {
-      // lateral: a oeste vira parede alta voltada para leste; a leste, mureta baixa
-      const west = seg.x + seg.w / 2 < centerX;
-      const y0 = west && Number.isFinite(faceTop) ? Math.max(seg.y, faceTop - WALL_T) : seg.y;
-      const y1 = seg.y + seg.h;
-      if (y1 - y0 < 2) continue;
-      if (west) {
-        const plane: Plane = { facing: 'east', at: seg.x + seg.w, a0: y0, a1: y1 };
-        planes.push({ ...plane, height: WALL_H });
-        const sp = isoWall(style, { facing: 'east', length: y1 - y0, height: WALL_H, thickness: seg.w, seed: Math.round(seg.x) });
-        walls.push(...slices(sp, sp.canvas, plane, seg.w, PieceKind.Wall, layout.id));
-      } else {
-        const xc = seg.x + seg.w / 2;
-        const plane: Plane = { facing: 'east', at: xc + 2, a0: y0, a1: y1 };
-        const sp = isoWall(style, { facing: 'east', low: true, length: y1 - y0, height: LOW_WALL_H, thickness: 4 });
-        walls.push(...slices(sp, sp.canvas, plane, 4, PieceKind.Low, layout.id));
-      }
-    } else {
-      const yc = seg.y + seg.h / 2;
-      const plane: Plane = { facing: 'south', at: yc + 2, a0: seg.x, a1: seg.x + seg.w };
-      const sp = isoWall(style, { facing: 'south', low: true, length: seg.w, height: LOW_WALL_H, thickness: 4 });
-      walls.push(...slices(sp, sp.canvas, plane, 4, PieceKind.Low, layout.id));
+      continue;
     }
+    const [c, ctx] = own(sp);
+    for (const it of items) {
+      if (it.on !== 'face' || Math.abs(it.baseY - plane.at) > 1 || it.cx < plane.a0 - 1 || it.cx > plane.a1 + 1) continue;
+      if (it.kind === 'door_frame') continue;
+      if (DYNAMIC_WALL.has(it.kind)) {
+        overlays.push(overlayFor(art, it, plane, 'face'));
+        continue;
+      }
+      const ai = it.kind === 'painting' || it.kind === 'poster' ? pickWallArt(assets, it.kind, it.kind === 'poster' ? 1 : it.variant === 'wide' ? 4 : 2, it.variant, it.seed) : null;
+      const img = ai ? (ai.framed ?? (ai.kind === 'poster' ? ai : null)) : null;
+      if (img) {
+        // arte pronta: topo 28 px acima do rodapé, como na vista de cima
+        bakeItem(ctx, sp, plane, it, { canvas: img.img as unknown as HTMLCanvasElement, ax: Math.round(img.w / 2), ay: 28 }, WALL_T);
+        continue;
+      }
+      const ws = wallSprites(art, it.kind, it.variant === 'wide' ? undefined : it.variant, 0, it.seed);
+      if (ws) bakeItem(ctx, sp, plane, it, ws.base, WALL_T);
+    }
+    walls.push(...slices(sp, c, plane, WALL_T, PieceKind.Wall, layout.id));
   }
   return { floor: pf.c, fx: pf.x, fy: pf.y, walls, overlays, planes };
 }

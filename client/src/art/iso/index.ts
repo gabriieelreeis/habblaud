@@ -4,11 +4,11 @@ import { FURNITURE, type Dir, type FurnitureKind, type Rect } from '../api';
 import type { BufFurniture, BufSprite, Rects } from '../core/sprite';
 import { normalizeFurniture } from '../furniture/index';
 import { M } from '../furniture/kit';
-import { Iso, tone } from './kit';
-import { cafeKinds } from './cafe';
-import { loungeKinds } from './lounge';
+import { Iso } from './kit';
+import { cafeBack, cafeKinds } from './cafe';
+import { loungeBack, loungeKinds } from './lounge';
 import * as O from './office';
-import { officeMore } from './office2';
+import { officeMore, officeMoreBack } from './office2';
 
 /** Altura aproximada (px) de cada móvel de chão: usada pela caixa provisória e pelo mundo (luz, cliques). */
 export const ISO_HEIGHT: Partial<Record<FurnitureKind, number>> = {
@@ -57,7 +57,7 @@ function placeholder(kind: FurnitureKind): BufFurniture {
   return { base: s.finish() };
 }
 
-function build(kind: FurnitureKind, variant: string | undefined, state: number, seed: number): BufFurniture | null {
+function build(kind: FurnitureKind, variant: string | undefined, state: number, seed: number, facing: Dir): BufFurniture | null {
   switch (kind) {
     case 'desk':
       return O.desk(variant, seed);
@@ -72,47 +72,35 @@ function build(kind: FurnitureKind, variant: string | undefined, state: number, 
     case 'plant_tall':
       return O.plantTall(variant, seed);
     default:
-      return officeMore(kind, variant, state, seed) ?? cafeKinds(kind, variant, state, seed) ?? loungeKinds(kind, variant, state, seed);
+      return officeMore(kind, variant, state, seed) ?? cafeKinds(kind, variant, state, seed) ?? loungeKinds(kind, variant, state, seed, facing);
   }
 }
 
-/** Material das costas (cor e altura) dos móveis que podem ficar de costas para a câmera. */
-const BACKS: Partial<Record<FurnitureKind, { color: string; top?: string; inset?: number }>> = {
-  bookshelf: { color: '#c79f72', top: '#d9b88e', inset: 2 },
-  binder_shelf: { color: '#dddcd6', top: '#ecebe6', inset: 2 },
-  filing_cabinet: { color: '#a9b0bb', top: '#c4cad3', inset: 2 },
-  printer: { color: '#d9dbe0', top: '#7d8592', inset: 2 },
-  water_cooler: { color: '#e4e6ea', top: '#9fd0f2', inset: 4 },
-  fridge: { color: '#e3e5e8', top: '#f0f1f3', inset: 2 },
-  vending_machine: { color: '#b84a4a', top: '#cf6a6a', inset: 2 },
-  counter: { color: '#d8d6d0', top: '#eceae4', inset: 0 },
-  counter_sink: { color: '#d8d6d0', top: '#eceae4', inset: 0 },
-  coffee_machine: { color: '#d8d6d0', top: '#474d5c', inset: 0 },
-  microwave: { color: '#d8d6d0', top: '#e9e8e4', inset: 0 },
-  sink: { color: '#e4e2dc', top: '#f2f1ec', inset: 1 },
-  arcade: { color: '#2d3550', top: '#f2c14e', inset: 2 },
-  toilet_stall: { color: '#c9ced6', top: '#dfe3e8', inset: 0 },
+type BackFn = (variant: string | undefined, state: number, seed: number) => BufFurniture | null;
+
+/**
+ * Desenho de costas (o móvel de frente para o norte, encostado na parede sul) de cada móvel de parede: mesmo footprint
+ * e mesma altura da frente, com o que identifica o móvel visto por trás.
+ */
+const BACKS: Partial<Record<FurnitureKind, BackFn>> = {
+  bookshelf: (_v, _st, seed) => O.bookshelfBack(seed),
+  binder_shelf: (_v, _st, seed) => officeMoreBack('binder_shelf', seed),
+  filing_cabinet: (_v, _st, seed) => officeMoreBack('filing_cabinet', seed),
+  printer: (_v, _st, seed) => officeMoreBack('printer', seed),
+  water_cooler: (_v, _st, seed) => officeMoreBack('water_cooler', seed),
+  fridge: (_v, st) => cafeBack('fridge', st),
+  vending_machine: (_v, st) => cafeBack('vending_machine', st),
+  counter: (_v, st) => cafeBack('counter', st),
+  counter_sink: (_v, st) => cafeBack('counter_sink', st),
+  coffee_machine: (_v, st) => cafeBack('coffee_machine', st),
+  microwave: (_v, st) => cafeBack('microwave', st),
+  sink: (_v, st) => cafeBack('sink', st),
+  arcade: () => loungeBack('arcade'),
+  toilet_stall: (_v, st) => cafeBack('toilet_stall', st),
 };
 
-/** Costas lisas de um móvel (para quando ele está de frente para a parede do fundo ou para a esquerda). */
-function backView(kind: FurnitureKind): BufFurniture {
-  const fp = FURNITURE[kind].footprint;
-  const h = ISO_HEIGHT[kind] ?? 16;
-  const b = BACKS[kind] ?? { color: '#d9dbe0' };
-  const i = b.inset ?? 2;
-  const s = new Iso(fp.w, fp.h, h + 8);
-  const W = fp.w * 16;
-  const D = fp.h * 16;
-  s.shadow(i, i, W - i, D - i, 0.2);
-  const m = tone(b.color, 0.06);
-  s.box(i, i, 0, W - i, D - i, h, {
-    top: b.top ?? m.lt,
-    // painel de costas: emendas verticais e um rodapé escuro
-    south: (u, v, w, hh) => (hh - v < 2 ? m.dk : Math.floor(u) % 16 === 15 ? m.dk : v < 1 ? m.lt : m.base),
-    east: (u, v, w, hh) => (hh - v < 2 ? m.dd : Math.floor(u) % 16 === 15 ? m.dd : m.dk),
-  });
-  return { base: s.finish() };
-}
+/** Kinds com desenho de costas próprio (os que viram de costas para a câmera na parede sul ou leste). */
+export const ISO_BACK_KINDS = Object.keys(BACKS) as FurnitureKind[];
 
 /** Espelha um sprite na horizontal: no plano isométrico, troca x por y (vira de frente para o leste). */
 function mirror(f: BufFurniture): BufFurniture {
@@ -127,13 +115,15 @@ function mirror(f: BufFurniture): BufFurniture {
 /**
  * Móvel de chão isométrico (âncora no canto de trás do footprint). Itens de parede não passam por aqui. `facing` (para
  * onde a frente aponta, no plano do mundo) vale para os móveis encostados na parede: 'down' é o desenho de sempre,
- * 'right' é o espelho dele, 'up' são as costas e 'left' o espelho das costas. Assentos e mesas usam a variante.
+ * 'right' é o espelho dele, 'up' são as costas e 'left' o espelho das costas. Assentos e mesas usam a variante; o pufe,
+ * cuja variante é a cor, usa `facing` como a direção de quem senta.
  */
 export function renderIsoFurniture(kind: FurnitureKind, variant?: string, state?: number, seed?: number, facing: Dir = 'down'): BufFurniture {
   const n = normalizeFurniture(kind, variant, state, seed);
-  const front = () => build(kind, n.variant, n.state, n.vseed) ?? placeholder(kind);
-  if (!BACKS[kind] || facing === 'down') return front();
+  const front = () => build(kind, n.variant, n.state, n.vseed, facing) ?? placeholder(kind);
+  const backFn = BACKS[kind];
+  if (!backFn || facing === 'down') return front();
   if (facing === 'right') return mirror(front());
-  if (facing === 'up') return backView(kind);
-  return mirror(backView(kind));
+  const back = backFn(n.variant, n.state, n.vseed) ?? front();
+  return facing === 'up' ? back : mirror(back);
 }

@@ -165,6 +165,11 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Escritório isométrico:** o cenário (paredes, móveis, plantas, postes) é pintado uma vez só e não muda mais conforme
+  quem passa perto (na área do bebedouro, a ordem de quem ficava na frente trocava); cada pessoa fica escondida só
+  onde o cenário está na frente dela. Quem senta no sofá, na poltrona, no banco e no pufe fica no assento, com o encosto
+  e o braço do lado certo. Cabine do banheiro livre com a porta fechada e a luz verde. Estantes, impressora, arquivo e
+  bebedouro encostados nas paredes de baixo aparecem de costas com o desenho de costas (antes, caixas lisas).
 - **Player de áudio nas perguntas funciona com arquivos fora das pastas montadas no Docker.** Antes o cartão só mostrava o player quando o arquivo existia dentro do container, então um áudio numa pasta comum do computador não aparecia. Agora o player aparece para qualquer caminho absoluto permitido e o arquivo é lido pelo auxiliar do computador na hora de tocar, com as mesmas regras de tipo, tamanho e segredo.
 - **Push só quando o Habblaud não está em foco.** Com as notificações ligadas, o aparelho que tem a janela do Habblaud em foco deixa de receber push: o aviso já está na tela. Os outros aparelhos continuam avisando, e o botão **Enviar teste** continua funcionando. A página avisa o servidor quando a janela entra ou sai do foco; se fechar sem avisar, a marca expira em 45 segundos.
 - **Imagem quebrada na TV agora vira aviso.** Se uma imagem citada nos slides não carrega — arquivo de fora da pasta que sumiu, auxiliar do computador parado no Docker — a TV mostra no lugar um aviso com o nome do arquivo e o que fazer: copiar a imagem para a pasta da apresentação ou deixar `npm run codex:bridge` rodando. Antes ficava só a quebra com a legenda.

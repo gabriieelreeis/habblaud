@@ -69,6 +69,9 @@ export function furnitureFacing(area: AreaLayout, f: FurniturePlacement): Dir {
       return 'down';
     case 'bench':
       return 'down';
+    case 'beanbag':
+      // a variante é a cor: a direção vem do lugar que usa o pufe
+      return area.spots.find((s) => s.furnitureId === f.id)?.dir ?? 'down';
     case 'desk':
       return 'down';
     case 'desk_back':

@@ -47,8 +47,8 @@ describe('móveis isométricos', () => {
   it('encostos ao sul e ao leste ficam no front (desenhados por cima de quem senta)', () => {
     expect(renderIsoFurniture('office_chair').front).toBeDefined();
     expect(renderIsoFurniture('office_chair_front').front).toBeUndefined();
-    expect(renderIsoFurniture('sofa', 'up').front).toBeDefined();
-    expect(renderIsoFurniture('sofa', 'down').front).toBeUndefined();
+    // no sofá olhando para o sul, o front é só o braço leste: bem mais baixo que o encosto
+    expect(renderIsoFurniture('sofa', 'down').front!.ay).toBeLessThan(renderIsoFurniture('sofa', 'up').front!.ay - 10);
     expect(renderIsoFurniture('toilet_stall', undefined, 1).front).toBeDefined();
   });
 
@@ -125,8 +125,9 @@ describe('encosto do lado oposto ao olhar', () => {
     }
   }
   it('sofá: o encosto ao sul (olhando para o norte) fica no front; ao norte, na base', () => {
-    expect(renderIsoFurniture('sofa', 'up').front).toBeDefined();
-    expect(renderIsoFurniture('sofa', 'down').front).toBeUndefined();
+    const up = renderIsoFurniture('sofa', 'up');
+    const down = renderIsoFurniture('sofa', 'down');
+    expect(up.front!.buf.countOpaque()).toBeGreaterThan(down.front!.buf.countOpaque() * 2);
   });
   it('móveis de parede: espelho para o leste e costas para o norte', () => {
     const south = renderIsoFurniture('binder_shelf', undefined, 0, 0, 'down');

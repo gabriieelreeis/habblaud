@@ -1,14 +1,15 @@
 // Desenho do mundo por frame na visão isométrica (../iso.ts): chão externo -> pisos das áreas -> camada estática
-// (paredes, móveis e props, já na ordem de profundidade) -> entidades (personagens, telas, itens de parede animados),
-// cada uma seguida do redesenho do que fica na frente dela -> luz/escuridão -> ícones. A passada em espaço de tela
-// (texto nítido) fica em overlay.ts. Tudo aqui é desenhado no plano isométrico; a câmera só amplia e desloca.
+// (paredes, móveis e props pintados UMA vez na ordem de profundidade, com o dono de cada pixel: compose.ts) ->
+// entidades (personagens, telas, itens de parede animados), cada uma com os pixels escondidos onde o cenário fica na
+// frente dela -> luz/escuridão -> ícones. O cenário nunca é redesenhado por causa de quem passa. A passada em espaço de
+// tela (texto nítido) fica em overlay.ts. Tudo aqui é desenhado no plano isométrico; a câmera só amplia e desloca.
 import { TILE, type ArtModule, type CharacterFrameRequest, type IconName, type ScreenMode, type Sprite } from '../../art/api';
 import type { SeasonalTheme, WorldOptions } from '../api';
 import type { TvState } from '../../../../shared/presentation';
 import type { WorldAssets } from '../assets';
 import type { Camera } from '../camera';
 import { BUILDING_H, COL_W, CORE_COLS, CORRIDOR_Y } from '../constants';
-import { FLOOR_MATRIX, WALL_H, drawsBefore, fromIso, isoBounds, isoSort, isoX, isoY, type Box, type IsoRect, type Sortable } from '../iso';
+import { FLOOR_MATRIX, WALL_H, fromIso, isoBounds, isoSort, isoX, isoY, type Box, type IsoRect, type Sortable } from '../iso';
 import { layoutExterior, slotShell, type ExteriorLayout, type SlotShell } from '../layout/exterior';
 import { SEAT_FOOT_DY } from '../layout/builder';
 import { slotAt } from '../layout/geometry';
@@ -19,6 +20,7 @@ import type { RoomState } from '../sim/room-state';
 import { cobwebScale, hourglassIcon, HOURGLASS_FLIP_MS, STORM_LIFT } from '../sim/shell';
 import type { Sim } from '../sim/sim';
 import { buildAnim, furnitureScale, NO_ANIM, sweepDelay, type BuildAnim } from './anim';
+import { buildGrid, composeLayer, frontPixels, markFront, type Composite, type Pixels } from './compose';
 import { daylightModeOf, parseHourParam } from './daylight';
 import { layerProps, overlaps, type Rect } from './furn-layer';
 import { RoomFxRenderer } from './github-fx';
@@ -56,11 +58,28 @@ interface StaticLayer {
   x: number;
   y: number;
   rect: Rect;
+  /** Na ordem de desenho; o dono de cada pixel é o índice + 1. */
   items: Piece[];
-  /** Índices dos itens por célula GRID x GRID do plano isométrico. */
+  /** Índices dos itens por célula da grade do plano isométrico. */
   grid: Map<number, number[]>;
   /** Áreas que estavam estáveis quando a camada foi pintada (e as fachadas dos lotes vazios). */
   key: string;
+  /** Cor e dono de cada pixel (em memória: os recortes saem daqui, sem ler a placa de vídeo). */
+  comp: Composite;
+}
+
+/** Como pintar uma entidade neste quadro (em this.ctx) e, se o desenho for estável, a assinatura dele (para cache). */
+interface Paint {
+  paint: () => void;
+  sig?: string;
+}
+
+/** Conteúdo de uma tela animada (monitor, fliperama) num canvas próprio. */
+interface ScreenEntry {
+  c: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  mode: ScreenMode;
+  at: number;
 }
 
 interface Car {
@@ -87,8 +106,6 @@ export interface HeadInfo {
 
 const TV_MODES: ScreenMode[] = ['browser', 'idle', 'chat', 'code'];
 
-/** Chave de uma célula da grade (cabe com folga nos limites do plano isométrico do escritório). */
-const cellKey = (gx: number, gy: number): number => (gx + 4096) * 8192 + (gy + 4096);
 /**
  * Boca do balde de pipoca (px relativos à âncora do personagem isométrico) na pose 'wait' sentada, por direção — segue
  * o rig da arte: abraçado no peito de frente, ao lado do quadril (do lado longe da câmera) de costas.
@@ -119,8 +136,6 @@ const SCRATCH_M = 3;
 const OVERLAY_PERIOD: Partial<Record<string, number>> = { clock: 0, sign: 0, light_switch: 0, elevator: 0, window: 400, whiteboard: 500, tv: 125, mirror: 150 };
 /** Móveis cujo sprite muda com o uso (desenhados a cada quadro, fora da camada estática). */
 const STATEFUL: ReadonlySet<string> = new Set(['coffee_machine', 'toilet_stall']);
-/** Lado (px) das células da grade da camada estática (busca do que redesenhar na frente de cada entidade). */
-const GRID = 64;
 
 export class Renderer {
   ctx: CanvasRenderingContext2D;
@@ -593,11 +608,13 @@ export class Renderer {
       const head = this.headOf(ch);
       head.visible = false;
       if (ch.inside || ch.alpha <= 0.01 || now < ch.hiddenUntil) continue;
-      const x = ch.x + ch.offX;
-      const y = ch.y + ch.offY - (ch.seated ? SEAT_SHIFT : 0);
+      const at = this.charSpot(ch);
+      const x = at.x;
+      const y = at.y;
       const ix = isoX(x, y);
       const iy = isoY(x, y);
-      const rect = { x: ix - 20, y: iy - 56, w: 40, h: 62 };
+      // sprite (32 x 52, âncora nos pés), anéis do chão (até 24 px para os lados) e a subida no assento
+      const rect = { x: Math.floor(ix) - 26, y: Math.floor(iy) - 50 - Math.max(0, at.lift), w: 52, h: 64 + Math.max(0, -at.lift) };
       if (!visible(rect)) {
         head.x = ix;
         head.y = iy - 40;
@@ -605,7 +622,7 @@ export class Renderer {
         continue;
       }
       // sentado: a caixa é a do assento, entre a base (atrás) e o encosto/porta (na frente)
-      const seat = ch.seated ? this.seatBox(ch) : null;
+      const seat = ch.seated ? this.seatBox(ch, x, y) : null;
       push(K.Char, seat ?? { x0: x - CHAR_R, y0: y - CHAR_R, x1: x + CHAR_R, y1: y + CHAR_R }, rect, ch, null, 0.5);
     }
     for (const prop of this.exterior.props) {
@@ -641,7 +658,8 @@ export class Renderer {
       }
     }
     for (const car of this.cars) {
-      const r = { x: isoX(car.x, car.y) - 24, y: isoY(car.x, car.y) - 24, w: 48, h: 30 };
+      const cs = this.art.isoCarSprite?.(car.variant, car.dir) ?? carSprite(car.variant, car.dir < 0);
+      const r = { x: Math.round(isoX(car.x, car.y) - cs.ax), y: Math.round(isoY(car.x, car.y) - cs.ay), w: cs.canvas.width, h: cs.canvas.height };
       if (visible(r)) push(K.Car, { x0: car.x - 14, y0: car.y - 5, x1: car.x + 14, y1: car.y + 5 }, r, car, null);
     }
     const sorted = isoSort(ents);
@@ -649,27 +667,37 @@ export class Renderer {
     this.iconCount = 0;
     this.tvRects.clear();
     for (const e of sorted) {
+      let p: Paint | null = null;
       switch (e.k) {
-        case K.Piece:
-          this.drawPiece(e.ref as Piece, e.alpha, e.scale);
+        case K.Piece: {
+          const piece = e.ref as Piece;
+          const alpha = e.alpha;
+          const scale = e.scale;
+          p = { paint: () => this.drawPiece(piece, alpha, scale) };
           break;
+        }
         case K.FurnAnim:
-          this.drawFurnAnim(e.ref as FurnVis, e.area!, now);
+          p = this.prepFurnAnim(e.ref as FurnVis, e.area!, now);
           break;
         case K.Overlay:
-          this.drawOverlay(e.ref as WallOverlay, e.area, now, hour, e.alpha);
+          p = this.prepOverlay(e.ref as WallOverlay, e.area, now, hour, e.alpha);
           break;
         case K.Char:
-          this.drawCharacter(e.ref as Character, now, sel);
+          p = this.prepChar(e.ref as Character, now, sel);
           break;
-        case K.Prop:
-          this.paintProp(ctx, e.ref as ExteriorProp, e.alpha);
+        case K.Prop: {
+          const prop = e.ref as ExteriorProp;
+          const alpha = e.alpha;
+          p = { paint: () => this.paintProp(this.ctx, prop, alpha), sig: alpha.toFixed(2) };
           break;
-        case K.Car:
-          this.drawCar(e.ref as Car);
+        }
+        case K.Car: {
+          const car = e.ref as Car;
+          p = { paint: () => this.drawCar(car) };
           break;
+        }
       }
-      this.redrawInFront(e, now);
+      if (p) this.paintMasked(e, p);
     }
     if (this.propsFront) this.blit(this.propsFront, this.propsFrontX, this.propsFrontY);
     this.drawPingPong(now);
@@ -742,9 +770,17 @@ export class Renderer {
   }
 
   /** Caixa do móvel em que o personagem está sentado (null se não achar). */
-  private seatBox(ch: Character): Box | null {
+  private seatBox(ch: Character, x: number, y: number): Box | null {
     const spot = ch.atSpot ? this.sim.spots.get(ch.atSpot) : undefined;
-    const id = spot?.furnitureId;
+    const b = spot ? this.seatFurniture(spot)?.box : undefined;
+    // só junto do assento: longe dele (andando ainda marcado como sentado) vale a caixa dos pés
+    if (!b || x < b.x0 - TILE || x > b.x1 + TILE || y < b.y0 - TILE || y > b.y1 + TILE) return null;
+    return b;
+  }
+
+  /** O móvel de um lugar (assento), pelo id gravado no spot. */
+  private seatFurniture(spot: { furnitureId?: string; areaId: string }): FurnVis | null {
+    const id = spot.furnitureId;
     if (!id) return null;
     if (this.furnByIdAt !== this.layoutVersion) {
       this.furnByIdAt = this.layoutVersion;
@@ -756,7 +792,7 @@ export class Renderer {
       f = vis?.furniture.find((q) => q.id === id) ?? null;
       this.furnById.set(id, f);
     }
-    return f?.box ?? null;
+    return f;
   }
 
   private furnById = new Map<string, FurnVis | null>();
@@ -818,13 +854,13 @@ export class Renderer {
     return tall ?? wallSprites(this.art, kind, variant, state, seed)?.base ?? null;
   }
 
-  private drawOverlay(o: WallOverlay, vis: AreaVis | null, now: number, hour: number, alpha: number): void {
-    const { ctx } = this;
+  /** Item de parede animado: atualiza o conteúdo (canvas próprio) e devolve como pintá-lo inclinado na parede. */
+  private prepOverlay(o: WallOverlay, vis: AreaVis | null, now: number, hour: number, alpha: number): Paint | null {
     const w = o.w;
     const variant = w.kind === 'light_switch' ? ((vis?.room ? vis.room.lightOn : true) ? 'on' : 'off') : w.variant;
     const state = w.kind === 'elevator' ? (this.sim.elevators[this.elevatorVis.indexOf(w)]?.state ?? 0) : 0;
     const s = this.wallSprite(w.kind, variant, state, w.seed);
-    if (!s) return;
+    if (!s) return null;
     const M = SCRATCH_M;
     const skew = o.on === 'face' ? 0.5 : 0;
     // TV das apresentações: guarda a tela (no plano isométrico) para o clique
@@ -862,16 +898,21 @@ export class Renderer {
       else this.paintWallItem(sc, vis, w, s, now);
       sc.setTransform(1, 0, 0, 1, 0, 0);
     }
-    ctx.save();
-    if (alpha < 1) ctx.globalAlpha = alpha;
-    if (o.on === 'face') ctx.transform(...shearMatrix(o.ax, o.ay, { ax: s.ax + M, ay: s.ay + M }, skew));
-    else {
-      // sobre a mureta: o conteúdo opaco centrado logo acima do topo
-      const b = opaqueBounds(s.canvas);
-      ctx.translate(Math.round(o.ax - (b.x + b.w / 2) - M), Math.round(o.ay - (b.y + b.h) - M));
-    }
-    ctx.drawImage(cache.c, 0, 0);
-    ctx.restore();
+    const c = cache.c;
+    const paint = () => {
+      const { ctx } = this;
+      ctx.save();
+      if (alpha < 1) ctx.globalAlpha = alpha;
+      if (o.on === 'face') ctx.transform(...shearMatrix(o.ax, o.ay, { ax: s.ax + M, ay: s.ay + M }, skew));
+      else {
+        // sobre a mureta: o conteúdo opaco centrado logo acima do topo
+        const b = opaqueBounds(s.canvas);
+        ctx.translate(Math.round(o.ax - (b.x + b.w / 2) - M), Math.round(o.ay - (b.y + b.h) - M));
+      }
+      ctx.drawImage(c, 0, 0);
+      ctx.restore();
+    };
+    return { paint, sig: `${cache.key}|${cache.at}|${alpha.toFixed(2)}` };
   }
 
   /** O que muda o desenho de um item de parede (além do ritmo da animação dele). */
@@ -1060,7 +1101,19 @@ export class Renderer {
   }
 
   /** Base (e encosto/porta, se houver) de um móvel como pedaços com caixa no chão. */
+  private piecesCache = new WeakMap<FurnVis, { state: number; theme: SeasonalTheme; pieces: Piece[] }>();
+
+  /** Os pedaços de um móvel, os mesmos objetos enquanto o estado e o tema não mudam (para os caches por pedaço). */
   private furnPieces(f: FurnVis, vis: AreaVis, now: number): Piece[] {
+    const state = this.furnState(f, now);
+    const hit = this.piecesCache.get(f);
+    if (hit && hit.state === state && hit.theme === this.theme) return hit.pieces;
+    const pieces = this.makeFurnPieces(f, vis, now);
+    this.piecesCache.set(f, { state, theme: this.theme, pieces });
+    return pieces;
+  }
+
+  private makeFurnPieces(f: FurnVis, vis: AreaVis, now: number): Piece[] {
     // enfeite de época no lugar de uma planta (árvore de Natal, abóbora...): sprite de frente, no centro do footprint
     const deco = seasonalFurniture(this.theme, f.kind, vis.layout, f.seed);
     if (deco) {
@@ -1096,7 +1149,8 @@ export class Renderer {
 
   /**
    * Camada única com paredes, móveis e props estáticos de todas as áreas estáveis (e as fachadas dos lotes vazios),
-   * na ordem de profundidade. Refeita quando muda o conjunto de áreas ou o estado de um móvel.
+   * pintada UMA vez na ordem de profundidade, com o dono de cada pixel (compose.ts). Só é refeita quando muda o conjunto
+   * de áreas; a cada quadro, nada dela é redesenhado.
    */
   private layerFor(now: number): StaticLayer | null {
     const stable = this.stable;
@@ -1127,39 +1181,43 @@ export class Renderer {
     }
     if (!items.length) return (this.layer = null);
     const order = isoSort(items);
-    let x0 = Infinity;
-    let y0 = Infinity;
-    let x1 = -Infinity;
-    let y1 = -Infinity;
-    for (const it of order) {
-      x0 = Math.min(x0, it.dx);
-      y0 = Math.min(y0, it.dy);
-      x1 = Math.max(x1, it.dx + it.sw);
-      y1 = Math.max(y1, it.dy + it.sh);
-    }
-    x0 = Math.floor(x0);
-    y0 = Math.floor(y0);
+    const comp = composeLayer(order.map((it) => ({ box: it.box, rect: it.rect, bias: it.bias, px: this.pixelsOf(it.src), sx: it.sx, sy: it.sy, sw: it.sw, sh: it.sh, dx: it.dx, dy: it.dy })));
+    if (!comp) return (this.layer = null);
     const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.ceil(x1 - x0));
-    c.height = Math.max(1, Math.ceil(y1 - y0));
-    const cx = c.getContext('2d')!;
-    cx.imageSmoothingEnabled = false;
-    for (const it of order) cx.drawImage(it.src, it.sx, it.sy, it.sw, it.sh, Math.round(it.dx - x0), Math.round(it.dy - y0), it.sw, it.sh);
-    const grid = new Map<number, number[]>();
-    order.forEach((it, i) => {
-      for (let gy = Math.floor(it.rect.y / GRID); gy <= Math.floor((it.rect.y + it.rect.h) / GRID); gy++) {
-        for (let gx = Math.floor(it.rect.x / GRID); gx <= Math.floor((it.rect.x + it.rect.w) / GRID); gx++) {
-          const k = cellKey(gx, gy);
-          let a = grid.get(k);
-          if (!a) grid.set(k, (a = []));
-          a.push(i);
-        }
-      }
-    });
-    this.seen = new Uint32Array(order.length);
-    l = { c, x: x0, y: y0, rect: { x: x0, y: y0, w: c.width, h: c.height }, items: order, grid, key };
+    c.width = Math.max(1, comp.w);
+    c.height = Math.max(1, comp.h);
+    c.getContext('2d')!.putImageData(new ImageData(comp.rgba as Uint8ClampedArray<ArrayBuffer>, comp.w, comp.h), 0, 0);
+    this.flags = new Uint8Array(order.length);
+    l = { c, x: comp.x, y: comp.y, rect: { x: comp.x, y: comp.y, w: comp.w, h: comp.h }, items: order, grid: buildGrid(order), key, comp };
     this.layer = l;
+    this.patchCache = new WeakMap();
+    this.entCache = new WeakMap();
     return l;
+  }
+
+  private pixelCache = new WeakMap<object, Pixels>();
+
+  /** Pixels RGBA de um canvas de sprite (lidos uma vez, para a camada com dono por pixel). */
+  private pixelsOf(src: CanvasImageSource): Pixels {
+    const hit = this.pixelCache.get(src);
+    if (hit) return hit;
+    const s = src as HTMLCanvasElement;
+    const w = Math.max(1, s.width);
+    const h = Math.max(1, s.height);
+    let data: Uint8ClampedArray;
+    try {
+      const t = document.createElement('canvas');
+      t.width = w;
+      t.height = h;
+      const tc = t.getContext('2d', { willReadFrequently: true })!;
+      tc.drawImage(s, 0, 0);
+      data = tc.getImageData(0, 0, w, h).data;
+    } catch {
+      data = new Uint8ClampedArray(w * h * 4);
+    }
+    const px = { data, w, h };
+    this.pixelCache.set(src, px);
+    return px;
   }
 
   private ids = new WeakMap<AreaVis, number>();
@@ -1170,72 +1228,107 @@ export class Renderer {
     return n;
   }
 
+  private flags = new Uint8Array(0);
+  private frontList: number[] = [];
+  /** Recorte da camada com só os pixels do cenário que ficam na frente de cada entidade (refeito quando muda). */
+  private patchCache = new WeakMap<object, { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D; sig: string }>();
+  /** Entidade já com o cenário da frente por cima, em pixels da tela (reaproveitada enquanto nada muda). */
+  private entCache = new WeakMap<object, { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D; sig: string }>();
+
   /**
-   * Depois de desenhar uma entidade: redesenha os pedaços da camada que ficam na frente dela e cruzam o desenho e, em
-   * cascata, os que vêm depois na camada e cruzam algum já escolhido (senão o redesenho cobriria quem está na frente).
+   * Desenha uma entidade por cima da camada. Onde o cenário fica na frente dela (o dono do pixel na camada está na
+   * frente pela ordem de profundidade), ela é desenhada num recorte e os pixels da própria camada entram por cima, só
+   * onde ela pintou ('source-atop'): o cenário nunca é redesenhado a partir dos sprites, o resto do quadro fica igual
+   * ao cenário vazio e, atrás de vidro (garrafão do bebedouro), ela aparece através dele.
    */
-  private redrawInFront(e: Ent, now: number): void {
+  private paintMasked(e: Ent, p: Paint): void {
     const l = this.layer;
-    if (!l || !overlaps(e.rect, l.rect)) return;
-    // candidatos: itens das células em volta do desenho (com folga para a cascata), na ordem da camada
-    const cand = this.cand;
-    cand.length = 0;
-    const stamp = ++this.stamp;
-    const seen = this.seen;
-    const m = GRID;
-    for (let gy = Math.floor((e.rect.y - m) / GRID); gy <= Math.floor((e.rect.y + e.rect.h + m) / GRID); gy++) {
-      for (let gx = Math.floor((e.rect.x - m) / GRID); gx <= Math.floor((e.rect.x + e.rect.w + m) / GRID); gx++) {
-        const a = l.grid.get(cellKey(gx, gy));
-        if (!a) continue;
-        for (const i of a) {
-          if (seen[i] === stamp) continue;
-          seen[i] = stamp;
-          cand.push(i);
-        }
+    if (!l || !overlaps(e.rect, l.rect)) return p.paint();
+    const flags = this.flags;
+    const front = markFront(e, l.items, l.grid, flags, this.frontList);
+    try {
+      if (!front.n) return p.paint();
+      const x = Math.floor(e.rect.x) - 2;
+      const y = Math.floor(e.rect.y) - 2;
+      const w = Math.ceil(e.rect.w) + 4;
+      const h = Math.ceil(e.rect.h) + 4;
+      const key = (e.ref as object | null) ?? e;
+      const patch = this.frontPatch(key, l, x, y, w, h, front.sig);
+      const main = this.ctx;
+      const m = main.getTransform();
+      if (m.b !== 0 || m.c !== 0 || m.a <= 0 || m.d <= 0) {
+        p.paint();
+        main.drawImage(patch, 0, 0, w, h, x, y, w, h);
+        return;
       }
-    }
-    if (!cand.length) return;
-    cand.sort((a, b) => a - b);
-    const out = this.redrawn;
-    out.length = 0;
-    for (const i of cand) {
-      const it = l.items[i];
-      let pick = overlaps(it.rect, e.rect) && drawsBefore(e, it);
-      for (let k = 0; k < out.length && !pick; k++) pick = overlaps(it.rect, out[k].rect);
-      if (pick) out.push(it);
-    }
-    for (const it of out) {
-      this.ctx.drawImage(this.opaqueOnly(it.src as HTMLCanvasElement), it.sx, it.sy, it.sw, it.sh, Math.round(it.dx), Math.round(it.dy), it.sw, it.sh);
-      if (it.f && it.kind === PieceKind.Furn) {
-        const f = it.f;
-        if (f.kind === 'desk' || f.kind === 'arcade') {
-          const vis = this.areas.get(f.areaId);
-          if (vis) this.drawFurnAnim(f, vis, now);
+      // o recorte fica alinhado aos pixels da tela: o mesmo desenho que sairia direto no quadro
+      const X0 = Math.floor(m.a * x + m.e);
+      const Y0 = Math.floor(m.d * y + m.f);
+      const W = Math.ceil(m.a * (x + w) + m.e) - X0;
+      const H = Math.ceil(m.d * (y + h) + m.f) - Y0;
+      if (W <= 0 || H <= 0) return;
+      const sig = p.sig === undefined ? null : `${p.sig}#${front.sig}#${x},${y},${w},${h}#${m.a},${m.d},${m.e - X0},${m.f - Y0}`;
+      let slot = this.entCache.get(key);
+      if (!slot || sig === null || slot.sig !== sig) {
+        if (!slot) {
+          const c = document.createElement('canvas');
+          slot = { c, ctx: c.getContext('2d')!, sig: '' };
+          this.entCache.set(key, slot);
         }
+        if (slot.c.width < W || slot.c.height < H) {
+          slot.c.width = Math.max(slot.c.width, W);
+          slot.c.height = Math.max(slot.c.height, H);
+        }
+        const oc = slot.ctx;
+        oc.setTransform(1, 0, 0, 1, 0, 0);
+        oc.globalAlpha = 1;
+        oc.globalCompositeOperation = 'source-over';
+        oc.clearRect(0, 0, W, H);
+        oc.imageSmoothingEnabled = main.imageSmoothingEnabled;
+        oc.setTransform(m.a, 0, 0, m.d, m.e - X0, m.f - Y0);
+        this.ctx = oc;
+        try {
+          p.paint();
+        } finally {
+          this.ctx = main;
+        }
+        oc.globalAlpha = 1;
+        oc.globalCompositeOperation = 'source-atop';
+        oc.imageSmoothingEnabled = false;
+        oc.drawImage(patch, 0, 0, w, h, x, y, w, h);
+        oc.globalCompositeOperation = 'source-over';
+        slot.sig = sig ?? '';
       }
+      main.save();
+      main.setTransform(1, 0, 0, 1, 0, 0);
+      main.globalAlpha = 1;
+      main.globalCompositeOperation = 'source-over';
+      main.drawImage(slot.c, 0, 0, W, H, X0, Y0, W, H);
+      main.restore();
+    } finally {
+      for (const i of this.frontList) flags[i] = 0;
+      this.frontList.length = 0;
     }
-    void now;
   }
 
-  private opaqueCopies = new WeakMap<object, HTMLCanvasElement>();
-
-  /**
-   * Cópia do sprite só com os pixels opacos. O redesenho por cima da camada já pintada duplicaria a mistura dos
-   * pixels translúcidos (sombras, vidro); os opacos substituem exatamente o que está lá.
-   */
-  private opaqueOnly(src: HTMLCanvasElement): HTMLCanvasElement {
-    let c = this.opaqueCopies.get(src);
-    if (c) return c;
-    c = document.createElement('canvas');
-    c.width = src.width;
-    c.height = src.height;
-    const cx = c.getContext('2d', { willReadFrequently: true })!;
-    cx.drawImage(src, 0, 0);
-    const img = cx.getImageData(0, 0, c.width, c.height);
-    for (let i = 3; i < img.data.length; i += 4) if (img.data[i] < 255) img.data[i] = 0;
-    cx.putImageData(img, 0, 0);
-    this.opaqueCopies.set(src, c);
-    return c;
+  /** Os pixels da camada (escala 1) cujo dono está marcado em `flags`, no retângulo (x, y, w, h). */
+  private frontPatch(key: object, l: StaticLayer, x: number, y: number, w: number, h: number, frontSig: number): HTMLCanvasElement {
+    const sig = `${x},${y},${w},${h}#${frontSig}`;
+    let patch = this.patchCache.get(key);
+    if (patch && patch.sig === sig) return patch.c;
+    if (!patch) {
+      const c = document.createElement('canvas');
+      patch = { c, ctx: c.getContext('2d')!, sig: '' };
+      this.patchCache.set(key, patch);
+    }
+    patch.sig = sig;
+    if (patch.c.width < w || patch.c.height < h) {
+      patch.c.width = Math.max(patch.c.width, w);
+      patch.c.height = Math.max(patch.c.height, h);
+    }
+    const px = frontPixels(x, y, w, h, l.comp, this.flags);
+    patch.ctx.putImageData(new ImageData(px as Uint8ClampedArray<ArrayBuffer>, w, h), 0, 0);
+    return patch.c;
   }
 
   /** Pedaço fora da camada (área em montagem): parede subindo com transparência, móvel crescendo da âncora. */
@@ -1257,40 +1350,49 @@ export class Renderer {
   }
 
   /** Partes animadas de um móvel: tela do monitor/fliperama inclinada na face, vapor da cafeteira. */
-  private drawFurnAnim(f: FurnVis, area: AreaVis, now: number): void {
+  private prepFurnAnim(f: FurnVis, area: AreaVis, now: number): Paint | null {
     const fs = this.isoSprites(f, this.furnState(f, now));
-    if (!fs) return;
+    if (!fs) return null;
     const s = fs.base;
     const dx = Math.round(isoX(f.box.x0, f.box.y0) - s.ax);
     const dy = Math.round(isoY(f.box.x0, f.box.y0) - s.ay);
     if (f.kind === 'coffee_machine') {
-      this.drawSteam(isoX((f.box.x0 + f.box.x1) / 2, (f.box.y0 + f.box.y1) / 2), dy + 6, now, f.seed);
-      return;
+      const sx = isoX((f.box.x0 + f.box.x1) / 2, (f.box.y0 + f.box.y1) / 2);
+      return { paint: () => this.drawSteam(sx, dy + 6, now, f.seed) };
     }
-    const screens: ('screen' | 'screen2')[] = f.kind === 'desk' ? ['screen', 'screen2'] : ['screen'];
-    for (const name of screens) {
+    const screens: { e: ScreenEntry; x: number; y: number; skew: number }[] = [];
+    let sig = '';
+    for (const name of f.kind === 'desk' ? (['screen', 'screen2'] as const) : (['screen'] as const)) {
       const r = s.rects?.[name];
       if (!r) continue;
       let mode: ScreenMode | null;
       if (f.kind === 'desk') mode = name === 'screen' ? this.deskScreen(f, area) : this.deskScreen(f, area) === 'off' ? 'off' : null;
-      else {
-        const seed = this.sim.social.arcadeSeed();
-        mode = seed !== null ? 'game' : null;
-      }
+      else mode = this.sim.social.arcadeSeed() !== null ? 'game' : null;
       if (!mode) continue;
       const seed = f.kind === 'arcade' ? (this.sim.social.arcadeSeed() ?? f.seed) : f.seed;
-      this.drawSkewedScreen(`${f.id}:${name}`, dx + r.x, dy + r.y, r.w, r.h, r.skew ?? 0, mode, now, seed);
+      const e = this.screenContent(`${f.id}:${name}`, r.w, r.h, mode, now, seed);
+      if (!e) continue;
+      screens.push({ e, x: dx + r.x, y: dy + r.y, skew: r.skew ?? 0 });
+      sig += `${e.mode}@${e.at}|`;
     }
+    if (!screens.length) return null;
+    const paint = () => {
+      const { ctx } = this;
+      for (const q of screens) {
+        ctx.save();
+        ctx.transform(1, q.skew, 0, 1, q.x, q.y);
+        ctx.drawImage(q.e.c, 0, 0);
+        ctx.restore();
+      }
+    };
+    return { paint, sig };
   }
 
-  private screenCache = new Map<string, { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D; mode: ScreenMode; at: number }>();
+  private screenCache = new Map<string, ScreenEntry>();
 
-  /**
-   * Conteúdo de tela desenhado de frente num canvas próprio (refeito ~7 vezes por segundo, ou já quando o modo muda)
-   * e inclinado para a face do móvel.
-   */
-  private drawSkewedScreen(id: string, x: number, y: number, w: number, h: number, skew: number, mode: ScreenMode, now: number, seed: number): void {
-    if (w <= 0 || h <= 0) return;
+  /** Conteúdo de tela desenhado de frente num canvas próprio (refeito ~7 vezes por segundo, ou já quando o modo muda). */
+  private screenContent(id: string, w: number, h: number, mode: ScreenMode, now: number, seed: number): ScreenEntry | null {
+    if (w <= 0 || h <= 0) return null;
     let e = this.screenCache.get(id);
     if (!e || e.c.width !== w || e.c.height !== h) {
       const c = document.createElement('canvas');
@@ -1309,11 +1411,7 @@ export class Renderer {
       sc.imageSmoothingEnabled = false;
       this.safe(() => this.art.drawScreen(sc, { x: 0, y: 0, w, h }, mode, now, seed));
     }
-    const { ctx } = this;
-    ctx.save();
-    ctx.transform(1, skew, 0, 1, x, y);
-    ctx.drawImage(e.c, 0, 0);
-    ctx.restore();
+    return e;
   }
 
   /** Tela do monitor: segue a atividade de quem senta ali. */
@@ -1356,23 +1454,26 @@ export class Renderer {
     return { s: art.characterSprite(req), k: CHAR_SCALE };
   }
 
-  private drawCharacter(ch: Character, now: number, sel: { agent: string | null; hover: string | null }): void {
-    const { ctx } = this;
+  private spriteIds = new WeakMap<object, number>();
+  private nextSpriteId = 1;
+  private spriteId(c: object): number {
+    let n = this.spriteIds.get(c);
+    if (!n) this.spriteIds.set(c, (n = this.nextSpriteId++));
+    return n;
+  }
+
+  /**
+   * Prepara um personagem neste quadro (cabeça para os cliques e balões, ícones, pipoca) e devolve como pintá-lo:
+   * anéis no chão, sombra e o sprite. A assinatura muda quando o desenho muda (sprite, lugar, anel, transparência).
+   */
+  private prepChar(ch: Character, now: number, sel: { agent: string | null; hover: string | null }): Paint {
     const head = this.headOf(ch);
-    const wx = ch.x + ch.offX;
-    const wy = ch.y + ch.offY - (ch.seated ? SEAT_SHIFT : 0);
+    const at = this.charSpot(ch);
+    const wx = at.x;
+    const wy = at.y;
     const x = Math.round(isoX(wx, wy));
     const y = Math.round(isoY(wx, wy));
     if (ch.pose === 'walk' || ch.pose === 'run') this.motion = true;
-    ctx.globalAlpha = ch.alpha;
-    // anéis no chão (seleção, hover, alerta)
-    if (ch.mode === 'wait') this.drawAlertRing(x, y, now);
-    if (sel.agent === ch.id) this.drawRing(x, y, '#7fe3ff', now, true);
-    else if (sel.hover === ch.id) this.drawRing(x, y, '#ffffff', now, false);
-    if (!ch.seated) {
-      const sh = shadowSprite();
-      ctx.drawImage(sh.canvas, x - sh.ax * 1.5, y - sh.ay * 1.5, sh.canvas.width * 1.5, sh.canvas.height * 1.5);
-    }
     const req: CharacterFrameRequest = this.req;
     req.appearance = ch.appearance;
     req.dir = ch.dir;
@@ -1396,12 +1497,13 @@ export class Renderer {
         got = null;
       }
     }
-    const lift = ch.seated && got && got.k !== 1 ? SEAT_LIFT : 0;
+    const lift = ch.seated ? (got && got.k !== 1 ? SEAT_LIFT : at.lift) : 0;
+    let sx = 0;
+    let sy = 0;
     if (got) {
       const { s, k } = got;
-      const sx = x - s.ax * k;
-      const sy = y - lift - s.ay * k;
-      ctx.drawImage(s.canvas, sx, sy, s.canvas.width * k, s.canvas.height * k);
+      sx = x - s.ax * k;
+      sy = y - lift - s.ay * k;
       const b = opaqueBounds(s.canvas);
       head.bx = sx + b.x * k;
       head.by = sy + b.y * k;
@@ -1415,7 +1517,6 @@ export class Renderer {
       head.bh = 40;
       head.y = y - 40;
     }
-    ctx.globalAlpha = 1;
     head.x = x;
     head.feetY = y;
     head.visible = true;
@@ -1455,6 +1556,44 @@ export class Renderer {
       this.particles.popcorn(px, py);
       if (Math.random() < 0.3) this.particles.popcorn(px, py);
     }
+    // anéis no chão (seleção, hover, alerta): o pulso entra na assinatura em passos, para o cache acompanhar
+    const ring = sel.agent === ch.id ? 1 : sel.hover === ch.id ? 2 : 0;
+    const wait = ch.mode === 'wait';
+    const alpha = ch.alpha;
+    const sprite = got;
+    const paint = () => {
+      const { ctx } = this;
+      ctx.globalAlpha = alpha;
+      if (wait) this.drawAlertRing(x, y, now);
+      if (ring === 1) this.drawRing(x, y, '#7fe3ff', now, true);
+      else if (ring === 2) this.drawRing(x, y, '#ffffff', now, false);
+      if (!ch.seated) {
+        const sh = shadowSprite();
+        ctx.drawImage(sh.canvas, x - sh.ax * 1.5, y - sh.ay * 1.5, sh.canvas.width * 1.5, sh.canvas.height * 1.5);
+      }
+      if (sprite) ctx.drawImage(sprite.s.canvas, sx, sy, sprite.s.canvas.width * sprite.k, sprite.s.canvas.height * sprite.k);
+      ctx.globalAlpha = 1;
+    };
+    const pulse = ring === 1 ? Math.round(Math.sin(now / 220) * 6) : 0;
+    const alertPh = wait ? Math.floor((now % 1100) / 55) : 0;
+    const sig = `${sprite ? this.spriteId(sprite.s.canvas) : 0}|${sx}|${sy}|${ring}|${pulse}|${alertPh}|${alpha.toFixed(2)}|${ch.seated ? 1 : 0}`;
+    return { paint, sig };
+  }
+
+  /**
+   * Onde o personagem é desenhado (px de mundo) e quanto sobe: em pé, no ponto dele; sentado, no assento (centro do tile
+   * do lugar mais a âncora do assento da arte) e na altura do quadril dela.
+   */
+  private charSpot(ch: Character): { x: number; y: number; lift: number } {
+    const x = ch.x + ch.offX;
+    const y = ch.y + ch.offY;
+    if (!ch.seated) return { x, y, lift: 0 };
+    const cy = y - SEAT_SHIFT;
+    const spot = ch.atSpot ? this.sim.spots.get(ch.atSpot) : undefined;
+    const f = spot ? this.seatFurniture(spot) : null;
+    const a = f && this.art.isoSeatAnchor ? this.art.isoSeatAnchor(f.kind, f.variant, f.facing) : null;
+    if (!a) return { x, y: cy, lift: 0 };
+    return { x: x + a.dx, y: cy + a.dy, lift: a.lift };
   }
 
   private pushIcon(x: number, y: number, name: IconName, bounce: number, alpha: number, badge: number): void {
