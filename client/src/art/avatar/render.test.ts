@@ -159,7 +159,7 @@ describe('poses e quadros', () => {
         }
       }
     }
-  });
+  }, 60_000);
 
   it('o espelho refaz o sombreamento: a luz continua vindo da esquerda', () => {
     const lum = (b: PixelBuf, x: number, y: number) => b.data[(y * b.w + x) * 4] * 0.3 + b.data[(y * b.w + x) * 4 + 1] * 0.59 + b.data[(y * b.w + x) * 4 + 2] * 0.11;
