@@ -20,7 +20,7 @@ import type { RoomState } from '../sim/room-state';
 import { cobwebScale, hourglassIcon, HOURGLASS_FLIP_MS, STORM_LIFT } from '../sim/shell';
 import type { Sim } from '../sim/sim';
 import { buildAnim, furnitureScale, NO_ANIM, sweepDelay, type BuildAnim } from './anim';
-import { buildGrid, composeLayer, frontMask, markFront, type Composite, type Pixels } from './compose';
+import { buildGrid, composeLayer, frontPixels, markFront, type Composite, type Pixels } from './compose';
 import { daylightModeOf, parseHourParam } from './daylight';
 import { layerProps, overlaps, type Rect } from './furn-layer';
 import { RoomFxRenderer } from './github-fx';
@@ -64,8 +64,8 @@ interface StaticLayer {
   grid: Map<number, number[]>;
   /** Áreas que estavam estáveis quando a camada foi pintada (e as fachadas dos lotes vazios). */
   key: string;
-  /** Dono de cada pixel. */
-  ids: Pick<Composite, 'x' | 'y' | 'w' | 'h' | 'ids'>;
+  /** Cor e dono de cada pixel (em memória: os recortes saem daqui, sem ler a placa de vídeo). */
+  comp: Composite;
 }
 
 /** Como pintar uma entidade neste quadro (em this.ctx) e, se o desenho for estável, a assinatura dele (para cache). */
@@ -1188,9 +1188,7 @@ export class Renderer {
     c.height = Math.max(1, comp.h);
     c.getContext('2d')!.putImageData(new ImageData(comp.rgba as Uint8ClampedArray<ArrayBuffer>, comp.w, comp.h), 0, 0);
     this.flags = new Uint8Array(order.length);
-    // a cor já está no canvas: guarda só o dono de cada pixel
-    const ids = { x: comp.x, y: comp.y, w: comp.w, h: comp.h, ids: comp.ids };
-    l = { c, x: comp.x, y: comp.y, rect: { x: comp.x, y: comp.y, w: comp.w, h: comp.h }, items: order, grid: buildGrid(order), key, ids };
+    l = { c, x: comp.x, y: comp.y, rect: { x: comp.x, y: comp.y, w: comp.w, h: comp.h }, items: order, grid: buildGrid(order), key, comp };
     this.layer = l;
     this.patchCache = new WeakMap();
     this.entCache = new WeakMap();
@@ -1233,8 +1231,7 @@ export class Renderer {
   private flags = new Uint8Array(0);
   private frontList: number[] = [];
   /** Recorte da camada com só os pixels do cenário que ficam na frente de cada entidade (refeito quando muda). */
-  private patchCache = new WeakMap<object, { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D; mask: HTMLCanvasElement; mctx: CanvasRenderingContext2D; sig: string }>();
-  private maskBuf = new Uint8ClampedArray(0);
+  private patchCache = new WeakMap<object, { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D; sig: string }>();
   /** Entidade já com o cenário da frente por cima, em pixels da tela (reaproveitada enquanto nada muda). */
   private entCache = new WeakMap<object, { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D; sig: string }>();
 
@@ -1321,29 +1318,16 @@ export class Renderer {
     if (patch && patch.sig === sig) return patch.c;
     if (!patch) {
       const c = document.createElement('canvas');
-      const mask = document.createElement('canvas');
-      patch = { c, ctx: c.getContext('2d')!, mask, mctx: mask.getContext('2d')!, sig: '' };
+      patch = { c, ctx: c.getContext('2d')!, sig: '' };
       this.patchCache.set(key, patch);
     }
     patch.sig = sig;
-    for (const cv of [patch.c, patch.mask]) {
-      if (cv.width < w || cv.height < h) {
-        cv.width = Math.max(cv.width, w);
-        cv.height = Math.max(cv.height, h);
-      }
+    if (patch.c.width < w || patch.c.height < h) {
+      patch.c.width = Math.max(patch.c.width, w);
+      patch.c.height = Math.max(patch.c.height, h);
     }
-    if (this.maskBuf.length < w * h * 4) this.maskBuf = new Uint8ClampedArray(w * h * 4);
-    const m = frontMask(x, y, w, h, l.ids, this.flags, this.maskBuf);
-    patch.mctx.clearRect(0, 0, patch.mask.width, patch.mask.height);
-    patch.mctx.putImageData(new ImageData(m.slice(0, w * h * 4) as Uint8ClampedArray<ArrayBuffer>, w, h), 0, 0);
-    const pc = patch.ctx;
-    pc.save();
-    pc.imageSmoothingEnabled = false;
-    pc.clearRect(0, 0, patch.c.width, patch.c.height);
-    pc.drawImage(l.c, x - l.x, y - l.y, w, h, 0, 0, w, h);
-    pc.globalCompositeOperation = 'destination-in';
-    pc.drawImage(patch.mask, 0, 0, w, h, 0, 0, w, h);
-    pc.restore();
+    const px = frontPixels(x, y, w, h, l.comp, this.flags);
+    patch.ctx.putImageData(new ImageData(px as Uint8ClampedArray<ArrayBuffer>, w, h), 0, 0);
     return patch.c;
   }
 

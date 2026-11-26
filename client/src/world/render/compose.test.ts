@@ -12,7 +12,7 @@ import { furnitureFacing } from '../layout/facing';
 import { layoutProjectRoom } from '../layout/room';
 import type { AreaLayout } from '../layout/types';
 import { roomTheme } from '../../art/theme';
-import { atopFront, blendOnto, buildGrid, composeLayer, markFront, maskBehind, type Composite, type LayerItem } from './compose';
+import { atopFront, blendOnto, buildGrid, composeLayer, frontPixels, markFront, maskBehind, type Composite, type LayerItem } from './compose';
 import { wallPlan } from './wall-plan';
 
 const px = (s: BufSprite) => ({ data: s.buf.data, w: s.buf.w, h: s.buf.h });
@@ -102,6 +102,19 @@ describe('camada com dono por pixel', () => {
     expect(c.ids[0]).toBe(1);
     expect(c.rgba[3]).toBe(255);
     expect(c.rgba[2]).toBeGreaterThan(0);
+  });
+
+  it('recorte da frente: a cor da camada só onde o dono está marcado', () => {
+    const red = { data: new Uint8ClampedArray([255, 0, 0, 255, 255, 0, 0, 255]), w: 2, h: 1 };
+    const blue = { data: new Uint8ClampedArray([0, 0, 255, 255]), w: 1, h: 1 };
+    const base = { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, sx: 0, sy: 0, dy: 0 };
+    const c = composeLayer([
+      { ...base, rect: { x: 0, y: 0, w: 2, h: 1 }, px: red, sw: 2, sh: 1, dx: 0 },
+      { ...base, rect: { x: 1, y: 0, w: 1, h: 1 }, px: blue, sw: 1, sh: 1, dx: 1 },
+    ])!;
+    expect([...c.ids]).toEqual([1, 2]);
+    expect([...frontPixels(0, 0, 3, 1, c, new Uint8Array([0, 1]))]).toEqual([0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0]);
+    expect([...frontPixels(-1, 0, 2, 1, c, new Uint8Array([1, 0]))]).toEqual([0, 0, 0, 0, 255, 0, 0, 255]);
   });
 
   it('atrás de vidro: aparece através dele; onde não pinta, o vidro não muda', () => {

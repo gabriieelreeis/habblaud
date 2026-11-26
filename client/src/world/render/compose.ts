@@ -177,13 +177,13 @@ export function maskBehind(rgba: Uint8ClampedArray, w: number, h: number, ex: nu
 }
 
 /**
- * Máscara (RGBA, branco opaco) dos pixels de um retângulo da tela cujo dono na camada está marcado em `flags`: onde o
- * cenário fica na frente da entidade. O renderizador desenha a entidade e depois devolve, só nesses pixels, os pixels da
- * própria camada (o resultado é o mesmo de esconder os pixels da entidade ali, sem ler pixels da placa de vídeo).
+ * Os pixels da camada, num retângulo (x, y, w, h) do plano isométrico, cujo dono está marcado em `flags` (o cenário que
+ * fica na frente de uma entidade); o resto, transparente. Sai da memória, sem ler pixels de volta da placa de vídeo.
  */
-export function frontMask(x: number, y: number, w: number, h: number, layer: Pick<Composite, 'x' | 'y' | 'w' | 'h' | 'ids'>, flags: Uint8Array, out?: Uint8ClampedArray): Uint8ClampedArray {
-  const m = out && out.length >= w * h * 4 ? out : new Uint8ClampedArray(w * h * 4);
-  m.fill(0, 0, w * h * 4);
+export function frontPixels(x: number, y: number, w: number, h: number, layer: Pick<Composite, 'x' | 'y' | 'w' | 'h' | 'ids' | 'rgba'>, flags: Uint8Array, out?: Uint8ClampedArray): Uint8ClampedArray {
+  const n = w * h * 4;
+  const m = out && out.length === n ? out : new Uint8ClampedArray(n);
+  m.fill(0);
   const ox = x - layer.x;
   const oy = y - layer.y;
   for (let j = 0; j < h; j++) {
@@ -195,11 +195,12 @@ export function frontMask(x: number, y: number, w: number, h: number, layer: Pic
       if (lx < 0 || lx >= layer.w) continue;
       const id = layer.ids[row + lx];
       if (!id || !flags[id - 1]) continue;
+      const d = (row + lx) * 4;
       const k = (j * w + i) * 4;
-      m[k] = 255;
-      m[k + 1] = 255;
-      m[k + 2] = 255;
-      m[k + 3] = 255;
+      m[k] = layer.rgba[d];
+      m[k + 1] = layer.rgba[d + 1];
+      m[k + 2] = layer.rgba[d + 2];
+      m[k + 3] = layer.rgba[d + 3];
     }
   }
   return m;
