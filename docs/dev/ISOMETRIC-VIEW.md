@@ -182,7 +182,8 @@ A visão entrou em `reiscorp/local` num único merge `--no-ff` da branch `featur
 vista de cima:
 
 ```sh
-git revert -m 1 <hash do merge>   # o hash está no fim deste documento e na memória da Bianca
+# o hash do merge também está na memória da Bianca e na apresentação 2026-11-26-0120-visao-hotel da TV
+git revert -m 1 $(git log reiscorp/local --merges --format=%h -n 1 --grep="feature/visao-isometrica")
 npm run typecheck && npm run build
 npm run docker:up                 # só com o ok do Reis
 ```
