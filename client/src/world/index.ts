@@ -10,6 +10,7 @@ import { createDebug, type WorldDebug } from './debug';
 import { BUILDING_H, COL_W } from './constants';
 import { RECEPTION_ID } from './layout/core';
 import { inRect } from './layout/geometry';
+import { WALL_H, fromIso, isoBounds, isoX, isoY } from './iso';
 import { attachInput, type Hit } from './input';
 import type { AgentInfo } from '../../../shared/types';
 import { rebaseSnapshot } from './playback';
@@ -127,11 +128,12 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     updateBounds();
   };
 
-  const buildingRect = () => ({ x: 0, y: 0, w: sim.building.cols * COL_W * TILE, h: BUILDING_H * TILE });
+  /** O prédio no plano isométrico (com a altura das paredes do fundo). */
+  const buildingRect = () => isoBounds({ x0: 0, y0: 0, x1: sim.building.cols * COL_W * TILE, y1: BUILDING_H * TILE }, WALL_H);
 
   const updateBounds = () => {
     const b = buildingRect();
-    camera.bounds = { x: b.x - 7 * TILE, y: b.y - 6 * TILE, w: b.w + 14 * TILE, h: b.h + 18 * TILE };
+    camera.bounds = { x: b.x - 10 * TILE, y: b.y - 6 * TILE, w: b.w + 20 * TILE, h: b.h + 16 * TILE };
     const fit = camera.fitZoom(b, 16);
     camera.minZoom = Math.min(1, Math.max(0.25, fit));
     camera.clamp();
@@ -183,8 +185,8 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     const ch = sim.person(id);
     if (!ch) return;
     userMoved = true;
-    const zoom = Math.max(camera.zoom, camera.snapZoom(3));
-    const c = camera.centerFor(ch.x, ch.y - 12, zoom);
+    const zoom = Math.max(camera.zoom, camera.snapZoom(2.5));
+    const c = camera.centerFor(isoX(ch.x, ch.y), isoY(ch.x, ch.y) - 28, zoom);
     camera.animateTo(c.x, c.y, zoom, Date.now(), 420);
     camera.follow = opts.follow ? id : null;
   };
@@ -195,8 +197,8 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     userMoved = true;
     camera.follow = null;
     const r = room.layout.rect;
-    const rect = { x: r.x * TILE, y: r.y * TILE - 8, w: r.w * TILE, h: r.h * TILE + 16 };
-    const fit = camera.fitZoom(rect, 40);
+    const rect = isoBounds({ x0: r.x * TILE, y0: (r.y + 2) * TILE, x1: (r.x + r.w) * TILE, y1: (r.y + r.h) * TILE }, WALL_H);
+    const fit = camera.fitZoom(rect, 32);
     const zoom = Math.min(4, Math.max(camera.minZoom, camera.snapZoom(fit, 'down')));
     const c = camera.centerFor(rect.x + rect.w / 2, rect.y + rect.h / 2, zoom);
     camera.animateTo(c.x, c.y, zoom, Date.now(), 420);
@@ -231,10 +233,37 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
         if (w.x >= r.x - slack && w.x <= r.x + r.w + slack && w.y >= r.y - slack && w.y <= r.y + r.h + slack) return { type: 'tv', id: roomId };
       }
     }
-    const tx = Math.floor(w.x / TILE);
-    const ty = Math.floor(w.y / TILE);
-    for (const room of sim.rooms.values()) if (room.present && !room.ghost && inRect(room.layout.rect, tx, ty)) return { type: 'room', id: room.id };
-    return null;
+    const roomId = roomAt(w.x, w.y);
+    return roomId ? { type: 'room', id: roomId } : null;
+  };
+
+  /**
+   * Sala sob um ponto do plano isométrico: primeiro a do chão logo abaixo do ponto; senão, a que tem a parede do
+   * fundo ali (o volume da sala até a altura das paredes), a mais da frente.
+   */
+  const roomAt = (ix: number, iy: number): string | null => {
+    const f = fromIso(ix, iy);
+    const tx = Math.floor(f.x / TILE);
+    const ty = Math.floor(f.y / TILE);
+    let best: string | null = null;
+    let bestDepth = -Infinity;
+    for (const room of sim.rooms.values()) {
+      if (!room.present || room.ghost) continue;
+      const r = room.layout.rect;
+      if (inRect(r, tx, ty)) return room.id;
+      // o ponto sobe pela parede: o chão sob ele, descendo até WALL_H px, cai dentro da sala?
+      for (let z = 8; z <= WALL_H; z += 8) {
+        const g = fromIso(ix, iy + z);
+        if (!inRect(r, Math.floor(g.x / TILE), Math.floor(g.y / TILE))) continue;
+        const d = r.x + r.y + r.w + r.h;
+        if (d > bestDepth) {
+          bestDepth = d;
+          best = room.id;
+        }
+        break;
+      }
+    }
+    return best;
   };
 
   const setHover = (id: string | null) => {
@@ -248,7 +277,8 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   const visitClick = (hit: Hit, at: { x: number; y: number }) => {
     if (hit?.type === 'agent') return setSelection(hit);
     setSelection(null);
-    const w = camera.screenToWorld(at.x, at.y);
+    const p = camera.screenToWorld(at.x, at.y);
+    const w = fromIso(p.x, p.y);
     if (sim.visitorWalkTo(Math.floor(w.x / TILE), Math.floor(w.y / TILE))) followVisitor();
   };
   const followVisitor = () => {
@@ -387,7 +417,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       const cx = camera.x;
       const cy = camera.y;
       const cz = camera.zoom;
-      camera.update(real, followCh ? camera.centerFor(followCh.x, followCh.y - 12, camera.zoom) : null, realDt);
+      camera.update(real, followCh ? camera.centerFor(isoX(followCh.x, followCh.y), isoY(followCh.x, followCh.y) - 28, camera.zoom) : null, realDt);
       // seguir alguém andando ou a câmera deslizando: 30 qps aí viraria tranco
       cameraMoved = Math.abs(camera.x - cx) + Math.abs(camera.y - cy) > 0.01 || Math.abs(camera.zoom - cz) > 1e-4;
       renderer.frame(now, dt, options, { agent: selection?.type === 'agent' ? selection.id : null, room: selection?.type === 'room' ? selection.id : null, hover });
@@ -438,7 +468,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
         ? hit.id
         : hit?.type === 'agent'
           ? (sim.chars.get(hit.id)?.roomId ?? null)
-          : ([...sim.rooms.values()].find((room) => room.present && !room.ghost && inRect(room.layout.rect, Math.floor(w.x / TILE), Math.floor(w.y / TILE)))?.id ?? null);
+          : roomAt(w.x, w.y);
     if (!roomId || !sim.rooms.has(roomId)) return;
     e.preventDefault();
     roomMenuCbs.forEach((cb) => cb(roomId, { x: e.clientX, y: e.clientY }));

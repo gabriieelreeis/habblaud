@@ -15,6 +15,7 @@ import {
   type FurnitureKind,
   type FurnitureSprites,
   type IconName,
+  type IsoWallSpec,
   type Pose,
   type RoomTheme,
   type Sprite,
@@ -29,6 +30,9 @@ import type { BufSprite } from './core/sprite';
 import { drawBoard, drawClock, drawScreen, drawWindowView, footballLance } from './dynamic';
 import { normalizeFurniture, renderFurniture } from './furniture/index';
 import { renderIcon } from './icons';
+import { scale2x } from './core/scale2x';
+import { renderIsoFurniture } from './iso/index';
+import { renderIsoWall, renderLowWall } from './iso/walls';
 import { CHUNK_PX, floorChunk } from './surfaces/floor';
 import { WALL_CAP_H, WALL_FACE_H, capColor, southWallTile, wallFaceTile } from './surfaces/walls';
 import { renderRug } from './surfaces/rug';
@@ -127,6 +131,47 @@ export function furnitureSprites(kind: FurnitureKind, variant?: string, state?: 
     const f = renderFurniture(kind, n.variant, n.state, n.vseed);
     return { base: toSprite(f.base), front: f.front ? toSprite(f.front) : undefined };
   });
+}
+
+// ------------------------------------------------------------------ visão isométrica
+
+const isoFurnCache = new Cache<FurnitureSprites>(4000);
+const isoCharCache = new Cache<Sprite>(8000);
+const isoWallCache = new Cache<Sprite>(1500);
+
+/** Móvel de chão na visão isométrica: âncora no canto de trás (noroeste) do footprint. */
+export function isoFurnitureSprites(kind: FurnitureKind, variant?: string, state?: number, opts: { seed?: number } = {}): FurnitureSprites {
+  const n = normalizeFurniture(kind, variant, state, opts.seed);
+  const key = `${kind}|${n.variant ?? '-'}|${n.state}|${n.vseed}`;
+  return isoFurnCache.get(key, () => {
+    const f = renderIsoFurniture(kind, n.variant, n.state, n.vseed);
+    return { base: toSprite(f.base), front: f.front ? toSprite(f.front) : undefined };
+  });
+}
+
+/** Personagem na visão isométrica: âncora no centro dos pés. */
+export function isoCharacterSprite(req: CharacterFrameRequest): Sprite {
+  const n = poseFrameCount(req.pose);
+  const frame = ((Math.floor(req.frame) % n) + n) % n;
+  const seated = isSeated(req.pose, req.seated);
+  const key = `${keyOf(req.appearance)}|${req.dir}|${req.pose}|${frame}|${req.held ?? 'none'}|${seated ? 1 : 0}|${req.costume ?? 'none'}`;
+  return isoCharCache.get(key, () => {
+    const s = renderCharacter({ ...req, frame, seated });
+    return toSprite({ buf: scale2x(s.buf), ax: s.ax * 2, ay: s.ay * 2 });
+  });
+}
+
+/** Parede isométrica (alta, do fundo, ou mureta baixa da frente). Âncora no canto de trás do footprint dela. */
+export function isoWall(style: WallStyle, spec: IsoWallSpec): Sprite {
+  const doors = (spec.doorways ?? []).map((d) => `${d[0]}-${d[1]}`).join(',');
+  const key = `${styleKey(style)}|${spec.facing}|${spec.length}|${spec.height}|${spec.thickness}|${spec.low ? 1 : 0}|${doors}|${spec.seed ?? 0}`;
+  return isoWallCache.get(key, () =>
+    toSprite(
+      spec.low
+        ? renderLowWall(style, { along: spec.facing === 'south' ? 'x' : 'y', length: spec.length, height: spec.height, thickness: spec.thickness, doorways: spec.doorways })
+        : renderIsoWall(style, { facing: spec.facing, length: spec.length, height: spec.height, thickness: spec.thickness, doorways: spec.doorways, seed: spec.seed }),
+    ),
+  );
 }
 
 export function iconSprite(name: IconName): Sprite {
@@ -314,6 +359,9 @@ const _contract: ArtModule = {
   roomTheme,
   iconSprite,
   avatarCanvas,
+  isoFurnitureSprites,
+  isoCharacterSprite,
+  isoWall,
 };
 void _contract;
 

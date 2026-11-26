@@ -7,6 +7,8 @@ import type { RoomState } from '../sim/room-state';
 import type { WallArtAsset, WorldAssets } from '../assets';
 import type { SeasonalTheme } from '../api';
 import { decorateSeasonalRug, decorateSeasonalWall, seasonalRugColor, seasonalWallStyle } from './seasonal';
+import type { Box } from '../iso';
+import type { IsoAreaVis } from './iso-area';
 
 /** Margem acima da área no cache de paredes (itens que passam do topo da face). */
 export const WALL_MARGIN = 16;
@@ -24,6 +26,8 @@ export interface FurnVis {
   ay: number;
   order: number;
   areaId: string;
+  /** Caixa do footprint no chão (px de mundo, com o deslocamento do desenho): ordem de desenho na visão isométrica. */
+  box: Box;
   /** Mesa: spot do assento cuja atividade aparece na tela. */
   seatSpot?: string;
   /** Sprites por estado (resolvidos sob demanda). */
@@ -53,6 +57,8 @@ export interface AreaVis {
   wallItems: WallVis[];
   sign?: WallVis;
   version: number;
+  /** Visuais da visão isométrica (piso projetado, paredes fatiadas, itens de parede animados). */
+  iso?: IsoAreaVis;
 }
 
 function makeCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
@@ -274,6 +280,7 @@ export function buildAreaVis(art: ArtModule, layout: AreaLayout, room: RoomState
       seed: hash32(f.id),
       ax,
       ay,
+      box: { x0: f.tx * TILE + (f.dx ?? 0), y0: f.ty * TILE + (f.dy ?? 0), x1: (f.tx + def.footprint.w) * TILE + (f.dx ?? 0), y1: (f.ty + def.footprint.h) * TILE + (f.dy ?? 0) },
       order: f.order,
       areaId: layout.id,
       seatSpot: layout.spots.find((s) => s.deskId === f.id)?.id,
