@@ -18,6 +18,7 @@ import {
   type IconName,
   type IsoWallSpec,
   type Pose,
+  type Rect,
   type RoomTheme,
   type Sprite,
   type WallStyle,
@@ -58,8 +59,28 @@ function toCanvas(buf: PixelBuf): HTMLCanvasElement {
   return c;
 }
 
+/** Retângulo dos pixels com alfa > 16, medido no buffer (o canvas não precisa ser lido de volta). */
+export function opaqueRect(buf: PixelBuf): Rect {
+  const { w, h, data } = buf;
+  let x0 = w;
+  let y0 = h;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    for (let x = 0; x < w; x++) {
+      if (data[(row + x) * 4 + 3] <= 16) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  return x1 < 0 ? { x: 0, y: 0, w, h } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
 function toSprite(s: BufSprite): Sprite {
-  return { canvas: toCanvas(s.buf), ax: s.ax, ay: s.ay, rects: s.rects };
+  return { canvas: toCanvas(s.buf), ax: s.ax, ay: s.ay, rects: s.rects, opaque: opaqueRect(s.buf) };
 }
 
 const charCache = new Cache<Sprite>(30000);
@@ -154,13 +175,34 @@ export function isoFurnitureSprites(kind: FurnitureKind, variant?: string, state
   });
 }
 
+/** Chaves dos sprites isométricos gerados, por aparência (para esquecer os de quem saiu). */
+const isoCharKeys = new Map<string, Set<string>>();
+
 /** Personagem na visão isométrica: âncora no centro dos pés. */
 export function isoCharacterSprite(req: CharacterFrameRequest): Sprite {
   const n = poseFrameCount(req.pose);
   const frame = ((Math.floor(req.frame) % n) + n) % n;
   const seated = isSeated(req.pose, req.seated);
-  const key = `${keyOf(req.appearance)}|${req.dir}|${req.pose}|${frame}|${req.held ?? 'none'}|${seated ? 1 : 0}|${req.costume ?? 'none'}`;
-  return isoCharCache.get(key, () => toSprite(renderIsoCharacter({ ...req, frame, seated })));
+  const ak = keyOf(req.appearance);
+  const key = `${ak}|${req.dir}|${req.pose}|${frame}|${req.held ?? 'none'}|${seated ? 1 : 0}|${req.costume ?? 'none'}`;
+  return isoCharCache.get(key, () => {
+    let keys = isoCharKeys.get(ak);
+    if (!keys) isoCharKeys.set(ak, (keys = new Set()));
+    keys.add(key);
+    return toSprite(renderIsoCharacter({ ...req, frame, seated }));
+  });
+}
+
+/** Esquece os sprites isométricos das aparências fora de `keep`; devolve quantos saíram. */
+export function isoCharacterForget(keep: readonly Appearance[]): number {
+  const stay = new Set(keep.map(keyOf));
+  let n = 0;
+  for (const [ak, keys] of isoCharKeys) {
+    if (stay.has(ak)) continue;
+    for (const k of keys) if (isoCharCache.delete(k)) n++;
+    isoCharKeys.delete(ak);
+  }
+  return n;
 }
 
 /** Parede isométrica (alta, do fundo, ou mureta baixa da frente). Âncora no canto de trás do footprint dela. */
@@ -380,6 +422,7 @@ const _contract: ArtModule = {
   avatarCanvas,
   isoFurnitureSprites,
   isoCharacterSprite,
+  isoCharacterForget,
   isoWall,
   isoWallSprite,
   isoCarSprite,
