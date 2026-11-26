@@ -47,11 +47,11 @@ celular e a cena Visita leem a posição da cabeça na tela por `screenPositionO
 2. Pisos das áreas (`iso.floor`, projetado uma vez por área). Na montagem da sala, os tiles aparecem um a um sob a
    matriz do chão.
 3. Camada estática (`layerFor`): fatias de parede, móveis, encostos e fachadas dos lotes vazios de todas as áreas
-   estáveis, ordenados uma vez por `isoSort` e pintados num canvas só. Ela é refeita quando muda o conjunto de áreas
-   ou o estado de um móvel (cafeteira passando café, cabine ocupada).
-4. Entidades do quadro (personagens, telas dos monitores, itens de parede animados, props dinâmicos, carros e áreas
-   em montagem), ordenadas por `isoSort`. Depois de cada uma, `redrawInFront` redesenha só os pedaços da camada que
-   ficam na frente dela e cruzam o desenho, em cascata. Os candidatos vêm de uma grade de 64 px.
+   estáveis, ordenados uma vez por `isoSort` e pintados UMA vez, com o dono de cada pixel (ver "Camadas e
+   profundidade"). Ela só é refeita quando muda o conjunto de áreas (sala nova, sala que fecha, tema).
+4. Entidades do quadro (personagens, telas dos monitores, cafeteira e cabine, itens de parede animados, props
+   dinâmicos, carros e áreas em montagem), ordenadas por `isoSort` entre si e desenhadas por cima da camada; onde o
+   cenário fica na frente de uma delas, os pixels da própria camada entram por cima dela (`paintMasked`).
 5. Props da frente do prédio (sul e leste), pinguepongue, teias, partículas.
 6. Luz: mapa da noite, salas apagadas (o volume da sala escurece) e brilhos. Depois as luzinhas de época, o
    giroflex do alarme e os ícones sobre as cabeças.
@@ -69,6 +69,42 @@ pendurado na parede), o desempate é a profundidade do centro mais o `bias`:
 | 0,5 | personagem |
 | 1 | `front` do móvel (encosto ao sul/leste, porta da cabine): por cima de quem senta |
 | 100 | item animado na parede do fundo (sempre à frente das fatias da própria parede) |
+
+## Camadas e profundidade
+
+O cenário é pintado uma vez só, na abertura, e nunca é redesenhado por causa de quem passa (`client/src/world/render/compose.ts`):
+
+- `composeLayer(order)`: mistura, em JavaScript, os pixels de cada pedaço (já na ordem do `isoSort`) num buffer RGBA
+  do tamanho da camada e grava, por pixel, o DONO: o índice do último pedaço com alfa ≥ 128 ali (`OWNER_ALPHA`;
+  sombras e vidro bem claro não viram donos). O buffer vira o canvas da camada (`putImageData`); a cor e o mapa de
+  donos (`Uint16Array`) ficam em memória (no prédio de 7 colunas, 15 MB e 7,6 MB). Os pixels de cada sprite são lidos
+  uma vez (`pixelsOf`).
+- A cada quadro, para cada entidade: `markFront` marca os pedaços da camada que cruzam o desenho dela e ficam na
+  frente pela ordem das caixas (`drawsBefore`, a mesma regra da ordenação; a grade de 64 px acha os candidatos). Sem
+  nada na frente, ela vai direto para o quadro. Com algo na frente:
+  1. `frontPixels` monta, da memória, o recorte da camada só com os pixels cujo dono está marcado (sem ler pixels
+     de volta da placa de vídeo, o que faria a CPU esperar a GPU a cada pessoa andando);
+  2. a entidade é desenhada num canvas próprio, alinhado aos pixels da tela (o mesmo desenho que sairia direto);
+  3. o recorte entra por cima com `source-atop`, só onde ela tem pixel, e o resultado vai para o quadro.
+  O recorte fica em cache enquanto o retângulo e os pedaços da frente não mudam; o desenho da entidade, enquanto a
+  assinatura dela (sprite, posição, anel, transparência), os pedaços da frente e a câmera não mudam.
+- Resultado: o quadro é igual ao cenário vazio em todo pixel em que a entidade não pinta. Atrás de um móvel alto some
+  só a parte coberta; na frente, a pessoa aparece inteira; atrás de vidro (garrafão do bebedouro, divisória de
+  vidro), ela aparece através dele e o vidro não muda quando ela passa (antes, devolver o recorte inteiro misturava o
+  vidro duas vezes). `compose.test.ts` confere com a arte e as plantas de verdade, em centenas de posições no
+  corredor dos bebedouros (com as salas dos dois lados, muretas e portas), na copa e em salas.
+- A cafeteira e a cabine do banheiro mudam de desenho com o uso: ficam fora da camada, como entidades.
+- O antigo redesenho em cascata dos móveis na frente de cada personagem (vindo do PR #204, `redrawSet`) saiu; de lá
+  ficaram só `layerProps`/`isStaticProp` (props do lado de fora pintados uma vez). Era ele que fazia o desenho mudar
+  conforme a posição de quem passava (a planta atrás da mureta do bebedouro, por exemplo, voltava por cima dela).
+- Onde fica cada parede no plano (`wallPlan`, em `wall-plan.ts`) é puro: o renderizador e o teste usam o mesmo.
+
+Desempenho, comparado com o `reiscorp/local` no mesmo procedimento (modo demonstração, 1920 x 945, 60 s de
+aquecimento e 3 rodadas de 25 s em cada vista): mediana de CPU por quadro numa sala, 3,7 → 3,1 ms; no prédio inteiro à
+noite, 4,6 → 3,7 ms. A cauda (p90) é parecida nas duas versões e vem da geração do sprite de um personagem na primeira
+vez que cada pose e direção aparecem (5 a 20 ms cada); com isso aquecido, a sala fica em 1,9 ms de mediana e 2,9 ms
+de p90. A montagem da camada, só na abertura e quando o prédio muda, leva de 40 a 70 ms no navegador (prédio de 7
+colunas, 653 pedaços, 2694 x 1410 px: no Node, 2 ms de ordenação e 32 ms de pintura).
 
 ## Paredes
 
@@ -99,19 +135,36 @@ A vista de cima mostrava tudo de frente para a câmera. Aqui a direção de cada
    fliperama, cabine): ficam de costas para a parede que tocam, na ordem norte, oeste, leste e sul.
 4. O resto não tem frente.
 
-A arte desenha a frente para o sul. Para o leste, usa o espelho; para o norte, as costas lisas (`backView`); para o
-oeste, o espelho das costas (`renderIsoFurniture(..., facing)`). O `client/src/world/layout/facing.test.ts` confere
-em 48 salas e nas áreas comuns:
+O pufe não tem a direção na variante (é a cor): ele olha para onde aponta o lugar que o usa.
+
+A arte desenha a frente para o sul. Para o leste, usa o espelho; para o norte, as costas desenhadas de cada móvel de
+parede (`BACKS` em `client/src/art/iso/index.ts`, lista em `ISO_BACK_KINDS`: estantes com a lateral aberta e as
+pastas, impressora com bandeja e cabos, arquivo, bebedouro, geladeira, máquina de venda, bancadas, pia, cafeteira,
+micro-ondas, fliperama e cabine); para o oeste, o espelho das costas (`renderIsoFurniture(..., facing)`). A cabine do
+banheiro fica sempre com a porta fechada: estado 0 com a luz verde (livre) e 1 com a vermelha (ocupada). O
+`client/src/world/layout/facing.test.ts` confere em 48 salas e nas áreas comuns:
 
 - cadeira e mesa do mesmo posto ficam frente a frente;
 - cada assento olha para onde o móvel aponta;
 - cadeiras de café e poltronas olham para a mesa mais próxima;
 - móveis de parede ficam de costas para ela.
 
-O `art/iso/iso.test.ts` confere o lado do encosto na arte, nas 4 direções.
+O `art/iso/iso.test.ts` confere o lado do encosto na arte, nas 4 direções; `art/iso/backs.test.ts`, que todo móvel
+de parede da planta tem costas próprias e que a cabine livre e a ocupada só diferem na luz.
 
-Quem senta fica no centro do assento (`SEAT_SHIFT` desfaz o deslocamento que a planta antiga dava ao ponto do
-assento) e usa a caixa do assento na ordem de desenho, entre a base e o `front`.
+### Quem senta
+
+O ponto do assento na planta vai para o centro do tile (`SEAT_SHIFT` desfaz o deslocamento que a planta antiga
+dava). Dali, `art.isoSeatAnchor(kind, variante, direção)` (`client/src/art/iso/seats.ts`) diz onde fica o quadril e
+quanto o boneco sobe: a altura do quadril (topo da almofada + 1,5) menos `SEAT_HIP_Z` (11,5, o quadril do personagem
+sentado). Cadeira de café, poltrona e sofá puxam o quadril para longe do encosto (0,75, 1,5 e 2 px); banco e banqueta
+sobem 2 px; o pufe afunda 4,5 px. Quem senta usa a caixa do assento na ordem de desenho, entre a base e o `front`,
+só enquanto está junto dele.
+
+O que fica do lado de cá de quem senta vai no `front` (por cima dele): o encosto e o braço ao sul ou ao leste da
+poltrona e do sofá, o encosto da cadeira de café, a borda da frente do pufe virado para o norte (os próprios pixels
+do pufe abaixo da cova: vazio, ele não muda). Prévia em PNG, sem navegador: `npx tsx scripts/seat-preview.ts <pasta>`
+(assentos com pessoas nas 4 direções, costas dos móveis e cabines); testes em `art/iso/seats.test.ts`.
 
 ## Como acrescentar ou mudar um móvel
 
@@ -159,16 +212,18 @@ multiplicado sobre a cena. Os brilhos (monitores, luminárias, faróis) ainda s�
 
 ## Desempenho
 
-- Estático em cache: chão externo, pisos, camada de paredes/móveis, props da frente e mapa de luz projetado.
+- Estático em cache: chão externo, pisos, camada de paredes/móveis (com o dono de cada pixel), props da frente e
+  mapa de luz projetado.
 - Telas dos monitores (~7 vezes por segundo) e itens de parede animados ficam em canvas próprios. Abaixo de zoom 1,2,
   o ritmo cai para um terço.
-- Redesenho na frente das entidades com grade espacial.
-- Medido no modo demonstração (1680 x 915, prédio inteiro na tela): mediana de ~5 ms de CPU por quadro.
+- Cenário na frente das entidades pelo mapa de donos, com grade espacial e recortes em cache (ver "Camadas e
+  profundidade", onde estão os números medidos).
 
 ## Testes
 
-`npx vitest run client/src/world/iso.test.ts client/src/art/iso client/src/art/character-iso` (projeção, ordem, kit,
-todos os móveis em todas as variantes, paredes, elevador, carros, personagens), além de `npm run typecheck` e
+`npx vitest run client/src/world/iso.test.ts client/src/world/render client/src/art/iso client/src/art/character-iso`
+(projeção, ordem, camada com dono por pixel, kit, todos os móveis em todas as variantes, costas, assentos, paredes,
+elevador, carros, personagens), além de `npm run typecheck` e
 `npm run build`. A conferência visual é no servidor de desenvolvimento com `?mock=1`. Para rodar sem mexer no
 escritório do Docker, use outra porta: `VITE_PORT=5788 npx vite --config vite.config.ts`. Para ver os dados reais em
 outra porta e numa pasta de dados à parte, sem World, mensagens e linha do tempo:
@@ -188,10 +243,21 @@ npm run typecheck && npm run build
 npm run docker:up                 # só com o ok do Reis
 ```
 
+As correções de camadas, assentos, costas e cabines vieram num segundo merge `--no-ff`, da branch
+`fix/visao-isometrica-camadas`. Para desfazer só elas (antes de desfazer a visão inteira, se for o caso):
+
+```sh
+git revert -m 1 $(git log reiscorp/local --merges --format=%h -n 1 --grep="fix/visao-isometrica-camadas")
+```
+
 ## Limitações conhecidas
 
 - Paredes do fundo são opacas: quem anda junto à parede norte das salas do lado sul do corredor fica parcialmente
   atrás dela.
 - Os brilhos da noite (monitores, luminárias) ainda são desenhados chapados no chão.
+- O primeiro quadro em que um personagem aparece numa pose e direção novas gera o sprite dele (5 a 20 ms); é daí que
+  vêm os quadros lentos de vez em quando, nas duas versões.
+- A ordem pelas caixas é aproximada para quem está colado numa parede ou no batente de uma porta (dentro da espessura
+  dela): o desempate é a profundidade do centro.
 - A pintura gerada por IA sem moldura pronta cai no quadro procedural.
 - As setas do teclado na Visita andam nos eixos do mundo (para cima = norte, que na tela é para cima à direita).
