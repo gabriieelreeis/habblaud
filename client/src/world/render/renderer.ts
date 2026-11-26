@@ -61,8 +61,6 @@ interface StaticLayer {
   grid: Map<number, number[]>;
   /** Áreas que estavam estáveis quando a camada foi pintada (e as fachadas dos lotes vazios). */
   key: string;
-  dyn: FurnVis[];
-  dynState: number[];
 }
 
 interface Car {
@@ -119,6 +117,8 @@ const SEAT_LIFT = 4;
 const SCRATCH_M = 3;
 /** Ritmo (ms) em que o conteúdo animado de cada item de parede é refeito; 0 = só quando o estado muda. */
 const OVERLAY_PERIOD: Partial<Record<string, number>> = { clock: 0, sign: 0, light_switch: 0, elevator: 0, window: 400, whiteboard: 500, tv: 125, mirror: 150 };
+/** Móveis cujo sprite muda com o uso (desenhados a cada quadro, fora da camada estática). */
+const STATEFUL: ReadonlySet<string> = new Set(['coffee_machine', 'toilet_stall']);
 /** Lado (px) das células da grade da camada estática (busca do que redesenhar na frente de cada entidade). */
 const GRID = 64;
 
@@ -571,6 +571,9 @@ export class Renderer {
         }
       } else {
         for (const f of vis.furniture) {
+          if (STATEFUL.has(f.kind)) {
+            for (const p of this.furnPieces(f, vis, now)) if (visible(p.rect)) push(K.Piece, p.box, p.rect, p, vis, p.bias ?? 0);
+          }
           const animated = f.kind === 'desk' || f.kind === 'arcade' || (f.kind === 'coffee_machine' && this.furnState(f, now) === 1);
           if (!animated) continue;
           const r = this.furnRect(f, now);
@@ -1109,23 +1112,12 @@ export class Renderer {
       if (!room || room.phase !== 'ready') key += `s${sh.slot}|`;
     }
     let l = this.layer;
-    if (l && l.key === key) {
-      let same = true;
-      for (let i = 0; i < l.dyn.length && same; i++) if (l.dynState[i] !== this.furnState(l.dyn[i], now)) same = false;
-      if (same) return l;
-    }
+    if (l && l.key === key) return l;
     const items: Piece[] = [];
-    const dyn: FurnVis[] = [];
-    const dynState: number[] = [];
     for (const vis of stable) {
       items.push(...vis.iso!.walls);
-      for (const f of vis.furniture) {
-        if (f.kind === 'coffee_machine' || f.kind === 'toilet_stall') {
-          dyn.push(f);
-          dynState.push(this.furnState(f, now));
-        }
-        items.push(...this.furnPieces(f, vis, now));
-      }
+      // cafeteira e cabine mudam de sprite com o uso: vão como entidades a cada quadro, sem refazer a camada
+      for (const f of vis.furniture) if (!STATEFUL.has(f.kind)) items.push(...this.furnPieces(f, vis, now));
     }
     for (const sh of this.shells) {
       const room = this.roomInSlot(sh.slot);
@@ -1165,7 +1157,7 @@ export class Renderer {
       }
     });
     this.seen = new Uint32Array(order.length);
-    l = { c, x: x0, y: y0, rect: { x: x0, y: y0, w: c.width, h: c.height }, items: order, grid, key, dyn, dynState };
+    l = { c, x: x0, y: y0, rect: { x: x0, y: y0, w: c.width, h: c.height }, items: order, grid, key };
     this.layer = l;
     return l;
   }
