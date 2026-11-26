@@ -8526,11 +8526,15 @@ html.is-replay #world {
 
 .ui-look__tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
-  overflow-x: auto;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--ui-line-strong);
-  scrollbar-width: thin;
+}
+
+/* Na gaveta: a prévia em cima, o nome logo abaixo, em toda a largura. */
+.ui-char--look .ui-char__top {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .ui-look__tab {

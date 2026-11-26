@@ -217,6 +217,15 @@ export function isoFurnitureSprites(kind: FurnitureKind, variant?: string, state
   });
 }
 
+/**
+ * A fantasia de época que vale para uma aparência: quem escolheu um chapéu no editor fica com ele (os chapéus de época
+ * não passam por cima da escolha); a capa do vampiro, que não é chapéu, continua.
+ */
+export function costumeFor(a: Appearance, costume: CharacterFrameRequest['costume']): CharacterFrameRequest['costume'] {
+  const chosenHat = a.pieces?.hat;
+  return costume && costume !== 'vampire' && chosenHat && chosenHat !== 'none' ? undefined : costume;
+}
+
 /** Chaves dos sprites isométricos gerados, por aparência (para esquecer os de quem saiu). */
 const isoCharKeys = new Map<string, Set<string>>();
 
@@ -226,12 +235,13 @@ export function isoCharacterSprite(req: CharacterFrameRequest): Sprite {
   const frame = ((Math.floor(req.frame) % n) + n) % n;
   const seated = isSeated(req.pose, req.seated);
   const ak = keyOf(req.appearance);
-  const key = `${ak}|${req.view ?? req.dir}|${req.pose}|${frame}|${req.held ?? 'none'}|${seated ? 1 : 0}|${req.costume ?? 'none'}`;
+  const costume = costumeFor(req.appearance, req.costume);
+  const key = `${ak}|${req.view ?? req.dir}|${req.pose}|${frame}|${req.held ?? 'none'}|${seated ? 1 : 0}|${costume ?? 'none'}`;
   return isoCharCache.get(key, () => {
     let keys = isoCharKeys.get(ak);
     if (!keys) isoCharKeys.set(ak, (keys = new Set()));
     keys.add(key);
-    return toSprite(renderAvatar(lookFromAppearance(req.appearance), req.view ?? VIEW_OF_DIR[req.dir], { pose: req.pose, frame, held: req.held, seated, costume: req.costume }));
+    return toSprite(renderAvatar(lookFromAppearance(req.appearance), req.view ?? VIEW_OF_DIR[req.dir], { pose: req.pose, frame, held: req.held, seated, costume }));
   });
 }
 
