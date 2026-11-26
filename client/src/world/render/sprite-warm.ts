@@ -2,7 +2,7 @@
 // mundo usa (na abertura, quando alguém entra ou muda de aparência) e as que vêm no plano de cada um (próximos passos
 // e a roda de que participa). O que ainda não estiver pronto quando for preciso continua sendo gerado na hora; os
 // sprites de quem saiu são esquecidos (memória no celular).
-import type { Appearance, CharacterFrameRequest, Dir, HeldItem, Pose } from '../../art/api';
+import type { Appearance, CharacterFrameRequest, Dir, HeldItem, Pose, ScreenDir } from '../../art/api';
 import type { Step } from '../sim/steps';
 import type { GatherKind } from '../social/gathering';
 
@@ -75,6 +75,8 @@ export function combosOfStep(step: Step | null | undefined, seated: boolean): Wa
 }
 
 const DIRS: readonly Dir[] = ['down', 'right', 'up', 'left'];
+/** A diagonal da tela de cada direção do mundo: é a que o renderizador pede com o personagem parado ou andando nos eixos. */
+const VIEW: Readonly<Record<Dir, ScreenDir>> = { down: 'sw', right: 'se', up: 'ne', left: 'nw' };
 
 const comboKey = (c: WarmCombo) => `${c.pose}|${c.held}|${c.seated ? 1 : 0}`;
 
@@ -256,7 +258,7 @@ export class SpriteWarmer {
   private expand(id: string, t: Track, c: WarmCombo, out: { id: string; req: CharacterFrameRequest }[]): void {
     const n = Math.max(1, this.o.frames(c.pose) || 1);
     for (let frame = 0; frame < n; frame++)
-      for (const dir of DIRS) out.push({ id, req: { appearance: t.appearance, dir, pose: c.pose, frame, held: c.held, seated: c.seated, costume: t.costume } });
+      for (const dir of DIRS) out.push({ id, req: { appearance: t.appearance, dir, view: VIEW[dir], pose: c.pose, frame, held: c.held, seated: c.seated, costume: t.costume } });
   }
 }
 

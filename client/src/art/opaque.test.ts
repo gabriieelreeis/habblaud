@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { appearanceFromSeed } from './character/appearance';
-import { renderIsoCharacter } from './character-iso/render';
+import { lookFromAppearance } from './avatar/from-appearance';
+import { renderAvatar } from './avatar/render';
 import { PixelBuf } from './core/pixbuf';
 import { opaqueRect } from './index';
 
@@ -19,7 +20,7 @@ describe('retângulo visível medido no buffer', () => {
   });
 
   it('personagem: a cabeça fica no alto do retângulo e os pés no fim, perto da âncora', () => {
-    const s = renderIsoCharacter({ appearance: appearanceFromSeed(42, { look: 'm' }), dir: 'down', pose: 'stand', frame: 0 });
+    const s = renderAvatar(lookFromAppearance(appearanceFromSeed(42, { look: 'm' })), 'sw', { pose: 'stand', frame: 0 });
     const r = opaqueRect(s.buf);
     expect(r.y).toBeLessThan(12);
     expect(Math.abs(r.y + r.h - 1 - s.ay)).toBeLessThanOrEqual(3);

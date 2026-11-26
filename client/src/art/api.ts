@@ -22,7 +22,7 @@
 // - Paleta clara (neutros frios + madeira quente + acentos saturados nos objetos); contorno 1px cinza-azulado
 //   escuro (não preto); 3–4 tons por material; brilhos especulares; sombras de contato; muitos detalhes pequenos.
 
-import type { AppearanceParts } from '../../../shared/appearance';
+import type { AppearanceParts, LookParts } from '../../../shared/appearance';
 
 export const TILE = 16;
 
@@ -93,6 +93,8 @@ export interface Appearance {
   facialHair?: 'none' | 'stubble' | 'beard' | 'mustache' | 'goatee';
   /** (Opcional, aditivo) Parte de baixo da roupa. Ausente = calça. */
   bottomStyle?: 'pants' | 'shorts' | 'skirt';
+  /** (Opcional, aditivo) Peças do visual novo escolhidas no editor (ver shared/appearance.ts, LookParts). */
+  pieces?: LookParts;
 }
 
 export interface Rect {
@@ -139,7 +141,15 @@ export interface CharacterFrameRequest {
   seated?: boolean;
   /** Acessório sazonal; ausente mantém a aparência original. */
   costume?: 'santa' | 'witch' | 'pumpkin' | 'vampire';
+  /**
+   * (Opcional, aditivo) Direção na TELA, entre as 8 (s = olhando para quem vê). Ausente: a diagonal que corresponde a
+   * `dir` (down = sw, right = se, up = ne, left = nw).
+   */
+  view?: ScreenDir;
 }
+
+/** As 8 direções na tela do personagem isométrico. */
+export type ScreenDir = 's' | 'sw' | 'w' | 'nw' | 'n' | 'ne' | 'e' | 'se';
 
 export type FurnitureKind =
   // --- escritório (salas de projeto)

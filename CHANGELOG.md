@@ -12,6 +12,13 @@ do meio (0.**3**.0).
 
 ### Alterado
 
+- **Personagens novos no escritório:** bonecos maiores, com cabeça grande e contorno, desenhados nas 8 direções (ao
+  virar, o corpo passa pelo meio do giro). Todo mundo mantém as cores, o cabelo e o tipo de roupa que tinha; os
+  chapéus, os óculos e os acessórios viram peças próprias. O avatar pequeno é o busto do boneco novo.
+- **Editor de visual na gaveta do agente:** abas por peça (corpo, cabelo, chapéu, óculos, roupa de cima e de baixo,
+  sapatos e acessório), com miniaturas, cores, prévia girando e andando nas 8 direções e "Aleatório". Funciona no
+  celular. Quem escolhe um chapéu fica com ele mesmo no Natal. O Habblaud World continua recebendo só as peças de
+  antes (a mais parecida com a escolhida).
 - **Escritório em visão isométrica:** a sala deixa de ser vista de cima e passa a ser vista de lado, em 3/4, no estilo
   dos hotéis isométricos em pixel art: piso em losangos, paredes do fundo com quadros, TV, janelas, relógio e a placa
   com o nome inclinados na parede, móveis redesenhados no ângulo novo e personagens de corpo inteiro, em 3/4, nas quatro direções. Clique no agente, na sala

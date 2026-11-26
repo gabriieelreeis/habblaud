@@ -3,7 +3,7 @@
 // Tudo é desenhado em código: a geração acontece em PixelBuf (puro, testável em Node) e só no fim
 // vira canvas, uma única vez por combinação de parâmetros (cache). As funções draw* chamadas a cada
 // quadro (telas, quadro, janela, relógio, pisos, paredes) só fazem fillRect/drawImage de tiles prontos.
-import { partsKey, type AppearanceParts } from '../../../shared/appearance';
+import { LOOK_KEYS, partsKey, type AgentParts, type AppearanceParts, type LookParts } from '../../../shared/appearance';
 import { hash32 } from '../../../shared/hash';
 import {
   TILE,
@@ -19,6 +19,7 @@ import {
   type IsoWallSpec,
   type Pose,
   type Rect,
+  type ScreenDir,
   type RoomTheme,
   type Sprite,
   type WallStyle,
@@ -32,11 +33,15 @@ import type { BufSprite } from './core/sprite';
 import { drawBoard, drawClock, drawScreen, drawWindowView, footballLance } from './dynamic';
 import { normalizeFurniture, renderFurniture } from './furniture/index';
 import { renderIcon } from './icons';
-import { renderIsoCharacter } from './character-iso/render';
 import { renderIsoFurniture } from './iso/index';
 import { renderIsoWall, renderLowWall } from './iso/walls';
 import { renderIsoCar } from './iso/car';
 import { isoSeatPlacement } from './iso/seats';
+import { lookFromAppearance } from './avatar/from-appearance';
+import { renderAvatar } from './avatar/render';
+
+/** Diagonal da tela de cada direção do mundo (a projeção 2:1 gira o mundo 45°). */
+const VIEW_OF_DIR: Readonly<Record<Dir, ScreenDir>> = { down: 'sw', right: 'se', up: 'ne', left: 'nw' };
 import { renderTallElevator } from './iso/elevator';
 import { CHUNK_PX, floorChunk } from './surfaces/floor';
 import { WALL_CAP_H, WALL_FACE_H, capColor, southWallTile, wallFaceTile } from './surfaces/walls';
@@ -45,6 +50,7 @@ import { roomTheme as roomThemePure } from './theme';
 
 export * from './api';
 export { hash32 };
+export { AVATAR_H, AVATAR_W } from './avatar/render';
 export { drawBoard, drawClock, drawScreen, drawWindowView, footballLance };
 export { editorConflict, editorOptions, fitToOptions, type EditorOptions } from './character/appearance';
 
@@ -114,8 +120,13 @@ function keyOf(a: Appearance): string {
 
 // ------------------------------------------------------------------ personagens
 
-export function appearanceFromSeed(seed: number, opts: { look?: 'f' | 'm'; sub?: boolean; parts?: AppearanceParts } = {}): Appearance {
-  return appearanceFromSeedPure(seed, opts);
+export function appearanceFromSeed(seed: number, opts: { look?: 'f' | 'm'; sub?: boolean; parts?: AgentParts } = {}): Appearance {
+  const a = appearanceFromSeedPure(seed, opts);
+  const p = opts.parts;
+  if (!p) return a;
+  const pieces: LookParts = {};
+  for (const k of LOOK_KEYS) if (p[k] !== undefined) (pieces as Record<string, string>)[k] = p[k] as string;
+  return Object.keys(pieces).length ? { ...a, pieces } : a;
 }
 
 export function poseFrameCount(pose: Pose): number {
@@ -134,13 +145,16 @@ export function characterSprite(req: CharacterFrameRequest): Sprite {
   return charCache.get(key, () => toSprite(renderCharacter({ ...req, frame, seated })));
 }
 
-export function avatarCanvas(seed: number, opts: { look?: 'f' | 'm'; sub?: boolean; scale?: number; parts?: AppearanceParts } = {}): HTMLCanvasElement {
+export function avatarCanvas(seed: number, opts: { look?: 'f' | 'm'; sub?: boolean; scale?: number; parts?: AgentParts } = {}): HTMLCanvasElement {
   const scale = Math.max(1, Math.round(opts.scale ?? 3));
   const key = `${seed}|${opts.look ?? '-'}|${opts.sub ? 1 : 0}|${scale}|${partsKey(opts.parts)}`;
   return avatarCache.get(key, () => {
-    const s = renderCharacter({ appearance: appearanceFromSeedPure(seed, opts), dir: 'down', pose: 'stand', frame: 0 });
-    // Busto: cabeça + ombros (20x20 a partir do topo do cabelo).
-    const crop = s.buf.crop(2, 2, CHAR_W - 4, 20);
+    // Busto do personagem novo, de frente: cabeça e ombros (24x24 a partir do alto do cabelo).
+    const look = lookFromAppearance(appearanceFromSeed(seed, opts));
+    const s = renderAvatar(look, 's', { pose: 'stand', frame: 0 });
+    // do alto do cabelo ou do chapéu para baixo, para nada ficar cortado
+    const top = Math.max(0, opaqueRect(s.buf).y - 1);
+    const crop = s.buf.crop(BUST.x, Math.min(top, s.buf.h - BUST.h), BUST.w, BUST.h);
     const out = new PixelBuf(crop.w * scale, crop.h * scale);
     for (let y = 0; y < out.h; y++) {
       for (let x = 0; x < out.w; x++) {
@@ -156,6 +170,22 @@ export function avatarCanvas(seed: number, opts: { look?: 'f' | 'm'; sub?: boole
   });
 }
 
+/** Tamanho do busto na folha do personagem; o alto sai do próprio desenho. */
+const BUST = { x: 8, w: 24, h: 24 } as const;
+
+const avatarViewCache = new Cache<HTMLCanvasElement>(1500);
+
+/**
+ * Personagem inteiro (folha de AVATAR_W x AVATAR_H pixels) de qualquer direção e pose, para o editor de visual.
+ * Guardado por visual: a mesma combinação não é desenhada duas vezes.
+ */
+export function avatarCanvas2(a: Appearance, view: ScreenDir, pose: Pose, frame: number): HTMLCanvasElement {
+  const n = poseFrameCount(pose);
+  const f = ((Math.floor(frame) % n) + n) % n;
+  const look = lookFromAppearance(a);
+  const key = `${JSON.stringify(look)}|${view}|${pose}|${f}`;
+  return avatarViewCache.get(key, () => toCanvas(renderAvatar(look, view, { pose, frame: f }).buf));
+}
 
 // ------------------------------------------------------------------ móveis e ícones
 
@@ -186,6 +216,15 @@ export function isoFurnitureSprites(kind: FurnitureKind, variant?: string, state
   });
 }
 
+/**
+ * A fantasia de época que vale para uma aparência: quem escolheu um chapéu no editor fica com ele (os chapéus de época
+ * não passam por cima da escolha); a capa do vampiro, que não é chapéu, continua.
+ */
+export function costumeFor(a: Appearance, costume: CharacterFrameRequest['costume']): CharacterFrameRequest['costume'] {
+  const chosenHat = a.pieces?.hat;
+  return costume && costume !== 'vampire' && chosenHat && chosenHat !== 'none' ? undefined : costume;
+}
+
 /** Chaves dos sprites isométricos gerados, por aparência (para esquecer os de quem saiu). */
 const isoCharKeys = new Map<string, Set<string>>();
 
@@ -195,12 +234,13 @@ export function isoCharacterSprite(req: CharacterFrameRequest): Sprite {
   const frame = ((Math.floor(req.frame) % n) + n) % n;
   const seated = isSeated(req.pose, req.seated);
   const ak = keyOf(req.appearance);
-  const key = `${ak}|${req.dir}|${req.pose}|${frame}|${req.held ?? 'none'}|${seated ? 1 : 0}|${req.costume ?? 'none'}`;
+  const costume = costumeFor(req.appearance, req.costume);
+  const key = `${ak}|${req.view ?? req.dir}|${req.pose}|${frame}|${req.held ?? 'none'}|${seated ? 1 : 0}|${costume ?? 'none'}`;
   return isoCharCache.get(key, () => {
     let keys = isoCharKeys.get(ak);
     if (!keys) isoCharKeys.set(ak, (keys = new Set()));
     keys.add(key);
-    return toSprite(renderIsoCharacter({ ...req, frame, seated }));
+    return toSprite(renderAvatar(lookFromAppearance(req.appearance), req.view ?? VIEW_OF_DIR[req.dir], { pose: req.pose, frame, held: req.held, seated, costume }));
   });
 }
 

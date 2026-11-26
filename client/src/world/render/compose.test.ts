@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { FURNITURE, TILE, type FurnitureKind } from '../../art/api';
 import { appearanceFromSeed } from '../../art/character/appearance';
-import { renderIsoCharacter } from '../../art/character-iso/render';
+import { lookFromAppearance } from '../../art/avatar/from-appearance';
+import { renderAvatar } from '../../art/avatar/render';
 import type { BufSprite } from '../../art/core/sprite';
 import { renderIsoFurniture } from '../../art/iso/index';
 import { renderIsoWall } from '../../art/iso/walls';
@@ -54,7 +55,7 @@ const scene = (() => {
   return { areas, order, comp, grid: buildGrid(order) };
 })();
 
-const person = renderIsoCharacter({ appearance: appearanceFromSeed(42, { look: 'f' }), dir: 'down', pose: 'stand', frame: 0, costume: 'santa' });
+const person = renderAvatar(lookFromAppearance(appearanceFromSeed(42, { look: 'f' })), 'sw', { pose: 'stand', frame: 0, costume: 'santa' });
 
 /** Desenha alguém em pé em (x, y) (px de mundo) sobre a camada, com a máscara; devolve o quadro e o desenho mascarado. */
 function withPerson(c: Composite, x: number, y: number) {

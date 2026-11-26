@@ -1,21 +1,19 @@
-// Editor do personagem na gaveta do agente: nome, "Sortear" e as peças (pele, cabelo, roupa...) com prévia de corpo
-// inteiro (appearance-fields.ts, o mesmo do personagem do Habblaud World). "Salvar" grava o personagem do projeto (a
-// sala) no servidor; as regras puras (quando aparece, rótulos, o que vai em `parts`) estão em character-model.ts.
+// Editor do personagem na gaveta do agente: nome e as peças (corpo, cabelo, chapéu, roupa...) com prévia que
+// gira e "Aleatório" (look-fields.ts; o personagem do Habblaud World usa o appearance-fields.ts, só com as 13 peças de
+// sempre). "Salvar" grava o personagem do projeto (a sala) no servidor; as regras puras (quando aparece, rótulos, o que
+// vai em `parts`) estão em character-model.ts e look-model.ts.
 import { NAME_MAX } from '../../../shared/appearance';
 import type { AgentInfo } from '../../../shared/types';
 import { appearanceFromSeed } from '../art';
 import type { Appearance } from '../art/api';
-import { AppearanceFields } from './appearance-fields';
-import { canEditCharacter, changedParts } from './character-model';
+import { canEditCharacter } from './character-model';
 import type { UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setText } from './dom';
 import { ICONS } from './icons';
+import { LookFields } from './look-fields';
+import { editedParts } from './look-model';
 import { access } from '../net/access';
 import { tr } from '../../../shared/i18n';
-
-function randomSeed(): number {
-  return crypto.getRandomValues(new Uint32Array(1))[0];
-}
 
 export class CharacterEditor {
   /** Lápis "Editar personagem", ao lado do nome no topo da gaveta. */
@@ -31,7 +29,7 @@ export class CharacterEditor {
   private look: 'f' | 'm' = 'f';
   /** Aparência sorteada pela seed (sem peças): o que não mudar não vai em `parts`. */
   private base: Appearance | null = null;
-  private readonly fields = new AppearanceFields();
+  private readonly fields = new LookFields();
   private readonly nameInput: HTMLInputElement;
   private readonly error: HTMLElement;
   private readonly saveBtn: HTMLButtonElement;
@@ -43,19 +41,18 @@ export class CharacterEditor {
     this.button.hidden = true;
 
     this.nameInput = h('input', { class: 'ui-char__name', type: 'text', attrs: { maxlength: NAME_MAX, autocomplete: 'off', spellcheck: 'false' } });
-    const roll = h('button', { class: 'ui-btn ui-btn--sm', type: 'button', text: tr('Sortear'), title: tr('Sortear outra aparência (desfaz as peças escolhidas)'), on: { click: () => this.roll() } });
     this.error = h('p', { class: 'ui-char__error', role: 'alert', hidden: true });
     this.saveBtn = h('button', { class: 'ui-btn ui-btn--primary', type: 'button', text: tr('Salvar'), on: { click: () => void this.save() } });
     const cancel = h('button', { class: 'ui-btn', type: 'button', text: tr('Cancelar'), on: { click: () => this.cancel() } });
     this.resetBtn = h('button', { class: 'ui-link-btn ui-char__reset', type: 'button', text: tr('Voltar ao sorteio'), on: { click: () => void this.reset() } });
     this.el = h(
       'section',
-      { class: 'ui-char', hidden: true, attrs: { 'aria-label': tr('Editar personagem') }, on: { keydown: (ev) => this.onKey(ev) } },
+      { class: 'ui-char ui-char--look', hidden: true, attrs: { 'aria-label': tr('Editar personagem') }, on: { keydown: (ev) => this.onKey(ev) } },
       h(
         'div',
         { class: 'ui-char__top' },
         this.fields.preview,
-        h('div', { class: 'ui-char__head' }, h('label', { class: 'ui-char__label' }, h('span', { text: tr('Nome') }), this.nameInput), roll),
+        h('label', { class: 'ui-char__label' }, h('span', { text: tr('Nome') }), this.nameInput),
       ),
       h('p', { class: 'ui-muted ui-small', text: tr('Vale para o projeto: a próxima sessão nesta sala chega com este personagem.') }),
       this.fields.groups,
@@ -103,7 +100,7 @@ export class CharacterEditor {
     this.editing = true;
     setHidden(this.el, false);
     setAttr(this.button, 'aria-expanded', 'true');
-    this.fields.set({ ...this.base, ...a.parts });
+    this.fields.set(appearanceFromSeed(a.seed, { look: a.look, parts: a.parts }));
     this.nameInput.focus();
     this.nameInput.select();
   }
@@ -123,12 +120,6 @@ export class CharacterEditor {
     this.button.focus();
   }
 
-  private roll(): void {
-    this.seed = randomSeed();
-    this.base = appearanceFromSeed(this.seed, { look: this.look });
-    this.fields.set({ ...this.base });
-  }
-
   private async save(): Promise<void> {
     const draft = this.fields.value;
     if (this.busy || !this.base || !draft) return;
@@ -138,7 +129,7 @@ export class CharacterEditor {
     const editId = this.editId;
     this.busy = true;
     this.saveBtn.disabled = true;
-    const err = await this.ctx.store.saveCharacter(id, { name, seed: this.seed, parts: changedParts(this.base, draft) });
+    const err = await this.ctx.store.saveCharacter(id, { name, seed: this.seed, parts: editedParts(this.base, draft) });
     if (!this.editing || this.agentId !== id || this.editId !== editId) return;
     this.busy = false;
     this.saveBtn.disabled = false;

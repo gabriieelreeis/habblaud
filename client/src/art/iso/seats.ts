@@ -2,7 +2,7 @@
 // (px de mundo) e a altura do quadril. O renderizador põe a âncora do personagem nesse ponto e sobe o boneco
 // `hipZ − SEAT_HIP_Z`. No sofá e no banco, cada tile é um lugar.
 import { FURNITURE, type Dir, type FurnitureKind } from '../api';
-import { SEAT_HIP_Z } from '../character-iso/rig';
+import { AVATAR_SEAT_HIP_Z } from '../avatar/poses';
 import { BENCH_TOP } from './cafe';
 import { BEANBAG_DIP } from './lounge';
 import { SEAT_Z } from './office';
@@ -67,5 +67,6 @@ export function isoSeatAnchor(kind: FurnitureKind, variant: string | undefined, 
 export function isoSeatPlacement(kind: FurnitureKind, variant: string | undefined, facing: Dir): { dx: number; dy: number; lift: number } | null {
   if (!FURNITURE[kind]?.seat) return null;
   const a = isoSeatAnchor(kind, variant, facing);
-  return { dx: a.dx, dy: a.dy, lift: a.hipZ - SEAT_HIP_Z };
+  // a base do quadril do personagem sentado fica AVATAR_SEAT_HIP_Z acima da âncora; ela vai no topo da almofada
+  return { dx: a.dx, dy: a.dy, lift: a.hipZ - HIP_OVER_TOP - AVATAR_SEAT_HIP_Z };
 }

@@ -21,7 +21,7 @@ do Habblaud World (`client/src/world/city/`) continua 2D, com câmera e desenho 
 | Kit de desenho isométrico (caixas, faces, cilindros) | `client/src/art/iso/kit.ts` |
 | Móveis | `client/src/art/iso/office.ts`, `office2.ts`, `cafe.ts`, `lounge.ts`; despacho em `iso/index.ts` |
 | Paredes, elevador, carros | `client/src/art/iso/walls.ts`, `elevator.ts`, `car.ts` |
-| Personagens | `client/src/art/character-iso/` (`render.ts` é a entrada) |
+| Personagens | `client/src/art/avatar/` (`render.ts` é a entrada); editor em `client/src/ui/look-*.ts` |
 | Contrato da arte (funções opcionais `iso*`) | `client/src/art/api.ts` |
 
 ## Projeção e coordenadas
@@ -186,14 +186,43 @@ planta que substituem.
 
 ## Personagens
 
-- Entrada: `renderIsoCharacter(req)` em `client/src/art/character-iso/render.ts`, exposta como
-  `art.isoCharacterSprite`. A folha tem 32 x 52 e a âncora fica no centro dos pés (16, 47). Em pé o personagem tem
-  ~40 px, com a cabeça em ~1/4 da altura. Sentado, o quadril fica em z ≈ 11 (o assento está em `SEAT_Z` = 10).
-- Direções no plano do mundo: `down` (+y) olha para baixo-esquerda na tela, `right` (+x) para baixo-direita, `up`
-  para cima-direita, `left` para cima-esquerda. São duas vistas desenhadas (frente-3/4 e costas-3/4), espelhadas.
-- Mesmas poses, itens, roupas, penteados, acessórios e fantasias de época da arte antiga, que continua em uso no
-  avatar da interface e na cidade do World.
-- Prévia: `npx tsx scripts/char-iso-preview.ts` (gera folhas por pose e o elenco).
+Bonecos originais por peças, no gênero "hotel em pixel art" (cabeça de ~1/3 da altura, contorno de 1 px, sombra em 3
+tons). A arte é toda desenhada por código; não imita o visual de nenhum jogo.
+
+- Entrada: `renderAvatar(look, direção, { pose, frame, held, seated, costume })` em `client/src/art/avatar/render.ts`,
+  exposta como `art.isoCharacterSprite`. Folha de 40 x 64, âncora no centro dos pés (20, 59); em pé ~47 px. Sentado,
+  a base do quadril fica `AVATAR_SEAT_HIP_Z` (6 px) acima da âncora (é o que o `isoSeatAnchor` usa).
+- Arquivos: `look.ts` (ids e rótulos das peças), `rig.ts` e `poses.ts` (esqueleto com cotovelo e joelho, as 20
+  poses), `body.ts`, `head.ts`, `hair.ts`, `gear.ts` (roupa, chapéu, óculos, acessórios, fantasias), `items.ts`
+  (o que vai na mão), `paint.ts` (camadas, contorno, espelho).
+- 8 direções NA TELA (`s`, `sw`, `w`, `nw`, `n`, `ne`, `e`, `se`): 5 desenhadas e 3 espelhadas antes do
+  sombreamento (a luz continua vindo da esquerda). O renderizador escolhe em `world/render/facing-view.ts`: andando, a
+  direção do movimento (na diagonal do mundo, reto na tela); parado, a diagonal da direção do mundo (`down` = `sw`,
+  `right` = `se`, `up` = `ne`, `left` = `nw`); ao virar 90° ou mais, um instante na direção do meio.
+- Catálogo: 8 tons de pele, 2 corpos, 21 cabelos (com a careca), 8 chapéus, 4 óculos, 10 partes de cima, 5 de baixo,
+  4 sapatos, 6 acessórios, 5 barbas, cada um com a sua cor; crachá nos subagentes. Fantasias de época por cima
+  (gorro de Natal, bruxa, abóbora, capa de vampiro); quem escolheu um chapéu no editor fica com ele (`costumeFor`).
+- Prévias: `npx tsx scripts/avatar-preview.ts <pasta> [--only elenco|andando|escala|poses|itens|fantasias|cabelos|roupas]`
+  e `npx tsx scripts/seat-preview.ts <pasta>` (assentos com gente). Testes: `client/src/art/avatar/*.test.ts`.
+
+A arte antiga (`client/src/art/character/`) continua no personagem do Habblaud World (cidade e editor das
+configurações), que só conhece as 13 peças de sempre.
+
+### Editor de visual e compatibilidade
+
+- Na gaveta do agente (lápis ao lado do nome, só local): `ui/look-fields.ts` (abas por peça, miniaturas, cores,
+  prévia girando e andando nas 8 direções, "Aleatório") sobre o modelo puro `ui/look-model.ts`
+  (`applyLook`, `randomLook`, `editedParts`). Salva pelo `PUT /api/agents/:id/character` de sempre.
+- `shared/appearance.ts`: `PART_KEYS` (as 13 peças de sempre) e `LOOK_KEYS` (`body`, `cut`, `hat`,
+  `hatColor`, `glasses`, `topCut`, `bottomCut`, `shoesCut`, `extra`, `extraColor`). O servidor aceita as duas
+  nos agentes (`parseAgentParts`, também no `names.json`).
+- Quem não escolheu nada ganha a peça mais parecida com a que já tinha (`avatar/from-appearance.ts`,
+  `lookFromAppearance`): mesmas cores, mesmo tipo de cabelo e de roupa.
+- **Habblaud World:** nada novo sobe. O pacote continua saindo de `flattenAppearance` com as 13 peças. Ao escolher
+  uma peça nova, o editor ajusta também a peça antiga mais parecida (`legacyOfLook`), para o prédio na cidade ficar
+  parecido. `shared/world/` e `server/world/` não foram alterados.
+- O avatar pequeno (lista, gaveta, balões) é o busto do boneco novo, de frente, recortado a partir do alto do cabelo
+  ou do chapéu.
 
 ### Sprites prontos antes de aparecer
 
@@ -263,7 +292,7 @@ multiplicado sobre a cena. Os brilhos (monitores, luminárias, faróis) ainda s�
 
 ## Testes
 
-`npx vitest run client/src/world/iso.test.ts client/src/world/render client/src/art/iso client/src/art/character-iso`
+`npx vitest run client/src/world/iso.test.ts client/src/world/render client/src/art/iso client/src/art/avatar client/src/ui`
 (projeção, ordem, camada com dono por pixel, kit, todos os móveis em todas as variantes, costas, assentos, paredes,
 elevador, carros, personagens), além de `npm run typecheck` e
 `npm run build`. A conferência visual é no servidor de desenvolvimento com `?mock=1`. Para rodar sem mexer no
@@ -298,6 +327,16 @@ A pré-geração dos sprites de personagem veio num terceiro merge, da branch `f
 git revert -m 1 $(git log reiscorp/local --merges --format=%h -n 1 --grep="fix/sprites-na-abertura")
 ```
 
+Os personagens novos e o editor de visual vieram no merge da branch `feature/visual-habbo`:
+
+```sh
+git revert -m 1 $(git log reiscorp/local --merges --format=%h -n 1 --grep="feature/visual-habbo")
+```
+
+**Antes de reverter, copie o `names.json` da pasta de dados** (`~/.habblaud/names.json`, ou o do volume do Docker).
+A versão antiga não conhece as peças novas: o personagem salvo para um projeto que use alguma delas é descartado
+inteiro (nome e peças, voltando ao sorteio), e o arquivo é regravado sem ele.
+
 ## Limitações conhecidas
 
 - Paredes do fundo são opacas: quem anda junto à parede norte das salas do lado sul do corredor fica parcialmente
@@ -306,5 +345,8 @@ git revert -m 1 $(git log reiscorp/local --merges --format=%h -n 1 --grep="fix/s
 - Uma sala nova ainda custa um quadro lento (remontar a camada e gerar os móveis dela, 13 a 45 ms).
 - A ordem pelas caixas é aproximada para quem está colado numa parede ou no batente de uma porta (dentro da espessura
   dela): o desempate é a profundidade do centro.
+- Boneco novo: o corpo "cintura marcada" é sutil; punhos, laço, brinco e os gestos do pedra-papel-tesoura são de
+  poucos pixels; o cachecol visto de cima parece uma faixa.
+- O editor não foi testado com leitor de tela.
 - A pintura gerada por IA sem moldura pronta cai no quadro procedural.
 - As setas do teclado na Visita andam nos eixos do mundo (para cima = norte, que na tela é para cima à direita).

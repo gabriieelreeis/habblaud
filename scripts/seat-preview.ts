@@ -8,13 +8,15 @@ import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { FURNITURE, type Appearance, type CharacterFrameRequest, type Dir, type FurnitureKind, type Pose } from '../client/src/art/api';
 import { appearanceFromSeed } from '../client/src/art/character/appearance';
-import { renderIsoCharacter } from '../client/src/art/character-iso/render';
-import { SEAT_HIP_Z } from '../client/src/art/character-iso/rig';
+import { lookFromAppearance } from '../client/src/art/avatar/from-appearance';
+import { AVATAR_SEAT_HIP_Z, renderAvatar, type ScreenDir } from '../client/src/art/avatar/render';
 import { PixelBuf } from '../client/src/art/core/pixbuf';
 import type { BufSprite } from '../client/src/art/core/sprite';
 import { renderIsoFurniture } from '../client/src/art/iso/index';
 import { isoSeatAnchor } from '../client/src/art/iso/seats';
 
+/** A diagonal da tela de cada direção do mundo (como no jogo). */
+const VIEW: Readonly<Record<Dir, ScreenDir>> = { down: 'sw', right: 'se', up: 'ne', left: 'nw' };
 const args = process.argv.slice(2);
 const si = args.indexOf('--scale');
 const scale = si >= 0 ? Number(args[si + 1]) : 4;
@@ -146,8 +148,8 @@ function cell(kind: FurnitureKind, o: CellOpts): PixelBuf {
     o.people.slice(0, fp.w).forEach((p, i) => spots.push({ x: i * 16 + 8 + an.dx, y: 8 + an.dy, p }));
     spots.sort((p, q) => p.x + p.y - (q.x + q.y));
     for (const s of spots) {
-      const c = renderIsoCharacter({ appearance: s.p.a, dir: o.dir, pose: s.p.pose ?? 'sit', frame: s.p.frame ?? 0, seated: true, costume: s.p.costume });
-      blit(b, c, ax + s.x - s.y, ay + (s.x + s.y) / 2 - (an.hipZ - SEAT_HIP_Z));
+      const c = renderAvatar(lookFromAppearance(s.p.a), VIEW[o.dir], { pose: s.p.pose ?? 'sit', frame: s.p.frame ?? 0, seated: true, costume: s.p.costume });
+      blit(b, c, ax + s.x - s.y, ay + (s.x + s.y) / 2 - (an.hipZ - 1.5 - AVATAR_SEAT_HIP_Z));
     }
   }
   if (f.front) {
@@ -254,7 +256,7 @@ function cornerSheet(): void {
   let drawn = false;
   for (const it of items) {
     if (!drawn && it.ty >= 4) {
-      blit(b, renderIsoCharacter({ appearance: LOOKS[0].a, dir: 'down', pose: 'stand', frame: 0 }), ox + person.x - person.y, oy + (person.x + person.y) / 2);
+      blit(b, renderAvatar(lookFromAppearance(LOOKS[0].a), 'sw', { pose: 'stand', frame: 0 }), ox + person.x - person.y, oy + (person.x + person.y) / 2);
       drawn = true;
     }
     const f = renderIsoFurniture(it.kind, undefined, 0, it.seed ?? 0, it.dir);
