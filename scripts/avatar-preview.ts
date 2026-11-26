@@ -5,7 +5,6 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { appearanceFromSeed } from '../client/src/art/character/appearance';
-import { renderIsoCharacter } from '../client/src/art/character-iso/render';
 import { PixelBuf } from '../client/src/art/core/pixbuf';
 import { renderIsoFurniture } from '../client/src/art/iso/index';
 import type { HeldItem, Pose } from '../client/src/art/api';
@@ -185,10 +184,8 @@ function scaleSheet(): void {
     const s = renderAvatar(look, dir, { pose: 'stand', frame: 0 });
     b.draw(s.buf, Math.round(x - s.ax), Math.round(y - s.ay));
   };
-  // antigo (esquerda) e dois novos lado a lado, no mesmo piso, para comparar a escala
-  const [ax, ay] = S(ox, oy, 8, 40);
-  const old = renderIsoCharacter({ appearance: appearanceFromSeed(11, { look: 'm' }), dir: 'down', pose: 'stand', frame: 0 });
-  b.draw(old.buf, Math.round(ax - old.ax), Math.round(ay - old.ay));
+  // três pessoas no mesmo piso, ao lado dos móveis, para conferir a escala
+  put(CAST[0], 'sw', 8, 40);
   put(CAST[1], 'sw', 24, 24);
   put(CAST[2], 'sw', 40, 8);
   save('escala', b);

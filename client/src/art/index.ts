@@ -33,7 +33,6 @@ import type { BufSprite } from './core/sprite';
 import { drawBoard, drawClock, drawScreen, drawWindowView, footballLance } from './dynamic';
 import { normalizeFurniture, renderFurniture } from './furniture/index';
 import { renderIcon } from './icons';
-import { renderIsoCharacter } from './character-iso/render';
 import { renderIsoFurniture } from './iso/index';
 import { renderIsoWall, renderLowWall } from './iso/walls';
 import { renderIsoCar } from './iso/car';
