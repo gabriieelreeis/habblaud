@@ -133,7 +133,8 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
 
   const updateBounds = () => {
     const b = buildingRect();
-    camera.bounds = { x: b.x - 10 * TILE, y: b.y - 6 * TILE, w: b.w + 20 * TILE, h: b.h + 16 * TILE };
+    // folga larga em volta do prédio: no celular, qualquer sala (inclusive as das pontas) consegue ficar no meio da tela
+    camera.bounds = { x: b.x - 24 * TILE, y: b.y - 10 * TILE, w: b.w + 48 * TILE, h: b.h + 34 * TILE };
     const fit = camera.fitZoom(b, 16);
     camera.minZoom = Math.min(1, Math.max(0.25, fit));
     camera.clamp();
