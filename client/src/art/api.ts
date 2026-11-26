@@ -100,6 +100,8 @@ export interface Rect {
   y: number;
   w: number;
   h: number;
+  /** (Aditivo) Retângulo inclinado numa face isométrica: px que desce a cada px para a direita (0,5 ou -0,5). */
+  skew?: number;
 }
 
 /** Regiões dinâmicas dentro de um sprite (em px do sprite, relativas ao canto superior esquerdo). */
