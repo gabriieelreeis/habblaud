@@ -22,7 +22,7 @@ import { daylightModeOf, parseHourParam } from './daylight';
 import { layerProps, overlaps, type Rect } from './furn-layer';
 import { RoomFxRenderer } from './github-fx';
 import { buildIsoArea, PieceKind, projectFloor, shearMatrix, type IsoAreaVis, type Piece, type WallOverlay } from './iso-area';
-import { Lighting } from './lighting';
+import { Lighting, type LightPlane } from './lighting';
 import { Particles } from './particles';
 import { carSprite, propSprite, shadowSprite } from './props';
 import { countBadge, fallbackIcon } from './shell-sprites';
@@ -236,7 +236,25 @@ export class Renderer {
   private makeArea(layout: AreaLayout, room: RoomState | undefined): AreaVis {
     const vis = buildAreaVis(this.art, layout, room, this.assets, this.theme);
     vis.iso = buildIsoArea(this.art, layout, vis.floor, this.assets, this.theme);
+    this.planesVersion++;
     return vis;
+  }
+
+  /** Muda quando as paredes do fundo mudam (luz da noite). */
+  planesVersion = 0;
+  private planesList: LightPlane[] = [];
+  private planesAt = -1;
+
+  /** Paredes do fundo das áreas e das fachadas dos lotes vazios, para a luz da noite. */
+  wallPlanes(): readonly LightPlane[] {
+    const key = this.planesVersion * 1000 + this.occupiedSlots.size;
+    if (key === this.planesAt) return this.planesList;
+    this.planesAt = key;
+    const out: LightPlane[] = [];
+    for (const vis of this.areas.values()) if (vis.iso) out.push(...vis.iso.planes);
+    for (const [slot, iso] of this.shellIso) if (!this.occupiedSlots.has(slot)) out.push(...iso.planes);
+    this.planesList = out;
+    return out;
   }
 
   /** Chão externo (grama, calçada, rua, pátios dos lotes), projetado uma vez, com os props de trás do prédio. */
@@ -269,6 +287,7 @@ export class Renderer {
         for (const w of sh.windows) this.shellWindows.push(toWallVis(w, `shell:${sh.slot}`));
         const layout: AreaLayout = { id: `shell:${sh.slot}`, kind: 'room', rect: sh.rect, floors: [], rugs: [], walls: sh.walls, wallItems: sh.windows, furniture: [], spots: [], walkable: [] };
         this.shellIso.set(sh.slot, buildIsoArea(this.art, layout, document.createElement('canvas'), this.assets, this.theme));
+        this.planesVersion++;
       }
     }
     this.desaturate(ctx, bx, by, c.width, c.height);
@@ -1584,10 +1603,7 @@ export class Renderer {
    */
   private drawLighting(now: number): void {
     const { ctx } = this;
-    ctx.save();
-    ctx.transform(FLOOR_MATRIX[0], FLOOR_MATRIX[1], FLOOR_MATRIX[2], FLOOR_MATRIX[3], 0, 0);
-    this.lighting.drawAmbient(ctx, this, this.worldView, now, this.dt);
-    ctx.restore();
+    this.lighting.drawAmbientIso(ctx, this, this.view, now, this.dt);
     const n = this.night;
     // salas com a luz apagada (e a transição de acender/apagar): escurece o piso, as paredes e o que está dentro
     for (const vis of this.areas.values()) {

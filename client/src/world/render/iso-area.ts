@@ -48,6 +48,8 @@ export interface IsoAreaVis {
   fy: number;
   walls: Piece[];
   overlays: WallOverlay[];
+  /** Paredes do fundo (para a luz da noite). */
+  planes: { facing: 'south' | 'east'; at: number; a0: number; a1: number; height: number }[];
 }
 
 /** Itens de parede redesenhados a cada quadro. */
@@ -169,16 +171,18 @@ export function buildIsoArea(art: ArtModule, layout: AreaLayout, floorSrc: HTMLC
   // ---- paredes
   const walls: Piece[] = [];
   const overlays: WallOverlay[] = [];
+  const planes: IsoAreaVis['planes'] = [];
   const items = layout.wallItems.map((it) => toWallVis(it, layout.id));
   const centerX = px.x + px.w / 2;
   const faceTop = Math.min(...layout.walls.filter((w) => w.kind === 'face').map((w) => w.y + 2 * TILE), Infinity);
   const isoWall = art.isoWall?.bind(art);
-  if (!isoWall) return { floor: pf.c, fx: pf.x, fy: pf.y, walls, overlays };
+  if (!isoWall) return { floor: pf.c, fx: pf.x, fy: pf.y, walls, overlays, planes };
   for (const raw of layout.walls) {
     const seg: WallSegment = { ...raw, style: seasonalWallStyle(theme, raw.style) } as WallSegment;
     const style: WallStyle = seg.style;
     if (seg.kind === 'face') {
       const plane: Plane = { facing: 'south', at: seg.y + 2 * TILE, a0: seg.x, a1: seg.x + seg.w };
+      planes.push({ ...plane, height: WALL_H });
       const sp = isoWall(style, { facing: 'south', length: seg.w, height: WALL_H, thickness: WALL_T, doorways: doorsOf(seg), seed: Math.round(seg.x) });
       const [c, ctx] = own(sp);
       for (const it of items) {
@@ -216,6 +220,7 @@ export function buildIsoArea(art: ArtModule, layout: AreaLayout, floorSrc: HTMLC
       if (y1 - y0 < 2) continue;
       if (west) {
         const plane: Plane = { facing: 'east', at: seg.x + seg.w, a0: y0, a1: y1 };
+        planes.push({ ...plane, height: WALL_H });
         const sp = isoWall(style, { facing: 'east', length: y1 - y0, height: WALL_H, thickness: seg.w, seed: Math.round(seg.x) });
         walls.push(...slices(sp, sp.canvas, plane, seg.w, PieceKind.Wall, layout.id));
       } else {
@@ -231,7 +236,7 @@ export function buildIsoArea(art: ArtModule, layout: AreaLayout, floorSrc: HTMLC
       walls.push(...slices(sp, sp.canvas, plane, 4, PieceKind.Low, layout.id));
     }
   }
-  return { floor: pf.c, fx: pf.x, fy: pf.y, walls, overlays };
+  return { floor: pf.c, fx: pf.x, fy: pf.y, walls, overlays, planes };
 }
 
 /** Item animado de parede: âncora no plano isométrico e caixa no chão (para a ordem de desenho). */

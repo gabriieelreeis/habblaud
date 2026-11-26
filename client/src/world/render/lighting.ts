@@ -39,7 +39,23 @@ export interface LightScene {
   readonly cars: readonly { x: number; y: number; dir: 1 | -1 }[];
   roomInSlot(slot: number): RoomState | undefined;
   deskScreen(f: FurnVis, area: AreaVis): ScreenMode;
+  /** (Visão isométrica) Paredes do fundo: recebem a luz de logo à frente delas, não a do chão que cobrem na tela. */
+  wallPlanes?(): readonly LightPlane[];
+  /** Muda quando o conjunto de paredes muda. */
+  readonly planesVersion?: number;
 }
+
+/** Parede do fundo para a luz: 'south' em y = at (de a0 a a1 em x), 'east' em x = at (de a0 a a1 em y). */
+export interface LightPlane {
+  facing: 'south' | 'east';
+  at: number;
+  a0: number;
+  a1: number;
+  height: number;
+}
+
+/** Resolução do mapa de luz isométrico: px do plano isométrico por pixel do mapa. */
+const ISO_SCALE = 2;
 
 /** Retângulo visível (px de mundo). */
 export interface View {
@@ -150,6 +166,11 @@ export class Lighting {
   private mapKey = '';
   private mapX = 0;
   private mapY = 0;
+  /** Mapa projetado no plano isométrico (com as paredes do fundo), refeito quando o mapa ou as paredes mudam. */
+  private iso: HTMLCanvasElement | null = null;
+  private isoKey = '';
+  private isoX0 = 0;
+  private isoY0 = 0;
   /** Luz por presença das áreas comuns (0 = penumbra, 1 = acesa), com transição. */
   private coreLevel = new Map<string, number>();
   private coreBusy = new Map<string, boolean>();
@@ -231,6 +252,109 @@ export class Lighting {
       if (view.x1 > mx1) ctx.fillRect(mx1, top, view.x1 - mx1 + 2, bottom - top);
     }
     ctx.restore();
+  }
+
+  /**
+   * Visão isométrica: multiplica o mapa de luz projetado no chão, com cada parede do fundo na luz de logo à frente
+   * dela. `view` é o retângulo visível no plano isométrico.
+   */
+  drawAmbientIso(ctx: CanvasRenderingContext2D, scene: LightScene, view: View, now: number, dt: number): void {
+    const amb = this.ambient;
+    this.updateOccupancy(scene, now, dt);
+    if (isNeutral(amb)) return;
+    const map = this.ensureMap(scene, now);
+    if (!map) return;
+    const key = `${this.mapKey}|${scene.planesVersion ?? 0}|${map.width}x${map.height}`;
+    if (key !== this.isoKey || !this.iso) {
+      this.isoKey = key;
+      this.projectIso(map, scene, rgbCss(amb.outside));
+    }
+    const iso = this.iso;
+    if (!iso) return;
+    const S = ISO_SCALE;
+    const x0 = this.isoX0;
+    const y0 = this.isoY0;
+    const x1 = x0 + iso.width * S;
+    const y1 = y0 + iso.height * S;
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    const sx = Math.max(0, Math.floor((view.x0 - x0) / S) - 1);
+    const sy = Math.max(0, Math.floor((view.y0 - y0) / S) - 1);
+    const ex = Math.min(iso.width, Math.ceil((view.x1 - x0) / S) + 1);
+    const ey = Math.min(iso.height, Math.ceil((view.y1 - y0) / S) + 1);
+    if (ex > sx && ey > sy) ctx.drawImage(iso, sx, sy, ex - sx, ey - sy, x0 + sx * S, y0 + sy * S, (ex - sx) * S, (ey - sy) * S);
+    ctx.fillStyle = rgbCss(amb.outside);
+    const w = view.x1 - view.x0 + 4;
+    if (view.y0 < y0) ctx.fillRect(view.x0 - 2, view.y0 - 2, w, y0 - view.y0 + 2);
+    if (view.y1 > y1) ctx.fillRect(view.x0 - 2, y1, w, view.y1 - y1 + 2);
+    const top = Math.max(view.y0 - 2, y0);
+    const bottom = Math.min(view.y1 + 2, y1);
+    if (bottom > top) {
+      if (view.x0 < x0) ctx.fillRect(view.x0 - 2, top, x0 - view.x0 + 2, bottom - top);
+      if (view.x1 > x1) ctx.fillRect(x1, top, view.x1 - x1 + 2, bottom - top);
+    }
+    ctx.restore();
+  }
+
+  /** Projeta o mapa no plano isométrico e pinta cada parede do fundo com a faixa do mapa logo à frente dela. */
+  private projectIso(map: HTMLCanvasElement, scene: LightScene, outside: string): void {
+    const S = ISO_SCALE;
+    const M = MAP_SCALE;
+    const mx = this.mapX;
+    const my = this.mapY;
+    const ww = map.width * M;
+    const wh = map.height * M;
+    // caixa do mapa no plano isométrico, com folga em cima para as paredes
+    const ix0 = Math.floor(mx - (my + wh));
+    const iy0 = Math.floor((mx + my) / 2) - 96;
+    const iw = Math.ceil(ww + wh) + 2;
+    const ih = Math.ceil((ww + wh) / 2) + 98;
+    try {
+      if (!this.iso) this.iso = document.createElement('canvas');
+      const c = this.iso;
+      const cw = Math.ceil(iw / S);
+      const ch = Math.ceil(ih / S);
+      if (c.width !== cw || c.height !== ch) {
+        c.width = cw;
+        c.height = ch;
+      }
+      const ctx = c.getContext('2d')!;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      ctx.fillStyle = outside;
+      ctx.fillRect(0, 0, cw, ch);
+      // mundo (x, y) -> isométrico (x − y, (x + y)/2) -> mapa iso ((ix − ix0)/S, (iy − iy0)/S); o mapa tem M px de mundo por pixel
+      ctx.setTransform((M * 1) / S, (M * 0.5) / S, (-M * 1) / S, (M * 0.5) / S, (mx - my - ix0) / S, ((mx + my) / 2 - iy0) / S);
+      ctx.drawImage(map, 0, 0);
+      for (const p of scene.wallPlanes?.() ?? []) {
+        if (p.facing === 'south') {
+          const ys = p.at + 6;
+          const row = Math.floor((ys - my) / M);
+          if (row < 0 || row >= map.height) continue;
+          const c0 = Math.max(0, Math.floor((p.a0 - mx) / M));
+          const c1 = Math.min(map.width, Math.ceil((p.a1 - mx) / M));
+          if (c1 <= c0) continue;
+          // (x, z) da parede -> ((x − at − ix0)/S, ((x + at)/2 − z − iy0)/S)
+          ctx.setTransform(1 / S, 0.5 / S, 0, -1 / S, (-p.at - ix0) / S, (p.at / 2 - iy0) / S);
+          ctx.drawImage(map, c0, row, c1 - c0, 1, mx + c0 * M, 0, (c1 - c0) * M, p.height);
+        } else {
+          const xs = p.at + 6;
+          const col = Math.floor((xs - mx) / M);
+          if (col < 0 || col >= map.width) continue;
+          const r0 = Math.max(0, Math.floor((p.a0 - my) / M));
+          const r1 = Math.min(map.height, Math.ceil((p.a1 - my) / M));
+          if (r1 <= r0) continue;
+          // (z, y) da parede -> ((at − y − ix0)/S, ((at + y)/2 − z − iy0)/S): x do destino = z, y do destino = y
+          ctx.setTransform(0, -1 / S, -1 / S, 0.5 / S, (p.at - ix0) / S, (p.at / 2 - iy0) / S);
+          ctx.drawImage(map, col, r0, 1, r1 - r0, 0, my + r0 * M, p.height, (r1 - r0) * M);
+        }
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.isoX0 = ix0;
+      this.isoY0 = iy0;
+    } catch {
+      this.iso = null;
+    }
   }
 
   /** Áreas comuns acendem com gente dentro (banheiro com sensor de presença, copa, lounge). */
