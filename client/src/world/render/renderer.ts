@@ -92,11 +92,11 @@ const TV_MODES: ScreenMode[] = ['browser', 'idle', 'chat', 'code'];
 /** Chave de uma célula da grade (cabe com folga nos limites do plano isométrico do escritório). */
 const cellKey = (gx: number, gy: number): number => (gx + 4096) * 8192 + (gy + 4096);
 /**
- * Boca do balde de pipoca (px relativos aos pés, na arte 1x) na pose 'wait' sentada, por direção — segue o rig
- * da arte: abraçado no peito de frente, ao lado do quadril de costas, no colo de perfil.
+ * Boca do balde de pipoca (px relativos à âncora do personagem isométrico) na pose 'wait' sentada, por direção — segue
+ * o rig da arte: abraçado no peito de frente, ao lado do quadril (do lado longe da câmera) de costas.
  */
-const POPCORN_DX: Readonly<Record<string, number>> = { down: 0, up: -9, left: -5, right: 5 };
-const POPCORN_DY: Readonly<Record<string, number>> = { down: 11, up: 8, left: 9, right: 9 };
+const POPCORN_DX: Readonly<Record<string, number>> = { down: -3.5, right: 3.5, up: -10.5, left: 10.5 };
+const POPCORN_DY: Readonly<Record<string, number>> = { down: 16, right: 16, up: 15, left: 15 };
 /** Teia ao lado de um vizinho: no máximo isto (px) para fora do corpo. */
 const WEB_MAX_OUT = 10;
 /** Tom das bordas da área externa (vinheta) e do gramado além dela. */
@@ -1458,8 +1458,8 @@ export class Renderer {
     // pipoca pulando do balde de vez em quando
     if (shell && ch.pose === 'wait' && ch.held === 'popcorn' && got && now >= ch.popcornAt) {
       ch.popcornAt = now + 450 + Math.random() * 1200;
-      const px = x - 2 + (POPCORN_DX[ch.dir] ?? 0) * ART_K;
-      const py = y - lift - 2 - (POPCORN_DY[ch.dir] ?? 10) * ART_K;
+      const px = x + (POPCORN_DX[ch.dir] ?? 0);
+      const py = y - lift - (POPCORN_DY[ch.dir] ?? 15);
       this.particles.popcorn(px, py);
       if (Math.random() < 0.3) this.particles.popcorn(px, py);
     }

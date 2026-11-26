@@ -1,7 +1,7 @@
 // Pintura em espaço de tela dos personagens isométricos (puro). As formas são descritas em coordenadas locais
 // (x para a direita, y para baixo, origem na âncora) e o espelho é aplicado na rasterização; o sombreado é
 // calculado depois, já na tela, com a luz sempre de cima/esquerda — assim as vistas espelhadas não invertem a luz.
-import { mix, outlineFor, parseColor, shade, type Ramp } from '../core/color';
+import { mix, outlineFor, parseColor, type Ramp } from '../core/color';
 import { PixelBuf } from '../core/pixbuf';
 
 export type V2 = readonly [number, number];
@@ -75,11 +75,6 @@ export class Mask {
     m.y1 = this.y1;
     return m;
   }
-
-  /** Pixel na borda (algum vizinho de 4 fora da máscara) na direção (dx, dy). */
-  edge(x: number, y: number, dx: number, dy: number): boolean {
-    return !this.has(x + dx, y + dy);
-  }
 }
 
 export interface PaintOpts {
@@ -118,72 +113,76 @@ export class Painter {
   }
 
   // ------------------------------------------------------------ formas (locais)
+  // Os testes de cobertura usam o centro do pixel convertido para coordenadas locais: assim a vista espelhada
+  // rasteriza exatamente o espelho da outra (inclusive nos empates de borda).
+
+  /** Centro do pixel de tela x em coordenada local. */
+  private lx(x: number): number {
+    return this.m === 1 ? x + 0.5 - this.ax : this.ax - x - 0.5;
+  }
+
+  /** Varre os pixels de tela que cobrem o retângulo local [x0, x1] x [y0, y1]. */
+  private scan(x0: number, x1: number, y0: number, y1: number, fn: (sx: number, sy: number, lx: number, ly: number) => void): void {
+    const a = this.X(x0);
+    const b = this.X(x1);
+    const sx0 = Math.floor(Math.min(a, b)) - 1;
+    const sx1 = Math.ceil(Math.max(a, b)) + 1;
+    for (let sy = Math.floor(this.ay + y0) - 1; sy <= Math.ceil(this.ay + y1) + 1; sy++) {
+      const ly = sy + 0.5 - this.ay;
+      for (let sx = sx0; sx <= sx1; sx++) fn(sx, sy, this.lx(sx), ly);
+    }
+  }
 
   ellipse(mk: Mask, cx: number, cy: number, rx: number, ry: number, on = true): Mask {
-    const X = this.X(cx);
-    const Y = this.Y(cy);
-    for (let y = Math.floor(Y - ry); y <= Math.ceil(Y + ry); y++) {
-      for (let x = Math.floor(X - rx); x <= Math.ceil(X + rx); x++) {
-        const u = (x + 0.5 - X) / rx;
-        const v = (y + 0.5 - Y) / ry;
-        if (u * u + v * v <= 1) mk.put(x, y, on);
-      }
-    }
+    this.scan(cx - rx, cx + rx, cy - ry, cy + ry, (sx, sy, lx, ly) => {
+      const u = (lx - cx) / rx;
+      const v = (ly - cy) / ry;
+      if (u * u + v * v <= 1) mk.put(sx, sy, on);
+    });
     return mk;
   }
 
   /** Polígono (pontos locais), regra par-ímpar nos centros dos pixels. */
   poly(mk: Mask, pts: readonly V2[], on = true): Mask {
     if (pts.length < 3) return mk;
-    const P = pts.map(([x, y]) => [this.X(x), this.Y(y)] as const);
     let minX = Infinity;
     let maxX = -Infinity;
     let minY = Infinity;
     let maxY = -Infinity;
-    for (const [x, y] of P) {
+    for (const [x, y] of pts) {
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
       minY = Math.min(minY, y);
       maxY = Math.max(maxY, y);
     }
-    for (let y = Math.floor(minY); y <= Math.ceil(maxY); y++) {
-      const cy = y + 0.5;
-      for (let x = Math.floor(minX); x <= Math.ceil(maxX); x++) {
-        const cx = x + 0.5;
-        let inside = false;
-        for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
-          const [xi, yi] = P[i];
-          const [xj, yj] = P[j];
-          if (yi > cy !== yj > cy && cx < ((xj - xi) * (cy - yi)) / (yj - yi) + xi) inside = !inside;
-        }
-        if (inside) mk.put(x, y, on);
+    this.scan(minX, maxX, minY, maxY, (sx, sy, cx, cy) => {
+      let inside = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const [xi, yi] = pts[i];
+        const [xj, yj] = pts[j];
+        if (yi > cy !== yj > cy && cx < ((xj - xi) * (cy - yi)) / (yj - yi) + xi) inside = !inside;
       }
-    }
+      if (inside) mk.put(sx, sy, on);
+    });
     return mk;
   }
 
   /** Cápsula entre dois pontos locais com raio variando de ra a rb. */
   capsule(mk: Mask, a: V2, b: V2, ra: number, rb = ra, on = true): Mask {
-    const ax = this.X(a[0]);
-    const ay = this.Y(a[1]);
-    const bx = this.X(b[0]);
-    const by = this.Y(b[1]);
+    const [ax, ay] = a;
+    const [bx, by] = b;
     const r = Math.max(ra, rb);
     const dx = bx - ax;
     const dy = by - ay;
     const len2 = dx * dx + dy * dy || 1e-6;
-    for (let y = Math.floor(Math.min(ay, by) - r); y <= Math.ceil(Math.max(ay, by) + r); y++) {
-      for (let x = Math.floor(Math.min(ax, bx) - r); x <= Math.ceil(Math.max(ax, bx) + r); x++) {
-        const px = x + 0.5;
-        const py = y + 0.5;
-        let t = ((px - ax) * dx + (py - ay) * dy) / len2;
-        t = t < 0 ? 0 : t > 1 ? 1 : t;
-        const qx = ax + dx * t - px;
-        const qy = ay + dy * t - py;
-        const rr = ra + (rb - ra) * t;
-        if (qx * qx + qy * qy <= rr * rr) mk.put(x, y, on);
-      }
-    }
+    this.scan(Math.min(ax, bx) - r, Math.max(ax, bx) + r, Math.min(ay, by) - r, Math.max(ay, by) + r, (sx, sy, px, py) => {
+      let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const qx = ax + dx * t - px;
+      const qy = ay + dy * t - py;
+      const rr = ra + (rb - ra) * t;
+      if (qx * qx + qy * qy <= rr * rr) mk.put(sx, sy, on);
+    });
     return mk;
   }
 
@@ -227,8 +226,9 @@ export class Painter {
   /** Pixel solto em coordenadas locais (arredondadas para o pixel que contém o ponto). */
   dot(x: number, y: number, c: string | undefined): void {
     if (!c) return;
-    // No espelho, o pixel que começa em x vira o que termina em -x.
-    const sx = this.m === 1 ? Math.floor(this.ax + x) : Math.floor(this.ax - x - 1);
+    // O pixel local k = floor(x) cobre [k, k + 1); no espelho ele vira [-k - 1, -k).
+    const k = Math.floor(x);
+    const sx = this.m === 1 ? Math.floor(this.ax) + k : Math.floor(this.ax) - k - 1;
     this.buf.set(sx, Math.floor(this.ay + y), c);
   }
 
@@ -260,7 +260,7 @@ export class Painter {
 }
 
 /** Cor do contorno interno a partir da cor da frente. */
-export function inkOf(front: string): string {
+function inkOf(front: string): string {
   const [r, g, b] = parseColor(front);
   return mix(outlineFor(r, g, b), front, 0.25);
 }
@@ -337,9 +337,4 @@ export function tubeShade(m: Ramp, ax: number, ay: number, bx: number, by: numbe
     if (s > -0.35) return m.base;
     return m.dk;
   };
-}
-
-/** Atalho: tom mais escuro para linhas de detalhe (costuras, mechas). */
-export function crease(c: string, k = 0.1): string {
-  return shade(c, -k);
 }

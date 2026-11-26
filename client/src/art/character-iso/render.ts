@@ -42,11 +42,12 @@ export function renderIsoCharacter(req: CharacterFrameRequest): BufSprite {
 
   const armAndItem = (arm: ArmRig, dim = 0) => {
     drawArm(c, arm, { dim });
-    if (item && item.hand !== 'both' && holds(arm) && !item.drawn) {
+    drawHand(c, arm, dim);
+    // itens pequenos por cima da mão (a mão fica por baixo/atrás, segurando)
+    if (item && item.hand !== 'both' && !item.fixed && holds(arm) && !item.drawn) {
       drawItem(c, item);
       item.drawn = true;
     }
-    drawHand(c, arm, dim);
   };
 
   // 1) atrás de tudo
@@ -81,10 +82,13 @@ export function renderIsoCharacter(req: CharacterFrameRequest): BufSprite {
     item.drawn = true;
   }
   if (item?.hand === 'both' && !item.drawn) {
+    // o controle fica por cima das mãos (polegares); caixa, livro e papéis ficam entre elas
+    const onTop = item.kind === 'controller';
     for (const arm of mid) drawArm(c, arm);
-    drawItem(c, item);
-    item.drawn = true;
+    if (!onTop) drawItem(c, item);
     for (const arm of mid) drawHand(c, arm);
+    if (onTop) drawItem(c, item);
+    item.drawn = true;
   } else for (const arm of mid) armAndItem(arm);
 
   // 4) cabeça
@@ -94,7 +98,7 @@ export function renderIsoCharacter(req: CharacterFrameRequest): BufSprite {
   drawFacialHair(c, head);
   const earsCovered = drawHairFront(c, hm);
   if (!earsCovered) drawEar(c);
-  drawHeadwear(c, hm);
+  drawHeadwear(c);
   drawCostumeFront(c, hm);
 
   // 5) braços erguidos na frente da cabeça e o item, se ainda faltar

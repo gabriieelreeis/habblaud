@@ -1,7 +1,7 @@
 // Corpo do personagem isométrico (puro): tronco com a roupa, quadril/saia, pernas, sapatos, braços e mãos.
 // Tudo é projetado a partir do rig; o tronco é uma caixa afunilada (face principal, lateral de perto e topo).
 import type { Appearance, CharacterFrameRequest } from '../api';
-import { mix, ramp, shade, type Ramp } from '../core/color';
+import { ramp, shade, type Ramp } from '../core/color';
 import { rimShade, sphereShade, tubeShade, type Mask, type Painter, type Shader, type V2 } from './paint';
 import type { Pal } from './pal';
 import { J3, proj, type ArmRig, type J, type LegRig, type Rig, type View } from './rig';
@@ -285,15 +285,17 @@ export function drawLeg(c: Ctx, leg: LegRig): void {
     const legSkin = shin.clone();
     legSkin.add(thigh);
     legSkin.cut(cuff);
-    P.paint(legSkin, (x, y) => (thigh.has(x, y) ? thighSh(p.skin)(x, y) : shinSh(p.skin)(x, y)));
+    const ts = thighSh(p.skin);
+    const ss = shinSh(p.skin);
+    P.paint(legSkin, (x, y) => (thigh.has(x, y) ? ts(x, y) : ss(x, y)));
     P.paint(cuff, thighSh(p.bottom));
     return;
   }
-  const thighM = style === 'pants' ? p.bottom : p.skin;
-  const shinM = style === 'pants' ? p.bottom : p.skin;
+  const ts = thighSh(style === 'pants' ? p.bottom : p.skin);
+  const ss = shinSh(style === 'pants' ? p.bottom : p.skin);
   const all = shin.clone();
   all.add(thigh);
-  P.paint(all, (x, y) => (thigh.has(x, y) ? thighSh(thighM)(x, y) : shinSh(shinM)(x, y)));
+  P.paint(all, (x, y) => (thigh.has(x, y) ? ts(x, y) : ss(x, y)));
 }
 
 function drawShoe(c: Ctx, leg: LegRig): void {
@@ -353,14 +355,18 @@ export function drawArm(c: Ctx, arm: ArmRig, opts: { dim?: number } = {}): void 
   all.add(fore);
   all.add(sleeve);
   const [cx, cy] = scr(c, cut);
+  const slFore = tubeShade(sleeveM, ex, ey, wx, wy, 1.4);
+  const slUp = tubeShade(sleeveM, sx, sy, ex, ey, 1.5);
+  const skFore = tubeShade(skinM, ex, ey, wx, wy, 1.2);
+  const skUp = tubeShade(skinM, sx, sy, ex, ey, 1.3);
   P.paint(all, (x, y) => {
     const onFore = fore.has(x, y) && !upper.has(x, y);
     if (sleeve.has(x, y)) {
       // barra da manga mais escura
       if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) < 1.3) return sleeveM.dk;
-      return onFore ? tubeShade(sleeveM, ex, ey, wx, wy, 1.4)(x, y) : tubeShade(sleeveM, sx, sy, ex, ey, 1.5)(x, y);
+      return onFore ? slFore(x, y) : slUp(x, y);
     }
-    return onFore ? tubeShade(skinM, ex, ey, wx, wy, 1.2)(x, y) : tubeShade(skinM, sx, sy, ex, ey, 1.3)(x, y);
+    return onFore ? skFore(x, y) : skUp(x, y);
   });
 }
 
@@ -412,5 +418,3 @@ function drawGesture(c: Ctx, kind: 'rock' | 'paper' | 'scissors', W: V2, skin: R
   // luz sempre de cima/esquerda, também no espelho
   P.paint(mk, (x, y) => (dark.has(y * 1000 + x) || !mk.has(x + 1, y) ? skin.dk : !mk.has(x - 1, y) || !mk.has(x, y - 1) ? skin.lt : skin.base), { soft: 0.2 });
 }
-
-export { mix };

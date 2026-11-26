@@ -121,7 +121,7 @@ export function makeRig(req: CharacterFrameRequest): Rig {
       r.eyes = 'closed';
       r.mouth = 'none';
       r.slump = 1;
-      r.head = J3(r.head.f + 1.2, 0, r.head.z - (f === 0 ? 1.4 : 2));
+      r.head = J3(r.head.f + 1.2, 0, r.head.z - (f === 0 ? 1.2 : 2.2));
       r.nod = 2;
       r.chest = J3(r.chest.f + 0.6, 0, r.chest.z - 0.5);
       restHands(r, true);
@@ -155,9 +155,10 @@ export function makeRig(req: CharacterFrameRequest): Rig {
       r.mouth = 'open';
       if (f === 1) lift(r, 1);
       const c = r.chest;
-      const hz = c.z + (f === 0 ? 12.6 : 13.6);
-      r.far.arm = armTo(c, -1, J3(c.f - 0.4, c.n - 3.4, hz), { pole: J3(0, -1, 0), shape: 'fist' });
-      r.near.arm = armTo(c, 1, J3(c.f - 0.4, c.n + 3.4, hz), { pole: J3(0, 1, 0), shape: 'fist' });
+      // mãos quase juntas acima da cabeça, braços passando por trás dela
+      const hz = c.z + (f === 0 ? 13.6 : 14.4);
+      r.far.arm = armTo(c, -1, J3(c.f - 0.6, c.n - 1.8, hz), { pole: J3(0, -1, 0), shape: 'fist' });
+      r.near.arm = armTo(c, 1, J3(c.f - 0.6, c.n + 1.8, hz), { pole: J3(0, 1, 0), shape: 'fist' });
       break;
     }
     case 'read':
@@ -180,7 +181,7 @@ export function makeRig(req: CharacterFrameRequest): Rig {
       break;
     }
     case 'wait':
-      waitRig(r, f, held);
+      waitRig(r, f, held, req.dir === 'up' || req.dir === 'left');
       break;
     case 'cheer': {
       const jump = f === 1;
@@ -214,8 +215,8 @@ export function makeRig(req: CharacterFrameRequest): Rig {
       const c = r.chest;
       const a = f === 0 ? 0.7 : 0;
       const b = f === 0 ? 0 : 0.7;
-      r.far.arm = armTo(c, -1, J3(c.f + 5, c.n - 2, c.z - 7.4 + a), { pole: J3(-0.6, -1, -0.6), shape: 'grip' });
-      r.near.arm = armTo(c, 1, J3(c.f + 5, c.n + 2, c.z - 7.4 + b), { pole: J3(-0.6, 1, -0.6), shape: 'grip' });
+      r.far.arm = armTo(c, -1, J3(c.f + 5.4, c.n - 2.8, c.z - 6 + a), { pole: J3(-0.6, -1, -0.6), shape: 'grip' });
+      r.near.arm = armTo(c, 1, J3(c.f + 5.4, c.n + 2.8, c.z - 6 + b), { pole: J3(-0.6, 1, -0.6), shape: 'grip' });
       r.itemHand = 'both';
       break;
     }
@@ -232,7 +233,7 @@ export function makeRig(req: CharacterFrameRequest): Rig {
       r.slump = 1.4;
       r.nod = 2;
       r.chest = J3(r.chest.f + 0.4, 0, r.chest.z - 0.6);
-      r.head = J3(r.head.f + 0.8, 0, r.head.z - (f === 0 ? 1 : 1.6));
+      r.head = J3(r.head.f + 0.8, 0, r.head.z - (f === 0 ? 1 : 2));
       relaxArms(r, 0.6, 0.6);
       if (seated) restHands(r, true);
       break;
@@ -242,7 +243,7 @@ export function makeRig(req: CharacterFrameRequest): Rig {
   const h = r.held;
   if (h !== 'none' && !OWN_HANDS.has(pose) && !r.itemAt && !GESTURES.has(h)) {
     if (TWO_HANDED.has(h) || pose === 'read') {
-      if (pose !== 'read') hold2(r, 5, -7.6, 3.2);
+      if (pose !== 'read') hold2(r, 5, -7.6, h === 'box' ? 3.4 : 3.2);
     } else if (h !== 'paddle' || pose === 'stand' || pose === 'sit') r.near.arm = carry(r);
   }
   if (h === 'paddle' && pose !== 'play' && pose !== 'stand' && pose !== 'walk' && pose !== 'run' && pose !== 'sit') r.held = 'none';
@@ -275,13 +276,13 @@ function gait(r: Rig, f: number, run: boolean): void {
     if (f === 1) r.far.leg = legStand(r.hip, -1, 2, lifted, 0);
     if (f === 3) r.near.leg = legStand(r.hip, 1, 2, lifted, 0);
   }
-  const swing = (run ? 3.4 : 2.4) * [-1, 0, 1, 0][f];
+  const swing = (run ? 3 : 2.4) * [-1, 0, 1, 0][f];
   const c = r.chest;
   if (run) {
     // braços dobrados em 90°, balançando
     const s = swing;
-    r.far.arm = armTo(c, -1, J3(c.f + s + 2, c.n - 6, c.z - 7 + Math.abs(s) * 0.3), { pole: J3(-1, -0.4, -0.6), shape: 'fist' });
-    r.near.arm = armTo(c, 1, J3(c.f - s + 2, c.n + 6, c.z - 7 + Math.abs(s) * 0.3), { pole: J3(-1, 0.4, -0.6), shape: 'fist' });
+    r.far.arm = armTo(c, -1, J3(c.f + s + 2, c.n - 5, c.z - 7 + Math.abs(s) * 0.3), { pole: J3(-1, -0.3, -0.6), shape: 'fist' });
+    r.near.arm = armTo(c, 1, J3(c.f - s + 2, c.n + 5, c.z - 7 + Math.abs(s) * 0.3), { pole: J3(-1, 0.3, -0.6), shape: 'fist' });
   } else relaxArms(r, -swing, swing);
 }
 
@@ -316,18 +317,28 @@ function restHand(r: Rig, side: 1 | -1): void {
   else r.far.arm = arm;
 }
 
-function waitRig(r: Rig, f: number, held: HeldItem): void {
+function waitRig(r: Rig, f: number, held: HeldItem, back: boolean): void {
   // recostado: tronco e cabeça um pouco para trás
   r.chest = J3(r.chest.f - 0.8, 0, r.chest.z - 0.3);
   r.head = J3(r.head.f - 1, 0, r.head.z - 0.4);
   const c = r.chest;
   const eat = f === 1;
   if (held === 'popcorn') {
-    r.itemAt = J3(4.8, 0.4, r.hip.z + 2.6);
-    r.far.arm = armTo(c, -1, J3(4.4, -3, r.hip.z + 5), { pole: J3(-1, -0.8, -0.4), shape: 'grip' });
+    if (back) {
+      // de costas: balde ao lado do quadril (lado de longe), a mão de longe vai dele à boca
+      r.itemAt = J3(-1.8, -8.4, r.hip.z + 0.6);
+      r.far.arm = eat
+        ? armTo(c, -1, J3(c.f + 4, c.n - 1.2, c.z + 2.6), { pole: J3(-0.4, -1, -0.6), shape: 'fist' })
+        : armTo(c, -1, J3(-1.6, -8, r.hip.z + 4.6), { pole: J3(0.4, -1, 0.4), shape: 'grip' });
+      restHand(r, 1);
+      return;
+    }
+    // de frente: balde abraçado junto ao peito, a mão de perto vai da boca do balde à boca
+    r.itemAt = J3(4.2, 0.6, r.hip.z + 4.6);
+    r.far.arm = armTo(c, -1, J3(4.6, -2.6, r.hip.z + 4), { pole: J3(-1, -0.8, -0.4), shape: 'grip' });
     r.near.arm = eat
       ? armTo(c, 1, J3(c.f + 4.4, c.n + 1.2, c.z + 2.8), { pole: J3(-0.3, 1, -1), shape: 'fist' })
-      : armTo(c, 1, J3(5.2, 2.4, r.hip.z + 6.4), { pole: J3(-1, 0.8, -0.4), shape: 'grip' });
+      : armTo(c, 1, J3(4.8, 2.4, r.hip.z + 8.6), { pole: J3(-1, 0.8, -0.4), shape: 'grip' });
     r.mouth = eat ? 'none' : 'chew';
     if (eat) r.kernel = J3(c.f + 5, c.n + 0.6, c.z + 4);
     return;
@@ -343,7 +354,7 @@ function waitRig(r: Rig, f: number, held: HeldItem): void {
   r.brows = 'flat';
   r.crossed = eat ? 1 : 0;
   r.far.arm = armTo(c, -1, J3(c.f + 3.2, c.n + 3.6, c.z - 6.2), { pole: J3(-0.5, -1, -0.6), shape: 'flat' });
-  r.near.arm = armTo(c, 1, J3(c.f + 2.8, c.n - 3.6, c.z - 5.2 + (eat ? 0.8 : 0)), { pole: J3(-0.5, 1, -0.6), shape: 'flat' });
+  r.near.arm = armTo(c, 1, J3(c.f + 2.8, c.n - 3.6, c.z - 5.2 + (eat ? 1.2 : 0)), { pole: J3(-0.5, 1, -0.6), shape: 'flat' });
   if (eat) r.near.leg = legSeated(r.hip, 1, 1.2);
 }
 

@@ -40,7 +40,6 @@ export function depth(v: View, p: J): number {
   return (v.back ? -p.f : p.f) + p.n;
 }
 
-export const add = (a: J, b: J): J => ({ f: a.f + b.f, n: a.n + b.n, z: a.z + b.z });
 export const lerp = (a: J, b: J, t: number): J => ({ f: a.f + (b.f - a.f) * t, n: a.n + (b.n - a.n) * t, z: a.z + (b.z - a.z) * t });
 
 /** Dois segmentos (coxa/canela, braço/antebraço) com a junta do meio dobrando para `pole`. */

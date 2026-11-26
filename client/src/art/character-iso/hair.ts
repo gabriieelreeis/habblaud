@@ -299,8 +299,8 @@ const STYLES: Readonly<Record<HairStyle, Style>> = {
     back: (h) => {
       if (h.back) return;
       const mk = h.c.P.mask();
-      C(h, mk, [-4.6, 0], [-5.8, 2.6], 1.5, 1.4);
-      C(h, mk, [-5.8, 2.6], [-5.2, 5.6], 1.4, 0.8);
+      C(h, mk, [-4.8, 0], [-6.6, 2.6], 1.5, 1.4);
+      C(h, mk, [-6.6, 2.6], [-6, 5.6], 1.4, 0.8);
       paintHair(h, mk, { hang: -3, bias: -0.3 });
     },
     front: (h) => {
@@ -339,6 +339,8 @@ const STYLES: Readonly<Record<HairStyle, Style>> = {
       const mk = c.P.mask();
       const d = h.back ? -1 : 1;
       G(h, mk, [[-3.2 * d, -4], [-1.4 * d, -6.6], [1 * d, -7.4], [3.4 * d, -6.6], [4.8 * d, -4.4], [4.8 * d, -2.6], [3 * d, -4.4], [0.6 * d, -5], [-2 * d, -4.4]]);
+      // de costas a crista desce pela nuca
+      if (h.back) G(h, mk, [[0.6, -6.8], [-2.6, -6.4], [-3.4, 2.6], [-1.2, 3]]);
       paintHair(h, mk, { crown: [2 * d, -8] });
     },
   },
@@ -400,9 +402,9 @@ export function drawHairBack(c: Ctx, head: Mask): void {
 }
 
 /** Camada da frente (depois da cabeça). Devolve se a orelha ficou coberta. */
-export function drawHairFront(c: Ctx, head: Mask, hidden = false): boolean {
+export function drawHairFront(c: Ctx, head: Mask): boolean {
   const st = STYLES[c.a.hairStyle] ?? STYLES.short;
-  if (!hidden) st.front(hctx(c, head));
+  st.front(hctx(c, head));
   return !!st.ears;
 }
 

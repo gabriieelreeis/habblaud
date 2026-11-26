@@ -1,6 +1,6 @@
 // Itens na mão, acessórios de cabeça e fantasias sazonais do personagem isométrico (puro).
 import type { HeldItem } from '../api';
-import { mix, ramp, shade, type Ramp } from '../core/color';
+import { mix, ramp, shade } from '../core/color';
 import { drawBox, pj, pt, type Ctx } from './body';
 import { headCenter } from './head';
 import { EAR_HAIR, TALL } from './hair';
@@ -39,15 +39,17 @@ export function itemDepth(c: Ctx, it: HeldDraw): number {
 const MUG: readonly string[] = ['wcw', 'rrrh', 'www.'];
 const CUP: readonly string[] = ['bb', 'ww', 'ww'];
 const PHONE: readonly string[] = ['dd', 'bB', 'bb', 'dd'];
-const CONTROLLER: readonly string[] = ['hLLLh', 'LdLrL', 'c...c'];
+const CONTROLLER: readonly string[] = ['.hLLLh.', 'hLdLrLL', 'cc...cc'];
 const POPCORN: readonly string[] = ['.pkp.', 'kpypk', 'AAAAA', 'lwrwW', 'lwrwW', '.wrw.'];
 const POP_PAL = { p: '#fff9e6', k: '#f3e3b8', y: '#ffd75e', A: '#fbf8f1', l: '#ef6457', r: '#d8413f', w: '#f6f1e6', W: '#cfc6b6' };
 
 /** Carimbo com a luz certa no espelho: o template é desenhado na tela sem inverter (objetos quase simétricos). */
 function stampScreen(c: Ctx, rows: readonly string[], cx: number, cy: number, pal: Readonly<Record<string, string>>): void {
   const w = rows[0].length;
-  // canto esquerdo na tela a partir do centro local
-  const sx = Math.round(c.P.X(cx) - w / 2);
+  // colunas locais [k0, k0 + w) e o mesmo vão espelhado; o desenho não inverte (luz sempre à esquerda)
+  const k0 = Math.round(cx - w / 2);
+  const ax = Math.floor(c.P.ax);
+  const sx = c.P.m === 1 ? ax + k0 : ax - k0 - w;
   const sy = Math.round(c.P.Y(cy));
   rows.forEach((row, j) => {
     for (let i = 0; i < row.length; i++) {
@@ -62,25 +64,25 @@ export function drawItem(c: Ctx, it: HeldDraw): void {
   const h = pj(c, q);
   switch (it.kind) {
     case 'coffee':
-      stampScreen(c, MUG, h[0], h[1] - 3, { w: '#f4f2ee', c: '#6b4226', r: '#e2604f', h: '#cfcac0' });
+      stampScreen(c, MUG, h[0] + 0.5, h[1] - 2.6, { w: '#f4f2ee', c: '#6b4226', r: '#e2604f', h: '#cfcac0' });
       break;
     case 'water':
-      stampScreen(c, CUP, h[0], h[1] - 3, { b: '#9ad4f5', w: '#e3f2fb' });
+      stampScreen(c, CUP, h[0], h[1] - 2.6, { b: '#9ad4f5', w: '#e3f2fb' });
       break;
     case 'phone':
-      stampScreen(c, PHONE, h[0], h[1] - 3, { d: '#2b2f3a', b: '#6fbdf0', B: '#c8eaff' });
+      stampScreen(c, PHONE, h[0], h[1] - 3.2, { d: '#2b2f3a', b: '#6fbdf0', B: '#c8eaff' });
       break;
     case 'controller':
-      stampScreen(c, CONTROLLER, h[0], h[1] - 1, { L: '#4c5263', h: '#737b8f', d: '#1d2029', r: '#e8545a', c: '#363b48' });
+      stampScreen(c, CONTROLLER, h[0], h[1] - 2, { L: '#4c5263', h: '#7d869b', d: '#1d2029', r: '#f0606a', c: '#363b48' });
       break;
     case 'popcorn':
-      stampScreen(c, POPCORN, h[0], h[1] - 4, POP_PAL);
+      stampScreen(c, POPCORN, h[0], h[1] - (it.fixed ? 4 : 5), POP_PAL);
       break;
     case 'lipstick':
-      if (!c.v.back) stampScreen(c, ['rg'], h[0], h[1] - 1, { r: '#d8365a', g: '#f0c75a' });
+      if (!c.v.back) stampScreen(c, ['r', 'g', 'g'], h[0], h[1] - 2.6, { r: '#e0365e', g: '#f0c75a' });
       break;
     case 'comb':
-      stampScreen(c, ['ccc', 'c.c'], h[0], h[1] - 2, { c: '#3d4252' });
+      stampScreen(c, ['cccc', 'c.c.'], h[0], h[1] - 2.6, { c: '#3d4252' });
       break;
     case 'paddle': {
       const m = ramp('#d64545', 0.08);
@@ -91,24 +93,23 @@ export function drawItem(c: Ctx, it: HeldDraw): void {
       break;
     }
     case 'box':
-      drawBox(c, { fb: q.f + 0.6, ft: q.f + 0.6, zb: q.z - 2.6, zt: q.z + 3, wb: 3.6, wt: 3.6, db: 2.4, dt: 2.4 }, ramp('#c99a5e', 0.06), (P, b, on) => {
-        P.line(on(-0.1, 1), on(-0.1, 0), '#e8d3a8');
-        void b;
+      drawBox(c, { fb: q.f + 0.4, ft: q.f + 0.4, zb: q.z - 2.2, zt: q.z + 2.8, wb: 2.9, wt: 2.9, db: 2, dt: 2 }, ramp('#c99a5e', 0.11), (P, _b, on) => {
+        P.line(on(-0.15, 1), on(-0.15, 0.1), '#ead7ad');
       });
       break;
     case 'laptop':
-      drawBox(c, { fb: q.f + 0.8, ft: q.f + 0.8, zb: q.z - 1.6, zt: q.z + 2.6, wb: 3.4, wt: 3.4, db: 0.6, dt: 0.6 }, ramp('#b9c0cb', 0.05), (P, _b, on) => {
+      drawBox(c, { fb: q.f + 0.8, ft: q.f + 0.8, zb: q.z - 1.6, zt: q.z + 2.6, wb: 3, wt: 3, db: 0.6, dt: 0.6 }, ramp('#b9c0cb', 0.09), (P, _b, on) => {
         const k = on(-0.1, 0.5);
         P.dot(k[0], k[1], '#eef1f5');
       });
       break;
     case 'book':
-      drawBox(c, { fb: q.f + 0.8, ft: q.f + 0.8, zb: q.z - 1.6, zt: q.z + 2.8, wb: 2.4, wt: 2.4, db: 0.7, dt: 0.7 }, ramp('#3f63a8', 0.07), (P, _b, on) => {
+      drawBox(c, { fb: q.f + 0.8, ft: q.f + 0.8, zb: q.z - 1.6, zt: q.z + 2.8, wb: 2.4, wt: 2.4, db: 0.7, dt: 0.7 }, ramp('#3f63a8', 0.1), (P, _b, on) => {
         P.line(on(-0.5, 0.75), on(0.3, 0.75), '#f2c14e');
       });
       break;
     case 'papers':
-      drawBox(c, { fb: q.f + 0.8, ft: q.f + 0.8, zb: q.z - 2, zt: q.z + 2.6, wb: 2.4, wt: 2.4, db: 0.4, dt: 0.4 }, ramp('#f4f2ec', 0.04), (P, _b, on) => {
+      drawBox(c, { fb: q.f + 0.8, ft: q.f + 0.8, zb: q.z - 2, zt: q.z + 2.6, wb: 2.4, wt: 2.4, db: 0.4, dt: 0.4 }, ramp('#f4f2ec', 0.06), (P, _b, on) => {
         for (const hh of [0.75, 0.5, 0.25]) P.line(on(-0.6, hh), on(0.2, hh), '#a6b0c0');
       });
       break;
@@ -133,7 +134,7 @@ function local(c: Ctx): { hx: number; hy: number; d: (x: number, y: number, col:
 }
 
 /** Boné, gorro, fone, óculos, brincos e laço. */
-export function drawHeadwear(c: Ctx, head: Mask): void {
+export function drawHeadwear(c: Ctx): void {
   if (c.a.accessory === 'none') return;
   const { P, p, a, v } = c;
   const { hx, hy, d } = local(c);
@@ -207,7 +208,8 @@ export function drawHeadwear(c: Ctx, head: Mask): void {
       break;
     }
     case 'earrings':
-      if (!EAR_HAIR.has(a.hairStyle)) d(v.back ? 2.6 : 3.4, 2.6, it.lt);
+      // de costas, cabelo que cobre a orelha esconde o brinco; de frente ele aparece por cima da mecha
+      if (!v.back || !EAR_HAIR.has(a.hairStyle)) d(v.back ? 2.6 : 3.4, 2.6, it.lt);
       break;
     case 'bow': {
       const bx = v.back ? -2 : 1.6;
@@ -220,7 +222,6 @@ export function drawHeadwear(c: Ctx, head: Mask): void {
       break;
     }
   }
-  void head;
 }
 
 // ------------------------------------------------------------ fantasias
@@ -311,5 +312,3 @@ export function drawCostumeFront(c: Ctx, head: Mask): void {
   mk.cut(head);
   P.paint(mk, rimShade(mk, col), { soft: 0.3 });
 }
-
-export type { Ramp };
