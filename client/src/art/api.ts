@@ -401,6 +401,11 @@ export interface ArtModule {
    * parede), ou null para usar o de sempre. Hoje: o elevador, na altura dos personagens.
    */
   isoWallSprite?(kind: FurnitureKind, variant: string | undefined, state: number, seed: number): Sprite | null;
+  /**
+   * (Opcional, aditivo) Quem senta num assento da visão isométrica: deslocamento (px de mundo) do quadril a partir do
+   * centro do tile do lugar e quanto o personagem sentado sobe (negativo desce) para o quadril ficar na almofada.
+   */
+  isoSeatAnchor?(kind: FurnitureKind, variant: string | undefined, facing: Dir): { dx: number; dy: number; lift: number } | null;
   /** (Opcional, aditivo) Carro andando ao longo de x (1 = leste, −1 = oeste); âncora no centro do carro no chão. */
   isoCarSprite?(variant: number, dir: 1 | -1): Sprite;
   /** Avatar (cabeça + ombros) ampliado para a UI. `parts`: peças do personagem editado (ver AgentInfo.parts). */

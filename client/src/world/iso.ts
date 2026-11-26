@@ -136,3 +136,50 @@ export function isoSort<T extends Sortable>(items: readonly T[]): T[] {
   }
   return out;
 }
+
+/** Parede para o corte em fatias: 'south' corre em x no plano y = at; 'east' corre em y no plano x = at. */
+export interface WallPlane {
+  facing: 'south' | 'east';
+  at: number;
+  a0: number;
+  a1: number;
+}
+
+/** Uma fatia de 1 tile de uma parede: recorte [sx0, sx1) do sprite, a caixa no chão e o canto no plano isométrico. */
+export interface WallSlice {
+  sx0: number;
+  sx1: number;
+  box: Box;
+  rect: IsoRect;
+  dx: number;
+  dy: number;
+}
+
+/**
+ * Corta o sprite de uma parede (âncora ax, ay no canto de trás do footprint dela; cw x ch px) em fatias de 1 tile, cada
+ * uma com a sua caixa no chão, para a ordem de desenho. Coordenadas do canto arredondadas para px inteiros.
+ */
+export function wallSlices(ax: number, ay: number, cw: number, ch: number, plane: WallPlane, thick: number, tile = 16): WallSlice[] {
+  const out: WallSlice[] = [];
+  const south = plane.facing === 'south';
+  const bx = south ? plane.a0 : plane.at - thick;
+  const by = south ? plane.at - thick : plane.a0;
+  const ox = Math.round(isoX(bx, by) - ax);
+  const oy = Math.round(isoY(bx, by) - ay);
+  const len = plane.a1 - plane.a0;
+  const n = Math.max(1, Math.ceil(len / tile - 1e-6));
+  for (let k = 0; k < n; k++) {
+    const a = k * tile;
+    const b = Math.min(len, a + tile);
+    let sx0 = south ? ax + a - thick : ax + thick - b;
+    let sx1 = south ? ax + b - thick : ax + thick - a;
+    if (south ? k === 0 : k === n - 1) sx0 = 0;
+    if (south ? k === n - 1 : k === 0) sx1 = cw;
+    sx0 = Math.max(0, Math.round(sx0));
+    sx1 = Math.min(cw, Math.round(sx1));
+    if (sx1 <= sx0) continue;
+    const box: Box = south ? { x0: plane.a0 + a, y0: plane.at - thick, x1: plane.a0 + b, y1: plane.at } : { x0: plane.at - thick, y0: plane.a0 + a, x1: plane.at, y1: plane.a0 + b };
+    out.push({ sx0, sx1, box, rect: { x: ox + sx0, y: oy, w: sx1 - sx0, h: ch }, dx: ox + sx0, dy: oy });
+  }
+  return out;
+}
