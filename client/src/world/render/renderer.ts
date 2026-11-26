@@ -26,7 +26,7 @@ import { Lighting } from './lighting';
 import { Particles } from './particles';
 import { carSprite, propSprite, shadowSprite } from './props';
 import { countBadge, fallbackIcon } from './shell-sprites';
-import { decorateElevator, drawSeasonalWindow, seasonalCostume } from './seasonal';
+import { decorateElevator, drawSeasonalLightsIso, drawSeasonalWindow, seasonalCostume, seasonalFurniture } from './seasonal';
 import { buildAreaVis, opaqueBounds, paintShell, toWallVis, wallSprites, type AreaVis, type FurnVis, type WallVis } from './scene';
 
 const enum K {
@@ -642,6 +642,13 @@ export class Renderer {
     // ---- luz: noite, salas apagadas, brilhos
     this.night = this.lighting.night;
     this.drawLighting(now);
+    if (this.theme !== 'none') {
+      for (const vis of this.areas.values()) {
+        if (vis.room && vis.room.phase !== 'ready') continue;
+        if (!vis.iso || !visible({ x: vis.iso.fx, y: vis.iso.fy - WALL_H, w: vis.iso.floor.width, h: vis.iso.floor.height })) continue;
+        drawSeasonalLightsIso(ctx, this.theme, vis.layout, vis.room ? vis.room.light(now) : 1);
+      }
+    }
     // giroflex e balão "!" do alarme de CI (brilham também no escuro)
     this.roomFx.drawLights(ctx, this.sim, this.heads, now, this.worldView);
 
@@ -962,6 +969,16 @@ export class Renderer {
 
   /** Base (e encosto/porta, se houver) de um móvel como pedaços com caixa no chão. */
   private furnPieces(f: FurnVis, vis: AreaVis, now: number): Piece[] {
+    // enfeite de época no lugar de uma planta (árvore de Natal, abóbora...): sprite de frente, no centro do footprint
+    const deco = seasonalFurniture(this.theme, f.kind, vis.layout, f.seed);
+    if (deco) {
+      const cx = (f.box.x0 + f.box.x1) / 2;
+      const cy = (f.box.y0 + f.box.y1) / 2;
+      const dx = Math.round(isoX(cx, cy) - deco.ax);
+      const dy = Math.round(isoY(cx, cy) - deco.ay);
+      const c = deco.canvas;
+      return [{ kind: PieceKind.Furn, src: c, sx: 0, sy: 0, sw: c.width, sh: c.height, dx, dy, box: f.box, rect: { x: dx, y: dy, w: c.width, h: c.height }, bias: 0, areaId: vis.id, f }];
+    }
     const fs = this.isoSprites(f, this.furnState(f, now));
     if (!fs) return [];
     const ix = isoX(f.box.x0, f.box.y0);

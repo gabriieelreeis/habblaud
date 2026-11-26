@@ -3,6 +3,7 @@
 // observa a simulação e a câmera; quem decide se toca (preferência, volume, aba oculta) é a UI.
 import type { SoundCue } from './api';
 import type { Camera } from './camera';
+import { isoX, isoY } from './iso';
 import type { Character } from './sim/character';
 import type { Sim } from './sim/sim';
 
@@ -47,8 +48,11 @@ export class SoundCues {
     return Math.max(-0.7, Math.min(0.7, ((x - (v.x0 + v.x1) / 2) / half) * 0.7));
   }
 
+  /** O ponto do chão (px de mundo) está na tela? A vista vem no plano isométrico da câmera. */
   private inView(x: number, y: number, v: ViewRect, m = 16): boolean {
-    return x > v.x0 - m && x < v.x1 + m && y > v.y0 - m && y < v.y1 + m;
+    const ix = isoX(x, y);
+    const iy = isoY(x, y);
+    return ix > v.x0 - m && ix < v.x1 + m && iy > v.y0 - m && iy < v.y1 + m;
   }
 
   /** "Ding" quando a porta começa a abrir; fora da tela, mais baixo (ainda avisa que alguém chegou). */
@@ -59,7 +63,7 @@ export class SoundCues {
       if (prev === undefined || prev > 0.01 || e.door <= 0.01) return;
       const spot = this.sim.spots.get(e.spotId);
       if (!spot) return;
-      emit({ kind: 'elevator', gain: this.inView(spot.x, spot.y, view, 24) ? 1 : 0.5, pan: this.pan(spot.x, view) });
+      emit({ kind: 'elevator', gain: this.inView(spot.x, spot.y, view, 24) ? 1 : 0.5, pan: this.pan(isoX(spot.x, spot.y), view) });
     });
   }
 
@@ -72,7 +76,7 @@ export class SoundCues {
     for (const ch of this.sim.chars.values()) {
       if (!typing(ch) || !this.inView(ch.x, ch.y, view)) continue;
       n++;
-      sx += ch.x;
+      sx += isoX(ch.x, ch.y);
     }
     if (!n || now < this.nextKeysAt) return;
     if (this.rng() > Math.min(0.8, 0.3 + 0.12 * n)) return;
@@ -107,10 +111,10 @@ export class SoundCues {
         const seg = Math.floor(((now - g.startAt) % (PINGPONG_PERIOD * 2)) / (PINGPONG_PERIOD / 2));
         const prev = this.rally.get(g.id);
         this.rally.set(g.id, seg);
-        if (prev !== undefined && prev !== seg) emit({ kind: seg % 2 === 0 ? 'pingpong' : 'table', gain: near, pan: this.pan(x, view) });
+        if (prev !== undefined && prev !== seg) emit({ kind: seg % 2 === 0 ? 'pingpong' : 'table', gain: near, pan: this.pan(isoX(x, y), view) });
       } else if (now >= this.nextArcadeAt) {
         this.nextArcadeAt = now + 500 + this.rng() * 900;
-        emit({ kind: 'arcade', gain: near * 0.8, pan: this.pan(x, view) });
+        emit({ kind: 'arcade', gain: near * 0.8, pan: this.pan(isoX(x, y), view) });
       }
     }
     for (const id of this.rally.keys()) if (!alive.has(id)) this.rally.delete(id);
