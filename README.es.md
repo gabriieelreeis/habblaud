@@ -594,10 +594,13 @@ ventana correcta.
 - En los agentes de Claude, los comandos de barra como `/effort high` o `/model opus` también funcionan aquí: el plugin los
   envía como comando, no como texto, para que Claude los ejecute de verdad. Un comando desconocido aparece como
   **no se entregó**, con el motivo.
-- **Esfuerzo:** en los detalles del agente, debajo de **Modelo**, el selector **Esfuerzo** envía `/effort low`, `medium`,
-  `high`, `xhigh` o `max` por la misma cola. Aparece para todos los agentes, pero solo cambia el esfuerzo en las
-  sesiones de Claude Code; en las demás queda desactivado. Como el comando va por la cola, se aplica cuando la sesión
-  está libre.
+- **Modelo y esfuerzo:** la sección **Modelo y esfuerzo** de los detalles del agente muestra el modelo de la última
+  respuesta y el esfuerzo actual de la sesión, con su origen (`/effort` de esta apertura, `--effort` al abrir o el
+  predeterminado de `settings.json`). Cambiar cualquiera de los dos envía `/model` o `/effort` por la misma cola, y la
+  salida del comando en la conversación lo confirma. Por defecto vale solo para esa sesión: Habblaud devuelve a
+  `settings.json` el predeterminado de las sesiones nuevas que Claude Code sobrescribe (en Docker, con
+  `npm run codex:bridge`); marca **También como predeterminado de las sesiones nuevas** para conservarlo. En OpenCode,
+  la lista de modelos y los niveles de razonamiento vienen de su servicio y valen para los próximos turnos.
 - **Enviar ahora:** marca esa opción en el cuadro para que el texto entre en el turno en curso de Claude Code, sin
   esperar a que el agente termine. Solo aparece en las sesiones de Claude Code; Codex y OpenCode siguen usando su cola.
   La sugerencia avisa de que, en un Claude Code sin soporte, el mensaje vuelve a la cola.

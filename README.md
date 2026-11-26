@@ -564,10 +564,13 @@ and waits for the next request, give a new instruction or correct its course, wi
   prompt typed while the agent is working.
 - In Claude agents, slash commands such as `/effort high` or `/model opus` work here too: the plugin sends them as a
   command, not as text, so Claude actually runs them. An unknown command shows up as **not delivered**, with the reason.
-- **Effort:** in the agent drawer, below **Model**, the **Effort** selector sends `/effort low`, `medium`, `high`,
-  `xhigh` or `max` through the same queue. It shows for every agent, but only changes the effort in Claude Code
-  sessions; it stays disabled in the others. Since the command goes through the queue, it takes effect when the
-  session is free.
+- **Model and effort:** the **Model and effort** section of the agent drawer shows the model of the last reply and
+  the session's current effort, with where it came from (`/effort` in this run, `--effort` at launch or the
+  `settings.json` default). Changing either one sends `/model` or `/effort` through the same queue and the command's
+  output in the conversation confirms it. By default it applies to that session only: Habblaud puts back in
+  `settings.json` the default for new sessions that Claude Code overwrites (in Docker, through `npm run codex:bridge`);
+  check **Also as the default for new sessions** to keep it. In OpenCode, the model list and reasoning levels come
+  from the OpenCode service and apply to the session's next turns.
 - **Send now:** check that option in the box to have the text enter the current Claude Code turn, without waiting for
   the agent to finish. It only shows in Claude Code sessions; Codex and OpenCode keep using their queue. The option's
   hint warns that on a Claude Code without support, the message goes back into the queue.
