@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ControlState, ModelOption } from '../../../shared/types';
-import { claudeAlias, controlsAvailable, controlStatusText, EFFORT_LEVELS, effortCommand, effortOrigin, groupModels, isEffortLevel, modelCommand, modelSummary, openCodeRequest } from './effort';
+import { claudeAlias, controlsAvailable, controlStatusText, EFFORT_LEVELS, effortCommand, effortOrigin, groupModels, isEffortLevel, modelCommand, modelLockedUntil, modelSummary, openCodeRequest } from './effort';
 
 const state = (patch: Partial<ControlState>): ControlState => ({ id: 'c1', agentId: 'a', kind: 'effort', value: 'high', status: 'sending', createdAt: 1, updatedAt: 1, ...patch });
 
@@ -54,6 +54,14 @@ describe('modelo e esforço (peças puras)', () => {
     expect(controlStatusText(state({ status: 'confirmed', defaults: 'restore-failed', error: 'sem acesso' }), 'claude')).toEqual({ text: 'Confirmado: esforço high. sem acesso', tone: 'error' });
     expect(controlStatusText(state({ status: 'failed', error: 'a sessão saiu' }), 'claude')).toEqual({ text: 'Não deu: a sessão saiu', tone: 'error' });
     expect(controlStatusText(state({ kind: 'model', value: 'opencode/gpt-6.2-sol', variant: 'high', status: 'confirmed' }), 'opencode').text).toBe('Confirmado: opencode/gpt-6.2-sol · high nas próximas respostas.');
+  });
+
+  it('trava a troca de modelo do Claude Code por 1 h depois da última resposta', () => {
+    const now = 10 * 3_600_000;
+    expect(modelLockedUntil({ provider: 'claude', replyAt: now - 600_000 }, now)).toBe(now - 600_000 + 3_600_000);
+    expect(modelLockedUntil({ provider: 'claude', replyAt: now - 3_600_001 }, now)).toBeUndefined();
+    expect(modelLockedUntil({ provider: 'claude' }, now)).toBeUndefined();
+    expect(modelLockedUntil({ provider: 'opencode', replyAt: now }, now)).toBeUndefined();
   });
 
   it('agrupa os modelos do OpenCode por provedor e monta o pedido', () => {

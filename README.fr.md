@@ -598,7 +598,9 @@ son tour et attend la demande suivante, donner une nouvelle instruction ou corri
   réglage par défaut de `settings.json`). Changer l'un des deux envoie `/model` ou `/effort` par la même file, et la
   sortie de la commande dans la conversation le confirme. Par défaut, cela ne vaut que pour cette session : Habblaud
   remet dans `settings.json` le réglage par défaut des nouvelles sessions que Claude Code écrase (dans Docker, via
-  `npm run codex:bridge`) ; cochez **Aussi par défaut pour les nouvelles sessions** pour le garder. Dans OpenCode, la
+  `npm run codex:bridge`) ; cochez **Aussi par défaut pour les nouvelles sessions** pour le garder. Jusqu'à 1 h après
+  la dernière réponse, Claude Code demande une confirmation à l'écran de la session pour changer de modèle : le
+  changement de modèle est donc bloqué pendant ce délai (les détails indiquent quand il se libère). Dans OpenCode, la
   liste des modèles et les niveaux de raisonnement viennent de son service et valent pour les prochains tours.
 - **Envoyer maintenant :** cochez cette option dans la zone pour que le texte s'ajoute au tour en cours de Claude Code,
   sans attendre la fin de l'agent. Elle n'apparaît que dans les sessions Claude Code ; Codex et OpenCode gardent leur

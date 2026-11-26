@@ -5,6 +5,7 @@
 //   o padrão das sessões novas que o comando gravou; a caixinha "Também como padrão das sessões novas" deixa gravado.
 // - OpenCode: o modelo e o nível de raciocínio (variant) da sessão, pelo serviço dele; a lista vem do próprio OpenCode.
 import { tr } from '../../../shared/i18n';
+import { MODEL_SWITCH_LOCK_MS } from '../../../shared/messages';
 import type { AgentEffort, AgentInfo, ControlKind, ControlState, ModelOption, Provider } from '../../../shared/types';
 import type { UiContext } from './context';
 import { h, setHidden, setText, setTitle } from './dom';
@@ -40,6 +41,16 @@ export function controlsAvailable(provider: Provider | undefined): boolean {
 export function claudeAlias(model: string | undefined): string | undefined {
   const m = model?.toLowerCase() ?? '';
   return CLAUDE_MODELS.find((a) => new RegExp(`(^|[-/])${a}($|[-\\d\\[])`).test(m));
+}
+
+/**
+ * Até quando a troca de modelo do Claude Code fica travada: com a conversa em cache ele pede confirmação na tela da
+ * sessão, que ninguém vê pelo escritório.
+ */
+export function modelLockedUntil(a: Pick<AgentInfo, 'provider' | 'replyAt'>, now: number): number | undefined {
+  if (a.provider === 'opencode' || a.replyAt === undefined) return undefined;
+  const until = a.replyAt + MODEL_SWITCH_LOCK_MS;
+  return until > now ? until : undefined;
 }
 
 /** De onde veio o esforço mostrado, em palavras. */
@@ -180,15 +191,17 @@ export class SessionControls {
     const busy = !!local && 'state' in local && (local.state.status === 'sending' || local.state.status === 'waiting');
 
     setText(this.effortLabel, opencode ? tr('Raciocínio') : tr('Esforço'));
-    setText(this.modelNow, modelSummary(agent));
+    const lockedUntil = modelLockedUntil(agent, Date.now());
+    const lockText = lockedUntil ? tr('troca liberada às {0}: com a conversa em cache, o Claude Code pede confirmação na tela da sessão', [formatClock(lockedUntil, false)]) : '';
+    setText(this.modelNow, lockText ? `${modelSummary(agent)}\n${lockText}` : modelSummary(agent));
     const variants = opencode ? this.variantsOf(this.currentModel(agent)) : [];
     const noVariants = opencode && this.models !== null && variants.length === 0;
     setText(this.effortNow, noVariants ? tr('este modelo não tem níveis de raciocínio no OpenCode') : effortOrigin(agent.effort, agent.provider));
     this.renderSelects(agent, local);
-    this.modelSel.disabled = !ready || busy || (opencode && !this.models?.length);
+    this.modelSel.disabled = !ready || busy || !!lockedUntil || (opencode && !this.models?.length);
     this.effortSel.disabled = !ready || busy || noVariants || (opencode && !this.currentModel(agent));
-    this.modelInput.disabled = this.modelGo.disabled = !ready || busy;
-    setTitle(this.modelSel, ready ? (opencode ? tr('Troca o modelo das próximas respostas desta sessão no OpenCode') : tr('Manda /model à sessão')) : why);
+    this.modelInput.disabled = this.modelGo.disabled = !ready || busy || !!lockedUntil;
+    setTitle(this.modelSel, !ready ? why : lockText || (opencode ? tr('Troca o modelo das próximas respostas desta sessão no OpenCode') : tr('Manda /model à sessão')));
     setTitle(this.effortSel, !ready ? why : noVariants ? tr('Este modelo não tem níveis de raciocínio no OpenCode') : opencode ? tr('Nível de raciocínio do modelo nesta sessão') : tr('Manda /effort à sessão'));
     setHidden(this.defaultRow, opencode);
     this.defaultInput.disabled = !ready || busy;

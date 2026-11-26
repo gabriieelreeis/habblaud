@@ -165,6 +165,18 @@ describe('troca de modelo e esforço', () => {
     expect(await reg.create({ agentId: a.id, kind: 'model', value: 'sem-barra' })).toMatchObject({ status: 400 });
   });
 
+  it('Claude Code: não manda /model com a conversa em cache (pararia na confirmação da tela)', async () => {
+    const t = setup();
+    t.a.replyAt = t.at() - 10 * 60_000;
+    const r = await t.reg.create({ agentId: t.a.id, kind: 'model', value: 'sonnet' });
+    expect(r).toMatchObject({ status: 409 });
+    expect('error' in r && r.error).toContain('confirmação na tela da sessão');
+    expect(t.sent).toEqual([]);
+    expect(await t.reg.create({ agentId: t.a.id, kind: 'effort', value: 'high' })).toMatchObject({ control: { status: 'sending' } });
+    t.a.replyAt = t.at() - 61 * 60_000;
+    expect(await t.reg.create({ agentId: t.a.id, kind: 'model', value: 'sonnet' })).toMatchObject({ control: { status: 'sending' } });
+  });
+
   it('Codex e subagentes não trocam por aqui', async () => {
     const t = setup({ agent: agent({ provider: 'codex' }) });
     expect(await t.reg.create({ agentId: t.a.id, kind: 'effort', value: 'low' })).toMatchObject({ status: 409 });

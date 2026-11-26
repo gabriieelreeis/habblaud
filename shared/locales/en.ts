@@ -3940,4 +3940,8 @@ export const EN: Readonly<Record<string, string>> = {
   "↺ padrão das sessões novas devolvido ao settings.json ({0})": "↺ default for new sessions restored in settings.json ({0})",
   "esforço": "effort",
   "modelo": "model",
+
+  // troca de modelo e esforço pela gaveta
+  "com a conversa em cache (até 1 h depois da última resposta), o Claude Code pede confirmação na tela da sessão para trocar de modelo, e ela ficaria parada esperando; troque mais tarde ou digite /model no terminal dela": "with the conversation cached (up to 1 h after the last reply), Claude Code asks for confirmation on the session's screen to switch models, and the session would sit waiting; switch later or type /model in its terminal",
+  "troca liberada às {0}: com a conversa em cache, o Claude Code pede confirmação na tela da sessão": "switch available at {0}: with the conversation cached, Claude Code asks for confirmation on the session's screen",
 };

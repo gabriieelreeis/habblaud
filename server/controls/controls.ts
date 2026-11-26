@@ -11,6 +11,7 @@
 // escolha da sessão e ela vale para os próximos turnos. Não mexe em padrão nenhum.
 import { randomBytes } from 'node:crypto';
 import { tr } from '../../shared/i18n';
+import { MODEL_SWITCH_LOCK_MS } from '../../shared/messages';
 import type { AgentInfo, ControlDefaults, ControlKind, ControlState, ModelOption, OutboxMessage } from '../../shared/types';
 import type { ClaudeDefaults } from '../claude-defaults/defaults';
 import type { RestoreResult } from '../claude-defaults/service';
@@ -51,6 +52,11 @@ export function parseControl(raw: unknown): ControlRequest {
   const out: ControlRequest = { agentId, kind, value, asDefault: r.asDefault === true };
   if (typeof r.variant === 'string' && r.variant) out.variant = r.variant;
   return out;
+}
+
+/** Trocar de modelo agora pararia a sessão numa confirmação na tela dela (MODEL_SWITCH_LOCK_MS). */
+export function modelLocked(a: Pick<AgentInfo, 'replyAt'>, now: number): boolean {
+  return a.replyAt !== undefined && now - a.replyAt < MODEL_SWITCH_LOCK_MS;
 }
 
 /** O comando de barra da troca no Claude Code (undefined = valor inválido). */
@@ -181,6 +187,9 @@ export class ControlRegistry {
   private async claude(a: AgentInfo, req: ControlRequest): Promise<ControlResult> {
     const text = claudeCommand(req.kind, req.value);
     if (!text) return { error: req.kind === 'effort' ? tr('nível de esforço inválido') : tr('modelo inválido'), status: 400 };
+    if (req.kind === 'model' && modelLocked(a, this.now())) {
+      return { error: tr('com a conversa em cache (até 1 h depois da última resposta), o Claude Code pede confirmação na tela da sessão para trocar de modelo, e ela ficaria parada esperando; troque mais tarde ou digite /model no terminal dela'), status: 409 };
+    }
     let before: ClaudeDefaults | undefined;
     if (!req.asDefault) {
       before = this.pendingBefore(a.account, req.kind);

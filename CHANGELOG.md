@@ -32,7 +32,10 @@ do meio (0.**3**.0).
     pela fila de mensagens, e a saída do comando na conversa confirma. Por padrão vale só para a sessão: o Claude Code
     grava o comando como padrão das sessões novas, e o Habblaud devolve ao `settings.json` só o que ele mudou. A
     caixinha **Também como padrão das sessões novas** deixa gravado. No Docker, quem lê e devolve o padrão é o
-    auxiliar do host (`npm run codex:bridge`); sem ele, a troca só na sessão é recusada com o motivo.
+    auxiliar do host (`npm run codex:bridge`); sem ele, a troca só na sessão é recusada com o motivo. Até 1 h depois
+    da última resposta, o Claude Code pede confirmação na tela da sessão para trocar de modelo (a conversa em cache
+    seria relida) e ninguém vê essa tela pelo escritório: nesse intervalo a troca de modelo fica travada, com a hora
+    em que libera. O esforço troca a qualquer momento.
   - **OpenCode:** a lista de modelos vem do próprio OpenCode e a troca vale para os próximos turnos da sessão, com o
     nível de raciocínio do modelo quando ele tem (o Big Pickle não tem: o seletor fica desativado com o motivo).
 - **Enviar agora:** a caixa de mensagem ganhou a opção **Enviar agora**: o texto entra no turno em andamento do

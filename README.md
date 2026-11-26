@@ -569,7 +569,9 @@ and waits for the next request, give a new instruction or correct its course, wi
   `settings.json` default). Changing either one sends `/model` or `/effort` through the same queue and the command's
   output in the conversation confirms it. By default it applies to that session only: Habblaud puts back in
   `settings.json` the default for new sessions that Claude Code overwrites (in Docker, through `npm run codex:bridge`);
-  check **Also as the default for new sessions** to keep it. In OpenCode, the model list and reasoning levels come
+  check **Also as the default for new sessions** to keep it. Up to 1 h after the last reply Claude Code asks for
+  confirmation on the session's screen to switch models, so model switching is locked during that window (the drawer
+  shows when it frees up). In OpenCode, the model list and reasoning levels come
   from the OpenCode service and apply to the session's next turns.
 - **Send now:** check that option in the box to have the text enter the current Claude Code turn, without waiting for
   the agent to finish. It only shows in Claude Code sessions; Codex and OpenCode keep using their queue. The option's

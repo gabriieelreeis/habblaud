@@ -103,6 +103,7 @@ export interface TranscriptSummary {
   model?: string;
   modelChoice?: ModelChoice;
   effort?: AgentEffort;
+  replyAt?: number;
   gitBranch?: string;
   permissionMode?: string;
   /** Primeiro evento conhecido (subagentes: o início real, depois de ler o começo do arquivo). */
@@ -696,6 +697,7 @@ export class Office {
     set('model', t.model);
     set('modelChoice', info.kind === 'main' ? t.modelChoice : undefined);
     set('effort', info.kind === 'main' ? t.effort : undefined);
+    set('replyAt', info.kind === 'main' ? t.replyAt : undefined);
     set('gitBranch', t.gitBranch);
     set('permissionMode', t.permissionMode);
     if (info.kind === 'sub' && t.firstAt !== undefined && t.firstAt < info.startedAt) {

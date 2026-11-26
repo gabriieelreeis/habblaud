@@ -3957,4 +3957,8 @@ export const FR: Readonly<Record<string, string>> = {
   "↺ padrão das sessões novas devolvido ao settings.json ({0})": "↺ réglage par défaut des nouvelles sessions restauré dans settings.json ({0})",
   "esforço": "effort",
   "modelo": "modèle",
+
+  // troca de modelo e esforço pela gaveta
+  "com a conversa em cache (até 1 h depois da última resposta), o Claude Code pede confirmação na tela da sessão para trocar de modelo, e ela ficaria parada esperando; troque mais tarde ou digite /model no terminal dela": "avec la conversation en cache (jusqu’à 1 h après la dernière réponse), Claude Code demande une confirmation à l’écran de la session pour changer de modèle, et la session resterait en attente ; changez plus tard ou tapez /model dans son terminal",
+  "troca liberada às {0}: com a conversa em cache, o Claude Code pede confirmação na tela da sessão": "changement possible à {0} : avec la conversation en cache, Claude Code demande une confirmation à l’écran de la session",
 };

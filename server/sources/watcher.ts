@@ -548,6 +548,7 @@ export class ClaudeWatcher implements AgentSource {
     if (effort) summary.effort = effort;
     const choice = s.modelCmd;
     if (choice && choice.at >= (t.entry.startedAt ?? 0) - START_SLACK_MS && choice.at > (s.modelAt ?? 0)) summary.modelChoice = { ...choice };
+    if (s.modelAt !== undefined && s.modelAt >= (t.entry.startedAt ?? 0) - START_SLACK_MS) summary.replyAt = s.modelAt;
     if (s.gitBranch) summary.gitBranch = s.gitBranch;
     if (s.permissionMode) summary.permissionMode = s.permissionMode;
     if (s.lastAt !== undefined) summary.lastAt = s.lastAt;

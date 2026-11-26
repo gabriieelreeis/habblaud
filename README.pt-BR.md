@@ -593,7 +593,9 @@ e espera o próximo pedido, dar uma instrução nova ou corrigir o rumo, sem pro
   esforço atual da sessão, com a origem (`/effort` desta abertura, `--effort` da abertura ou padrão do `settings.json`).
   Trocar um dos dois manda `/model` ou `/effort` pela mesma fila, e a saída do comando na conversa confirma. Por padrão
   vale só para aquela sessão: o Habblaud devolve ao `settings.json` o padrão das sessões novas que o Claude Code
-  sobrescreve (no Docker, pelo `npm run codex:bridge`); marque **Também como padrão das sessões novas** para manter. No
+  sobrescreve (no Docker, pelo `npm run codex:bridge`); marque **Também como padrão das sessões novas** para manter. Até
+  1 h depois da última resposta o Claude Code pede confirmação na tela da sessão para trocar de modelo, então a troca
+  de modelo fica travada nesse intervalo (a gaveta mostra a hora em que libera). No
   OpenCode, a lista de modelos e os níveis de raciocínio vêm do serviço dele e valem para os próximos turnos da sessão.
 - **Enviar agora:** marque essa opção na caixa para o texto entrar no turno em andamento do Claude Code, sem esperar o
   agente terminar. Ela só aparece nas sessões do Claude Code; no Codex e no OpenCode a entrega continua na fila. A dica

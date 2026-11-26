@@ -177,6 +177,8 @@ export interface AgentInfo {
   modelChoice?: ModelChoice;
   /** Esforço (nível de raciocínio) da sessão e de onde veio. */
   effort?: AgentEffort;
+  /** Última resposta do modelo nesta abertura da sessão (Claude Code). */
+  replyAt?: number;
   gitBranch?: string;
   permissionMode?: string;
   startedAt: number;

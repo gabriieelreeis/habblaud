@@ -599,7 +599,9 @@ ventana correcta.
   predeterminado de `settings.json`). Cambiar cualquiera de los dos envía `/model` o `/effort` por la misma cola, y la
   salida del comando en la conversación lo confirma. Por defecto vale solo para esa sesión: Habblaud devuelve a
   `settings.json` el predeterminado de las sesiones nuevas que Claude Code sobrescribe (en Docker, con
-  `npm run codex:bridge`); marca **También como predeterminado de las sesiones nuevas** para conservarlo. En OpenCode,
+  `npm run codex:bridge`); marca **También como predeterminado de las sesiones nuevas** para conservarlo. Hasta 1 h
+  después de la última respuesta Claude Code pide confirmación en la pantalla de la sesión para cambiar de modelo, así
+  que el cambio de modelo queda bloqueado en ese intervalo (los detalles muestran cuándo se libera). En OpenCode,
   la lista de modelos y los niveles de razonamiento vienen de su servicio y valen para los próximos turnos.
 - **Enviar ahora:** marca esa opción en el cuadro para que el texto entre en el turno en curso de Claude Code, sin
   esperar a que el agente termine. Solo aparece en las sesiones de Claude Code; Codex y OpenCode siguen usando su cola.
