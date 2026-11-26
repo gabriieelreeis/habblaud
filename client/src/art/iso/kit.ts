@@ -75,18 +75,19 @@ export class Iso {
   top(x0: number, y0: number, x1: number, y1: number, z: number, fill: Fill): void {
     const w = x1 - x0;
     const h = y1 - y0;
-    const sxA = Math.floor(this.sx(x0, y1));
-    const sxB = Math.ceil(this.sx(x1, y0));
-    const syA = Math.floor(this.sy(x0, y0, z));
-    const syB = Math.ceil(this.sy(x1, y1, z));
+    const sxA = Math.floor(this.sx(x0, y1)) - 1;
+    const sxB = Math.ceil(this.sx(x1, y0)) + 1;
+    const syA = Math.floor(this.sy(x0, y0, z)) - 1;
+    const syB = Math.ceil(this.sy(x1, y1, z)) + 1;
     for (let py = syA; py <= syB; py++) {
       const b = 2 * (py + 0.5 - this.oy + z);
       for (let px = sxA; px <= sxB; px++) {
         const a = px + 0.5 - this.ox;
         const x = (b + a) / 2;
         const y = (b - a) / 2;
-        if (x < x0 || x >= x1 || y < y0 || y >= y1) continue;
-        this.buf.set(px, py, call(fill, x - x0, y - y0, w, h));
+        // folga de 1/4 px: as pontas do losango ficam com a largura cheia (32 px por tile), como na pixel art isométrica
+        if (x < x0 - 0.25 || x >= x1 + 0.25 || y < y0 - 0.25 || y >= y1 + 0.25) continue;
+        this.buf.set(px, py, call(fill, Math.max(0, Math.min(w - 0.01, x - x0)), Math.max(0, Math.min(h - 0.01, y - y0)), w, h));
       }
     }
   }
