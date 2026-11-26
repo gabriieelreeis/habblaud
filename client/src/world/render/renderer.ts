@@ -31,6 +31,7 @@ import { carSprite, propSprite, shadowSprite } from './props';
 import { countBadge, fallbackIcon } from './shell-sprites';
 import { decorateElevator, drawSeasonalLightsIso, drawSeasonalWindow, seasonalCostume, seasonalFurniture } from './seasonal';
 import { buildAreaVis, opaqueBounds, paintShell, toWallVis, wallSprites, type AreaVis, type FurnVis, type WallVis } from './scene';
+import { MOBILE_BASE, SpriteWarmer, idleScheduler, type WarmPerson } from './sprite-warm';
 
 const enum K {
   Char,
@@ -214,7 +215,22 @@ export class Renderer {
     this.ctx = canvas.getContext('2d', { alpha: false })!;
     this.exterior = layoutExterior(sim.building.cols);
     this.lighting = new Lighting(art, sim);
+    if (art.isoCharacterSprite) {
+      const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+      this.warmer = new SpriteWarmer({
+        make: (req) => void art.isoCharacterSprite!(req),
+        frames: (pose) => art.poseFrameCount(pose),
+        schedule: idleScheduler(),
+        forget: art.isoCharacterForget ? (keep) => void art.isoCharacterForget!(keep) : undefined,
+        now: () => performance.now(),
+        baseCount: coarse ? MOBILE_BASE : undefined,
+      });
+    }
   }
+
+  /** Gera nas folgas do quadro os sprites que os personagens presentes vão usar (ver sprite-warm.ts). */
+  private warmer: SpriteWarmer | null = null;
+  private costumeOf = (p: WarmPerson) => seasonalCostume(this.theme, p.info.seed);
 
   /** Troca o canvas em que o mundo é desenhado (economia de energia: um canvas em 1× fora da tela). */
   setTarget(canvas: HTMLCanvasElement): void {
@@ -500,6 +516,7 @@ export class Renderer {
     this.date.setTime(this.clock());
     this.dt = dt;
     this.updateCars(now, dt);
+    this.warmer?.sync(this.sim.people(), this.costumeOf);
     const W = this.canvas.width;
     const H = this.canvas.height;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -906,7 +923,7 @@ export class Renderer {
       if (o.on === 'face') ctx.transform(...shearMatrix(o.ax, o.ay, { ax: s.ax + M, ay: s.ay + M }, skew));
       else {
         // sobre a mureta: o conteúdo opaco centrado logo acima do topo
-        const b = opaqueBounds(s.canvas);
+        const b = s.opaque ?? opaqueBounds(s.canvas);
         ctx.translate(Math.round(o.ax - (b.x + b.w / 2) - M), Math.round(o.ay - (b.y + b.h) - M));
       }
       ctx.drawImage(c, 0, 0);
@@ -1014,7 +1031,7 @@ export class Renderer {
   private paintWindow(sc: CanvasRenderingContext2D, s: Sprite, hour: number, now: number, seed: number): void {
     let r = s.rects?.glass;
     if (!r) {
-      const b = opaqueBounds(s.canvas);
+      const b = s.opaque ?? opaqueBounds(s.canvas);
       r = { x: b.x + 2, y: b.y + 2, w: b.w - 4, h: b.h - 4 };
     }
     const g = r;
@@ -1032,7 +1049,7 @@ export class Renderer {
     const r =
       s.rects?.sign ??
       (() => {
-        const b = opaqueBounds(s.canvas);
+        const b = s.opaque ?? opaqueBounds(s.canvas);
         return { x: b.x + 3, y: b.y + 3, w: b.w - 6, h: b.h - 6 };
       })();
     const skew = o.on === 'face' ? 0.5 : 0;
@@ -1050,7 +1067,7 @@ export class Renderer {
     const w = toWallVis(it, vis.id);
     const s = wallSprites(this.art, 'painting', it.variant === 'wide' ? undefined : it.variant, 0, w.seed)?.base;
     if (!s) return null;
-    const b = opaqueBounds(s.canvas);
+    const b = s.opaque ?? opaqueBounds(s.canvas);
     const ax = isoX(w.cx, w.baseY);
     const ay = isoY(w.cx, w.baseY, 18);
     const x = ax - s.ax + b.x;
@@ -1201,6 +1218,12 @@ export class Renderer {
   private pixelsOf(src: CanvasImageSource): Pixels {
     const hit = this.pixelCache.get(src);
     if (hit) return hit;
+    const known = this.art.spritePixels?.(src as HTMLCanvasElement);
+    if (known) {
+      const px = { data: known.data, w: known.w, h: known.h };
+      this.pixelCache.set(src, px);
+      return px;
+    }
     const s = src as HTMLCanvasElement;
     const w = Math.max(1, s.width);
     const h = Math.max(1, s.height);
@@ -1504,7 +1527,7 @@ export class Renderer {
       const { s, k } = got;
       sx = x - s.ax * k;
       sy = y - lift - s.ay * k;
-      const b = opaqueBounds(s.canvas);
+      const b = s.opaque ?? opaqueBounds(s.canvas);
       head.bx = sx + b.x * k;
       head.by = sy + b.y * k;
       head.bw = b.w * k;

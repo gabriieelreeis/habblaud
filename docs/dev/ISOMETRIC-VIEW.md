@@ -101,10 +101,10 @@ O cenário é pintado uma vez só, na abertura, e nunca é redesenhado por causa
 
 Desempenho, comparado com o `reiscorp/local` no mesmo procedimento (modo demonstração, 1920 x 945, 60 s de
 aquecimento e 3 rodadas de 25 s em cada vista): mediana de CPU por quadro numa sala, 3,7 → 3,1 ms; no prédio inteiro à
-noite, 4,6 → 3,7 ms. A cauda (p90) é parecida nas duas versões e vem da geração do sprite de um personagem na primeira
-vez que cada pose e direção aparecem (5 a 20 ms cada); com isso aquecido, a sala fica em 1,9 ms de mediana e 2,9 ms
-de p90. A montagem da camada, só na abertura e quando o prédio muda, leva de 40 a 70 ms no navegador (prédio de 7
-colunas, 653 pedaços, 2694 x 1410 px: no Node, 2 ms de ordenação e 32 ms de pintura).
+noite, 4,6 → 3,7 ms. A cauda (p90) era parecida nas duas versões e vinha do sprite de personagem novo, o que foi
+resolvido depois (ver "Sprites prontos antes de aparecer"); com tudo pronto, a sala fica em 1,9 ms de mediana e 2,9 ms
+de p90. A montagem da camada, só na abertura e quando o prédio muda, leva ~69 ms na abertura e ~18 ms por sala nova
+(prédio de 7 colunas, 653 pedaços, 2694 x 1410 px: no Node, 2 ms de ordenação e 32 ms de pintura).
 
 ## Paredes
 
@@ -195,6 +195,46 @@ planta que substituem.
   avatar da interface e na cidade do World.
 - Prévia: `npx tsx scripts/char-iso-preview.ts` (gera folhas por pose e o elenco).
 
+### Sprites prontos antes de aparecer
+
+Gerar um sprite de personagem leva ~1,7 ms no navegador. O que fazia quadros lentos de 6 a 37 ms era ler o canvas
+novo de volta para achar o retângulo visível (`getImageData` obriga a CPU a esperar a placa de vídeo). Agora a arte
+mede esse retângulo no próprio buffer (`Sprite.opaque`), e o renderizador não lê mais pixels do canvas de ninguém
+durante o uso.
+
+`SpriteWarmer` (`client/src/world/render/sprite-warm.ts`) gera nas folgas do quadro (`requestIdleCallback`,
+fatias de até 4 ms; sem ele, um intervalo curto) os sprites de quem está no escritório:
+
+- na abertura e quando alguém chega, muda de aparência ou de fantasia de época: a lista `BASE_COMBOS` (em pé e
+  andando para todos primeiro, depois sentado, digitando, a mão levantada, a espera e a pipoca, as reações), nas 4
+  direções e em todos os quadros. No celular (toque), só as 8 primeiras (`MOBILE_BASE`);
+- antes de usar: as poses do passo atual e do próximo (o que a pessoa carrega ao andar, parar e conversar), as da
+  roda de que ela participa (`GATHER_COMBOS`: videogame, pedra-papel-tesoura, espelho...) e as outras direções e
+  quadros de uma pose nova;
+- o que ainda não estiver pronto quando for preciso continua sendo gerado na hora (nada some);
+- quem sai: 20 s depois, os sprites dele são esquecidos (`isoCharacterForget`), se ninguém presente tem a mesma
+  aparência.
+
+A camada estática também não lê mais pixels da placa de vídeo: os sprites de móveis e paredes guardam o buffer da arte
+junto do canvas (`spritePixels`), e a cópia da parede com os quadros pintados é um canvas em memória
+(`willReadFrequently`). A primeira montagem caiu de 255 para 69 ms; a de uma sala nova, de ~40 para ~18 ms.
+
+Medido contra o `reiscorp/local` no modo demonstração, 3 rodadas de cada, com festa em todas as salas, pipoca para
+metade e todas as rodas ao mesmo tempo (25 s na sala e 25 s no prédio, à noite):
+
+| | antes | depois |
+| --- | --- | --- |
+| quadros acima de 16 ms na sala | 15, 14, 23 | 5, 2, 5 |
+| quadros acima de 16 ms no prédio | 17, 20, 29 | 2, 1, 1 |
+| pior quadro na sala (ms) | 43, 89, 104 | 50, 27, 190 |
+| pior quadro no prédio (ms) | 33, 51, 83 | 41, 29, 18 |
+| mediana (ms), sala / prédio | 2,2–3,3 / 2,7–4,5 | 2,0–2,4 / 3,1–3,8 |
+| abertura (20 s): acima de 16 ms | 13, 17, 12 | 4, 7, 7 |
+
+Nenhum personagem passou de 2 ms num quadro depois disso. Os quadros lentos que sobram vêm da sala nova que aparece
+(remontar a camada e gerar os móveis dela, 13 a 45 ms juntos; o de 190 ms foi um caso desses junto com a troca de
+câmera) e do primeiro quadro do app (~0,6 s antes, ~0,8 s no `reiscorp/local`).
+
 ## Onde ajustar
 
 - Câmera: zoom do foco na sala e no agente (`focusRoom` e `focusAgent` em `client/src/world/index.ts`), limites
@@ -218,6 +258,8 @@ multiplicado sobre a cena. Os brilhos (monitores, luminárias, faróis) ainda s�
   o ritmo cai para um terço.
 - Cenário na frente das entidades pelo mapa de donos, com grade espacial e recortes em cache (ver "Camadas e
   profundidade", onde estão os números medidos).
+- Sprites de personagem gerados nas folgas, antes de aparecer, e nenhuma leitura de pixels da placa de vídeo durante o
+  uso (ver "Sprites prontos antes de aparecer").
 
 ## Testes
 
@@ -250,13 +292,18 @@ As correções de camadas, assentos, costas e cabines vieram num segundo merge `
 git revert -m 1 $(git log reiscorp/local --merges --format=%h -n 1 --grep="fix/visao-isometrica-camadas")
 ```
 
+A pré-geração dos sprites de personagem veio num terceiro merge, da branch `fix/sprites-na-abertura`:
+
+```sh
+git revert -m 1 $(git log reiscorp/local --merges --format=%h -n 1 --grep="fix/sprites-na-abertura")
+```
+
 ## Limitações conhecidas
 
 - Paredes do fundo são opacas: quem anda junto à parede norte das salas do lado sul do corredor fica parcialmente
   atrás dela.
 - Os brilhos da noite (monitores, luminárias) ainda são desenhados chapados no chão.
-- O primeiro quadro em que um personagem aparece numa pose e direção novas gera o sprite dele (5 a 20 ms); é daí que
-  vêm os quadros lentos de vez em quando, nas duas versões.
+- Uma sala nova ainda custa um quadro lento (remontar a camada e gerar os móveis dela, 13 a 45 ms).
 - A ordem pelas caixas é aproximada para quem está colado numa parede ou no batente de uma porta (dentro da espessura
   dela): o desempate é a profundidade do centro.
 - A pintura gerada por IA sem moldura pronta cai no quadro procedural.

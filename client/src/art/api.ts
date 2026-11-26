@@ -119,6 +119,8 @@ export interface Sprite {
   ax: number;
   ay: number;
   rects?: Partial<Record<SpriteRectName, Rect>>;
+  /** Retângulo dos pixels visíveis (alfa > 16), quando a arte já mediu: evita ler o canvas de volta da placa de vídeo. */
+  opaque?: Rect;
 }
 
 /** `front` é desenhado POR CIMA de quem está sentado/dentro (ex.: encosto da cadeira, porta da cabine). */
@@ -394,6 +396,13 @@ export interface ArtModule {
   isoFurnitureSprites?(kind: FurnitureKind, variant?: string, state?: number, opts?: { seed?: number; facing?: Dir }): FurnitureSprites;
   /** (Opcional, aditivo) Personagem da visão isométrica (~2x), âncora no centro dos pés. `dir` é a direção no plano do mundo. */
   isoCharacterSprite?(req: CharacterFrameRequest): Sprite;
+  /**
+   * (Opcional, aditivo) Esquece os sprites isométricos de personagem das aparências que não estão em `keep` (quem saiu
+   * do escritório). Devolve quantos saíram.
+   */
+  isoCharacterForget?(keep: readonly Appearance[]): number;
+  /** (Opcional, aditivo) Pixels RGBA de um sprite de móvel ou parede, se a arte ainda tem o buffer (sem ler o canvas). */
+  spritePixels?(canvas: HTMLCanvasElement): { data: Uint8ClampedArray; w: number; h: number } | undefined;
   /** (Opcional, aditivo) Parede isométrica; âncora no canto de trás do footprint (comprimento x espessura). */
   isoWall?(style: WallStyle, spec: IsoWallSpec): Sprite;
   /**

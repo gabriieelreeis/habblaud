@@ -165,6 +165,9 @@ do meio (0.**3**.0).
 
 ### Corrigido
 
+- **Escritório isométrico sem engasgos:** quem troca de pose (festa, pipoca, rodas) não trava mais a tela por um
+  instante. Os desenhos de cada pessoa ficam prontos aos poucos, nas folgas, antes de aparecer, e o escritório não lê
+  mais pixels de volta da placa de vídeo durante o uso; os desenhos de quem vai embora são descartados.
 - **Escritório isométrico:** o cenário (paredes, móveis, plantas, postes) é pintado uma vez só e não muda mais conforme
   quem passa perto (na área do bebedouro, a ordem de quem ficava na frente trocava); cada pessoa fica escondida só
   onde o cenário está na frente dela. Quem senta no sofá, na poltrona, no banco e no pufe fica no assento, com o encosto

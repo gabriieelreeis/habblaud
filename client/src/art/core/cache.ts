@@ -8,6 +8,10 @@ export class Cache<T> {
     return this.map.size;
   }
 
+  delete(key: string): boolean {
+    return this.map.delete(key);
+  }
+
   get(key: string, make: () => T): T {
     let v = this.map.get(key);
     if (v === undefined) {
