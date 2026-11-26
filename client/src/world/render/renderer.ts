@@ -1098,7 +1098,19 @@ export class Renderer {
   }
 
   /** Base (e encosto/porta, se houver) de um móvel como pedaços com caixa no chão. */
+  private piecesCache = new WeakMap<FurnVis, { state: number; theme: SeasonalTheme; pieces: Piece[] }>();
+
+  /** Os pedaços de um móvel, os mesmos objetos enquanto o estado e o tema não mudam (para os caches por pedaço). */
   private furnPieces(f: FurnVis, vis: AreaVis, now: number): Piece[] {
+    const state = this.furnState(f, now);
+    const hit = this.piecesCache.get(f);
+    if (hit && hit.state === state && hit.theme === this.theme) return hit.pieces;
+    const pieces = this.makeFurnPieces(f, vis, now);
+    this.piecesCache.set(f, { state, theme: this.theme, pieces });
+    return pieces;
+  }
+
+  private makeFurnPieces(f: FurnVis, vis: AreaVis, now: number): Piece[] {
     // enfeite de época no lugar de uma planta (árvore de Natal, abóbora...): sprite de frente, no centro do footprint
     const deco = seasonalFurniture(this.theme, f.kind, vis.layout, f.seed);
     if (deco) {
