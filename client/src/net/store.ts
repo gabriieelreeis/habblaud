@@ -5,7 +5,22 @@
 // Também cuida da reconexão: quando o navegador desiste do stream (EventSource fechado após erro HTTP,
 // ex.: servidor reiniciando atrás de um proxy), tenta de novo com espera crescente.
 import type { AppearanceParts } from '../../../shared/appearance';
-import type { Activity, AgentDetail, AgentInfo, FeedItem, Notice, OfficeParty, OfficeSnapshot, OutboxMessage, PermissionDecision, PermissionRequestInfo, RoomInfo } from '../../../shared/types';
+import type {
+  Activity,
+  AgentDetail,
+  AgentInfo,
+  ControlKind,
+  ControlState,
+  FeedItem,
+  ModelOption,
+  Notice,
+  OfficeParty,
+  OfficeSnapshot,
+  OutboxMessage,
+  PermissionDecision,
+  PermissionRequestInfo,
+  RoomInfo,
+} from '../../../shared/types';
 import { DemoSimulator } from '../../../shared/demo/simulator';
 import { PARTY_DEFAULT_MS, pickPartyRoom } from '../../../shared/party';
 import { tr } from '../../../shared/i18n';
@@ -412,6 +427,41 @@ export class OfficeStore {
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(tr('erro {0}', [res.status]));
     return (await res.json()) as OutboxMessage;
+  }
+
+  /** Troca o modelo ou o esforço do agente (POST /api/controls). */
+  async sendControl(req: { agentId: string; kind: ControlKind; value: string; variant?: string; asDefault?: boolean }): Promise<{ control: ControlState } | { error: string }> {
+    if (this.mock) return { error: tr('a troca de modelo e esforço não funciona no modo demonstração') };
+    let res: Response;
+    try {
+      res = await fetch('/api/controls', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
+    } catch {
+      return { error: tr('sem conexão com o Habblaud') };
+    }
+    const body = (await res.json().catch(() => undefined)) as { error?: unknown } | undefined;
+    if (res.status === 201 && body && typeof body === 'object') return { control: body as unknown as ControlState };
+    return { error: typeof body?.error === 'string' ? body.error : tr('erro {0}', [res.status]) };
+  }
+
+  /** Situação de uma troca (GET /api/controls/:id). null = o servidor não a conhece. Sem conexão: lança. */
+  async controlStatus(id: string): Promise<ControlState | null> {
+    const res = await fetch(`/api/controls/${encodeURIComponent(id)}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(tr('erro {0}', [res.status]));
+    return (await res.json()) as ControlState;
+  }
+
+  /** Modelos do OpenCode para o agente (GET /api/controls/models). */
+  async controlModels(agentId: string): Promise<{ models: ModelOption[] } | { error: string }> {
+    if (this.mock) return { models: [] };
+    try {
+      const res = await fetch(`/api/controls/models?agentId=${encodeURIComponent(agentId)}`);
+      const body = (await res.json().catch(() => undefined)) as { models?: unknown; error?: unknown } | undefined;
+      if (res.ok && Array.isArray(body?.models)) return { models: body.models as ModelOption[] };
+      return { error: typeof body?.error === 'string' ? body.error : tr('erro {0}', [res.status]) };
+    } catch {
+      return { error: tr('sem conexão com o Habblaud') };
+    }
   }
 
   /** Mensagens do ?mock=1 (entregues pelo simulador depois de ~1 s). */

@@ -2459,40 +2459,126 @@
   font-weight: 500;
 }
 
-.ui-effort {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 6px;
+.ui-ctl {
+  display: grid;
+  gap: 10px;
 }
 
-.ui-effort__select {
-  max-width: 132px;
-  height: 24px;
-  padding: 0 4px;
+.ui-ctl__row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: start;
+}
+
+.ui-ctl__label {
+  padding-top: 7px;
+  color: var(--ui-muted);
+  font-size: 12px;
+}
+
+.ui-ctl__field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ui-ctl__select,
+.ui-ctl__input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px;
   border: 1px solid var(--ui-line-strong);
   border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.25);
   color: var(--ui-text);
-  font: 500 11.5px/1 var(--font-ui);
+  font: 500 12.5px/1 var(--font-ui);
+}
+
+.ui-ctl__select {
   cursor: pointer;
 }
 
-.ui-effort__select:disabled {
+.ui-ctl__select option,
+.ui-ctl__select optgroup {
+  background: var(--ui-bg-solid);
+  color: var(--ui-text);
+}
+
+.ui-ctl__select:disabled,
+.ui-ctl__input:disabled {
   cursor: default;
   opacity: 0.6;
 }
 
-.ui-effort__status {
-  width: 100%;
-  color: var(--ui-muted);
-  font-size: 11px;
-  font-weight: 400;
+.ui-ctl__other {
+  display: flex;
+  gap: 6px;
 }
 
-.ui-effort__status.is-error {
+.ui-ctl__now {
+  margin: 0;
+  color: var(--ui-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.ui-ctl__default {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ui-muted);
+  cursor: pointer;
+}
+
+.ui-ctl__check {
+  margin: 0;
+  accent-color: var(--st-working);
+}
+
+.ui-ctl__default:has(.ui-ctl__check:disabled) {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.ui-ctl__status {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ui-muted);
+  overflow-wrap: anywhere;
+}
+
+.ui-ctl__status.is-ok {
+  color: #b9f2d2;
+}
+
+.ui-ctl__status.is-error {
   color: #ffb3aa;
+}
+
+@media (max-width: 600px) {
+  .ui-ctl__row {
+    grid-template-columns: 1fr;
+  }
+
+  .ui-ctl__label {
+    padding-top: 0;
+  }
+
+  .ui-ctl__select,
+  .ui-ctl__input {
+    height: 40px;
+    font-size: 16px;
+  }
+
+  .ui-ctl__default {
+    min-height: 32px;
+    font-size: 13px;
+  }
 }
 
 .ui-lines {
