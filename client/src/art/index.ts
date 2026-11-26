@@ -153,7 +153,9 @@ export function avatarCanvas(seed: number, opts: { look?: 'f' | 'm'; sub?: boole
     // Busto do personagem novo, de frente: cabeça e ombros (24x24 a partir do alto do cabelo).
     const look = lookFromAppearance(appearanceFromSeed(seed, opts));
     const s = renderAvatar(look, 's', { pose: 'stand', frame: 0 });
-    const crop = s.buf.crop(BUST.x, BUST.y, BUST.w, BUST.h);
+    // do alto do cabelo ou do chapéu para baixo, para nada ficar cortado
+    const top = Math.max(0, opaqueRect(s.buf).y - 1);
+    const crop = s.buf.crop(BUST.x, Math.min(top, s.buf.h - BUST.h), BUST.w, BUST.h);
     const out = new PixelBuf(crop.w * scale, crop.h * scale);
     for (let y = 0; y < out.h; y++) {
       for (let x = 0; x < out.w; x++) {
@@ -169,8 +171,8 @@ export function avatarCanvas(seed: number, opts: { look?: 'f' | 'm'; sub?: boole
   });
 }
 
-/** Recorte do busto na folha do personagem (a cabeça fica nas linhas 12 a 31, os ombros logo abaixo). */
-const BUST = { x: 8, y: 10, w: 24, h: 24 } as const;
+/** Tamanho do busto na folha do personagem; o alto sai do próprio desenho. */
+const BUST = { x: 8, w: 24, h: 24 } as const;
 
 const avatarViewCache = new Cache<HTMLCanvasElement>(1500);
 
