@@ -10,6 +10,7 @@ import type { Camera } from '../camera';
 import { BUILDING_H, COL_W, CORE_COLS, CORRIDOR_Y } from '../constants';
 import { FLOOR_MATRIX, WALL_H, drawsBefore, fromIso, isoBounds, isoSort, isoX, isoY, type Box, type IsoRect, type Sortable } from '../iso';
 import { layoutExterior, slotShell, type ExteriorLayout, type SlotShell } from '../layout/exterior';
+import { SEAT_FOOT_DY } from '../layout/builder';
 import { slotAt } from '../layout/geometry';
 import type { AreaLayout, ExteriorProp } from '../layout/types';
 import { screenModeFor } from '../sim/behavior';
@@ -107,6 +108,11 @@ const CHAR_SCALE = 2;
 const ART_K = 1.5;
 /** Meia largura (px de mundo) da caixa de um personagem no chão. */
 const CHAR_R = 4;
+/**
+ * Quem senta fica no ponto do assento da planta antiga: 3 px acima da borda de baixo do tile (para a arte vista de
+ * cima). Na isométrica, o quadril vai no centro do tile: sobe isto (TILE/2 − SEAT_FOOT_DY).
+ */
+const SEAT_SHIFT = TILE / 2 - SEAT_FOOT_DY;
 /** Quanto o personagem da arte antiga (ampliada) sobe sentado, para assentar na altura do assento. */
 const SEAT_LIFT = 4;
 /** Margem do canvas de rascunho dos itens de parede (contorno da TV nova passa da tela). */
@@ -585,7 +591,7 @@ export class Renderer {
       head.visible = false;
       if (ch.inside || ch.alpha <= 0.01 || now < ch.hiddenUntil) continue;
       const x = ch.x + ch.offX;
-      const y = ch.y + ch.offY;
+      const y = ch.y + ch.offY - (ch.seated ? SEAT_SHIFT : 0);
       const ix = isoX(x, y);
       const iy = isoY(x, y);
       const rect = { x: ix - 20, y: iy - 56, w: 40, h: 62 };
@@ -595,7 +601,9 @@ export class Renderer {
         head.feetY = iy;
         continue;
       }
-      push(K.Char, { x0: x - CHAR_R, y0: y - CHAR_R, x1: x + CHAR_R, y1: y + CHAR_R }, rect, ch, null, 0.5);
+      // sentado: a caixa é a do assento, entre a base (atrás) e o encosto/porta (na frente)
+      const seat = ch.seated ? this.seatBox(ch) : null;
+      push(K.Char, seat ?? { x0: x - CHAR_R, y0: y - CHAR_R, x1: x + CHAR_R, y1: y + CHAR_R }, rect, ch, null, 0.5);
     }
     for (const prop of this.exterior.props) {
       if (this.layered.has(prop)) continue;
@@ -729,6 +737,27 @@ export class Renderer {
     const r = p.kind === 'tree' || p.kind === 'pine' ? 8 : 4;
     return { x0: p.x - r, y0: p.y - r, x1: p.x + r, y1: p.y + r };
   }
+
+  /** Caixa do móvel em que o personagem está sentado (null se não achar). */
+  private seatBox(ch: Character): Box | null {
+    const spot = ch.atSpot ? this.sim.spots.get(ch.atSpot) : undefined;
+    const id = spot?.furnitureId;
+    if (!id) return null;
+    if (this.furnByIdAt !== this.layoutVersion) {
+      this.furnByIdAt = this.layoutVersion;
+      this.furnById.clear();
+    }
+    let f = this.furnById.get(id);
+    if (f === undefined) {
+      const vis = this.areas.get(spot.areaId);
+      f = vis?.furniture.find((q) => q.id === id) ?? null;
+      this.furnById.set(id, f);
+    }
+    return f?.box ?? null;
+  }
+
+  private furnById = new Map<string, FurnVis | null>();
+  private furnByIdAt = -1;
 
   private headOf(ch: Character): HeadInfo {
     let h = this.heads.get(ch.id);
@@ -1021,7 +1050,7 @@ export class Renderer {
 
   private isoSprites(f: FurnVis, state: number) {
     try {
-      return this.art.isoFurnitureSprites?.(f.kind, f.variant, state, { seed: f.seed }) ?? null;
+      return this.art.isoFurnitureSprites?.(f.kind, f.variant, state, { seed: f.seed, facing: f.facing }) ?? null;
     } catch {
       return null;
     }
@@ -1339,7 +1368,7 @@ export class Renderer {
     const { ctx } = this;
     const head = this.headOf(ch);
     const wx = ch.x + ch.offX;
-    const wy = ch.y + ch.offY;
+    const wy = ch.y + ch.offY - (ch.seated ? SEAT_SHIFT : 0);
     const x = Math.round(isoX(wx, wy));
     const y = Math.round(isoY(wx, wy));
     if (ch.pose === 'walk' || ch.pose === 'run') this.motion = true;

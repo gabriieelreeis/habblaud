@@ -10,6 +10,7 @@ import {
   type Appearance,
   type ArtModule,
   type CharacterFrameRequest,
+  type Dir,
   type Doorway,
   type FloorKind,
   type FurnitureKind,
@@ -142,11 +143,12 @@ const isoCharCache = new Cache<Sprite>(20000);
 const isoWallCache = new Cache<Sprite>(1500);
 
 /** Móvel de chão na visão isométrica: âncora no canto de trás (noroeste) do footprint. */
-export function isoFurnitureSprites(kind: FurnitureKind, variant?: string, state?: number, opts: { seed?: number } = {}): FurnitureSprites {
+export function isoFurnitureSprites(kind: FurnitureKind, variant?: string, state?: number, opts: { seed?: number; facing?: Dir } = {}): FurnitureSprites {
   const n = normalizeFurniture(kind, variant, state, opts.seed);
-  const key = `${kind}|${n.variant ?? '-'}|${n.state}|${n.vseed}`;
+  const facing = opts.facing ?? 'down';
+  const key = `${kind}|${n.variant ?? '-'}|${n.state}|${n.vseed}|${facing}`;
   return isoFurnCache.get(key, () => {
-    const f = renderIsoFurniture(kind, n.variant, n.state, n.vseed);
+    const f = renderIsoFurniture(kind, n.variant, n.state, n.vseed, facing);
     return { base: toSprite(f.base), front: f.front ? toSprite(f.front) : undefined };
   });
 }

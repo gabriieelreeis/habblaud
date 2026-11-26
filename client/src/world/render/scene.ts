@@ -1,6 +1,6 @@
 // Representação visual das áreas: caches estáticos (piso, paredes, itens de parede fixos) e
 // listas de móveis/itens dinâmicos prontos para o desenho por frame.
-import { FURNITURE, TILE, type ArtModule, type FurnitureKind, type FurnitureSprites, type Sprite } from '../../art/api';
+import { FURNITURE, TILE, type ArtModule, type Dir, type FurnitureKind, type FurnitureSprites, type Sprite } from '../../art/api';
 import { hash32 } from '../../../../shared/hash';
 import type { AreaLayout, WallItemPlacement, WallSegment } from '../layout/types';
 import type { RoomState } from '../sim/room-state';
@@ -8,6 +8,7 @@ import type { WallArtAsset, WorldAssets } from '../assets';
 import type { SeasonalTheme } from '../api';
 import { decorateSeasonalRug, decorateSeasonalWall, seasonalRugColor, seasonalWallStyle } from './seasonal';
 import type { Box } from '../iso';
+import { furnitureFacing } from '../layout/facing';
 import type { IsoAreaVis } from './iso-area';
 
 /** Margem acima da área no cache de paredes (itens que passam do topo da face). */
@@ -28,6 +29,8 @@ export interface FurnVis {
   areaId: string;
   /** Caixa do footprint no chão (px de mundo, com o deslocamento do desenho): ordem de desenho na visão isométrica. */
   box: Box;
+  /** Para onde a frente aponta (layout/facing.ts). */
+  facing: Dir;
   /** Mesa: spot do assento cuja atividade aparece na tela. */
   seatSpot?: string;
   /** Sprites por estado (resolvidos sob demanda). */
@@ -230,6 +233,7 @@ export function buildAreaVis(art: ArtModule, layout: AreaLayout, room: RoomState
       seed: hash32(f.id),
       ax,
       ay,
+      facing: furnitureFacing(layout, f),
       box: { x0: f.tx * TILE + (f.dx ?? 0), y0: f.ty * TILE + (f.dy ?? 0), x1: (f.tx + def.footprint.w) * TILE + (f.dx ?? 0), y1: (f.ty + def.footprint.h) * TILE + (f.dy ?? 0) },
       order: f.order,
       areaId: layout.id,

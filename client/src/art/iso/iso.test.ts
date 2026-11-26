@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { FURNITURE, type FurnitureKind } from '../api';
+import { FURNITURE, type Dir, type FurnitureKind } from '../api';
+import { PixelBuf } from '../core/pixbuf';
+import { SEAT_Z } from './office';
 import { renderIsoCar } from './car';
 import { renderTallElevator } from './elevator';
 import { renderIsoFurniture } from './index';
@@ -79,5 +81,59 @@ describe('paredes, elevador e carros', () => {
     expect(closed.buf.countOpaque()).toBeGreaterThan(0);
     expect(open.buf.countOpaque()).toBeGreaterThan(0);
     for (const dir of [1, -1] as const) expect(renderIsoCar(3, dir).buf.countOpaque()).toBeGreaterThan(100);
+  });
+});
+
+describe('encosto do lado oposto ao olhar', () => {
+  /** Lado (na tela) da parte alta do assento: < 0 à esquerda do centro do footprint, > 0 à direita. */
+  const backSide = (kind: FurnitureKind, variant: string): number => {
+    const f = renderIsoFurniture(kind, variant);
+    const fp = FURNITURE[kind].footprint;
+    const W = 160;
+    const H = 120;
+    const all = new PixelBuf(W, H);
+    const ox = 80;
+    const oy = 80;
+    all.draw(f.base.buf, ox - f.base.ax, oy - f.base.ay);
+    if (f.front) all.draw(f.front.buf, ox - f.front.ax, oy - f.front.ay);
+    const cx = ox + (fp.w * 16 - fp.h * 16) / 2;
+    const top = oy + (fp.w * 16 + fp.h * 16) / 4 - (SEAT_Z + 7);
+    let sum = 0;
+    let n = 0;
+    for (let y = 0; y < top; y++)
+      for (let x = 0; x < W; x++)
+        if (all.alpha(x, y) > 0) {
+          sum += x - cx;
+          n++;
+        }
+    return n ? sum / n : 0;
+  };
+  // olhar para o norte ou para o leste põe o encosto à esquerda na tela; para o sul ou para o oeste, à direita. Encosto ao
+  // sul ou ao leste (olhar 'up' ou 'left') fica no front, por cima de quem senta; os braços da frente também podem ficar
+  const expected: Record<Dir, { side: number; front: boolean | null }> = {
+    up: { side: -1, front: true },
+    down: { side: 1, front: null },
+    left: { side: 1, front: true },
+    right: { side: -1, front: null },
+  };
+  for (const kind of ['cafe_chair', 'armchair'] as const) {
+    for (const d of ['up', 'down', 'left', 'right'] as const) {
+      it(`${kind} olhando ${d}`, () => {
+        expect(Math.sign(backSide(kind, d))).toBe(expected[d].side);
+        if (expected[d].front !== null) expect(!!renderIsoFurniture(kind, d).front).toBe(expected[d].front);
+      });
+    }
+  }
+  it('sofá: o encosto ao sul (olhando para o norte) fica no front; ao norte, na base', () => {
+    expect(renderIsoFurniture('sofa', 'up').front).toBeDefined();
+    expect(renderIsoFurniture('sofa', 'down').front).toBeUndefined();
+  });
+  it('móveis de parede: espelho para o leste e costas para o norte', () => {
+    const south = renderIsoFurniture('binder_shelf', undefined, 0, 0, 'down');
+    const east = renderIsoFurniture('binder_shelf', undefined, 0, 0, 'right');
+    const north = renderIsoFurniture('binder_shelf', undefined, 0, 0, 'up');
+    expect(east.base.buf.w).toBe(south.base.buf.w);
+    expect(east.base.ax).toBe(south.base.buf.w - south.base.ax);
+    expect(north.base.buf.countOpaque()).toBeGreaterThan(200);
   });
 });

@@ -391,7 +391,7 @@ export interface ArtModule {
    * (Opcional, aditivo) Visão isométrica 2:1 (ver client/src/world/iso.ts). Móvel de chão com âncora no canto de trás
    * (noroeste) do footprint; rects.screen e afins podem ter `skew` (tela numa face inclinada).
    */
-  isoFurnitureSprites?(kind: FurnitureKind, variant?: string, state?: number, opts?: { seed?: number }): FurnitureSprites;
+  isoFurnitureSprites?(kind: FurnitureKind, variant?: string, state?: number, opts?: { seed?: number; facing?: Dir }): FurnitureSprites;
   /** (Opcional, aditivo) Personagem da visão isométrica (~2x), âncora no centro dos pés. `dir` é a direção no plano do mundo. */
   isoCharacterSprite?(req: CharacterFrameRequest): Sprite;
   /** (Opcional, aditivo) Parede isométrica; âncora no canto de trás do footprint (comprimento x espessura). */
