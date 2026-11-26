@@ -36,6 +36,9 @@ import { PermissionSettingsStore } from './permissions/settings';
 import { codexAccountOf } from './codex/http';
 import { createCodexQueueRunner, findCodexBin } from './messages/codex';
 import { createMessageRoutes } from './messages/http';
+import { ClaudeDefaultsService } from './claude-defaults/service';
+import { ControlRegistry } from './controls/controls';
+import { createControlRoutes } from './controls/http';
 import { MessageRegistry } from './messages/registry';
 import type { CodexLive } from './sources/codex/live';
 import { ClaudeWatcher } from './sources/watcher';
@@ -146,7 +149,13 @@ const office = new Office({
 // Fontes de agentes, uma por ferramenta (sources/source.ts): a do Claude Code e, depois dela, a do Codex (quando há
 // pastas do Codex; HABBLAUD_CODEX=0 desliga), com o histórico dela no HistorySet abaixo e as contas registradas por
 // ela mesma (accounts.setProviderAccounts). `codex` também recebe os eventos dos hooks do Codex (CodexLive).
-const claude = new ClaudeWatcher({ accounts, office, inDocker: config.inDocker });
+// Padrões do Claude Code (settings.json) e opções de abertura das sessões em segundo plano: o esforço de cada sessão e
+// a troca só na sessão pela gaveta. No Docker, pelo auxiliar do host.
+const claudeDefaults = new ClaudeDefaultsService({
+  direct: !config.inDocker,
+  accounts: () => accounts.entriesOf('claude').map((e) => ({ id: e.id, configDir: e.detected.configDir, dir: e.dir })),
+});
+const claude = new ClaudeWatcher({ accounts, office, inDocker: config.inDocker, defaults: claudeDefaults });
 const agents = new SourceSet([claude]);
 const codexDirs = config.codex ? discoverCodexDirs(process.env, config.home) : [];
 const codex = codexDirs.length ? new CodexSource({ accounts, office, dirs: codexDirs, env: process.env, home: config.home }) : undefined;
@@ -326,6 +335,17 @@ const messages = config.messages
     })
   : undefined;
 late.messages = messages;
+const controls = messages
+  ? new ControlRegistry({
+      agent: (id) => office.get(id),
+      send: (agentId, text) => messages.send({ agentId, text }),
+      message: (id) => messages.get(id),
+      defaults: claudeDefaults,
+      opencode: opencode
+        ? { available: () => opencode.isReachable(), selectModel: (sid, model, variant) => opencode.selectModel(sid, model, variant), models: () => opencode.models() }
+        : undefined,
+    })
+  : undefined;
 // Imagens nas mensagens (messages/images.ts): gravadas em ~/.habblaud/attachments (no Docker, na montagem gravável).
 const messageImages = messages && config.messageImages ? new MessageImages(config.messageImages) : undefined;
 
@@ -403,6 +423,8 @@ if (timeline) {
 }
 permissions?.start();
 messages?.start();
+claudeDefaults.start();
+controls?.start();
 presentations?.start();
 stats.start();
 updates.start();
@@ -453,6 +475,8 @@ const api = createApiHandler({
   permissions: permissions ? createPermissionRoutes(permissions, permissionSettings) : undefined,
   questionAudio,
   messages: messages ? createMessageRoutes(messages, messageImages) : undefined,
+  controls: controls ? createControlRoutes(controls) : undefined,
+  claudeDefaults: controls ? claudeDefaults : undefined,
   messageImages: !!messages && !!messageImages,
   pty: ptys ? createPtyRoutes(ptys) : undefined,
   spawn,
@@ -660,6 +684,8 @@ function shutdown(signal: string): void {
   timeline?.stop();
   permissions?.stop();
   messages?.stop();
+  claudeDefaults.stop();
+  controls?.stop();
   presentations?.stop();
   ptys?.stopAll();
   updates.stop();
