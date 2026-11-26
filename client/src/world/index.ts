@@ -200,7 +200,9 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     const r = room.layout.rect;
     const rect = isoBounds({ x0: r.x * TILE, y0: (r.y + 2) * TILE, x1: (r.x + r.w) * TILE, y1: (r.y + r.h) * TILE }, WALL_H);
     const fit = camera.fitZoom(rect, 32);
-    const zoom = Math.min(4, Math.max(camera.minZoom, camera.snapZoom(fit, 'down')));
+    // o nível nítido mais próximo, se passar do encaixe só um pouco (a margem absorve); senão, o de baixo
+    const near = camera.snapZoom(fit, 'nearest');
+    const zoom = Math.min(4, Math.max(camera.minZoom, near <= fit * 1.12 ? near : camera.snapZoom(fit, 'down')));
     const c = camera.centerFor(rect.x + rect.w / 2, rect.y + rect.h / 2, zoom);
     camera.animateTo(c.x, c.y, zoom, Date.now(), 420);
   };
