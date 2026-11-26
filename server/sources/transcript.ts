@@ -121,6 +121,12 @@ export interface TranscriptState {
   stats: AgentStats;
   costSeen: boolean;
   model?: string;
+  /** Quando veio a última resposta com modelo. */
+  modelAt?: number;
+  /** Último /effort que a sessão aplicou (a saída gravada na conversa). */
+  effortCmd?: { level: string; at: number };
+  /** Último /model que a sessão aplicou. */
+  modelCmd?: { label: string; at: number };
   gitBranch?: string;
   permissionMode?: string;
   firstAt?: number;
@@ -262,6 +268,31 @@ export function backgroundIdOf(tur: Record<string, unknown>, content: unknown, t
 }
 
 const INTERRUPTED = /^\[Request interrupted by user/;
+const COMMAND_STDOUT = /^<local-command-stdout>([\s\S]*?)(?:<\/local-command-stdout>|$)/;
+const ANSI = /\u001b\[[0-9;]*m/g;
+const EFFORT_OUTPUTS: RegExp[] = [
+  /^Set effort level to ([\w-]+)/,
+  /^Effort '[^']*' exceeds the cap\b[^;]*; set to '([\w-]+)' instead/,
+  /^Current effort level: ([\w-]+)/,
+  /^(?:Effort level: |Effort level set to |Effort set to )(auto)\b/,
+];
+const MODEL_OUTPUTS: RegExp[] = [/^Set model to (.+?)(?= and saved as your default| for this session only| with \S+ effort| · |\n|$)/, /^Kept model as (.+?)(?= · |\n|$)/];
+
+/** Saída de um comando local (`/effort`, `/model`) que muda o esforço ou o modelo da sessão. */
+export function commandOutputOf(text: string): { effort?: string; model?: string } | undefined {
+  const body = COMMAND_STDOUT.exec(text)?.[1]?.replace(ANSI, '').replace(/[`*]/g, '').trim();
+  if (!body) return undefined;
+  for (const re of EFFORT_OUTPUTS) {
+    const level = re.exec(body)?.[1];
+    if (level) return { effort: level.toLowerCase() };
+  }
+  for (const re of MODEL_OUTPUTS) {
+    const model = re.exec(body)?.[1]?.trim();
+    if (model) return { model: truncate(model, 80) };
+  }
+  return undefined;
+}
+
 const REJECTED = /doesn't want to proceed|tool use was rejected|user rejected/i;
 // Mensagens "de sistema" gravadas como user (comandos locais, lembretes, saída de bash...).
 const SYSTEM_TAG = /^<(local-command-[\w-]+|command-stdout|command-stderr|system-reminder|bash-[\w-]+|user-memory-input|user-prompt-submit-hook|persisted-output)\b/;
@@ -422,9 +453,12 @@ class LineParser {
       s.fork = undefined;
     }
     const model = str(m.model);
-    if (model && model !== '<synthetic>' && model !== s.model) {
-      s.model = model;
-      this.changed();
+    if (model && model !== '<synthetic>') {
+      s.modelAt = this.at;
+      if (model !== s.model) {
+        s.model = model;
+        this.changed();
+      }
     }
     const msgId = str(m.id) ?? str(j.requestId) ?? str(j.uuid) ?? `x${++s.seq}`;
     this.usage(msgId, m.usage);
@@ -570,6 +604,7 @@ class LineParser {
     if (!text) return;
     if (text.startsWith('<task-notification>')) return this.notification(text, true);
     if (INTERRUPTED.test(text)) return this.interrupted();
+    if (text.startsWith('<local-command-stdout>')) return this.commandOutput(text);
     if (SYSTEM_TAG.test(text) || text.startsWith('Caveat:')) return;
     let prompt = text;
     if (/^<command-(name|message|args)>/.test(text)) {
@@ -581,6 +616,14 @@ class LineParser {
     this.s.ended = false;
     this.meta('lastPrompt', truncate(maskSecrets(prompt.slice(0, 1_000)), 200));
     this.push(describePrompt(prompt));
+  }
+
+  private commandOutput(text: string): void {
+    const out = commandOutputOf(text);
+    if (out?.effort) this.s.effortCmd = { level: out.effort, at: this.at };
+    else if (out?.model) this.s.modelCmd = { label: out.model, at: this.at };
+    else return;
+    this.changed();
   }
 
   private notification(text: string, withActivity: boolean): void {
@@ -829,6 +872,9 @@ export function mergePrefix(state: TranscriptState, prefix: TranscriptState): vo
   state.aiTitle ??= prefix.aiTitle;
   state.lastPrompt ??= prefix.lastPrompt;
   state.model ??= prefix.model;
+  state.modelAt ??= prefix.modelAt;
+  state.effortCmd ??= prefix.effortCmd;
+  state.modelCmd ??= prefix.modelCmd;
   state.gitBranch ??= prefix.gitBranch;
   state.permissionMode ??= prefix.permissionMode;
   if (prefix.firstAt !== undefined && (state.firstAt === undefined || prefix.firstAt < state.firstAt)) state.firstAt = prefix.firstAt;
