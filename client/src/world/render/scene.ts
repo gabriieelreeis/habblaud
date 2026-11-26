@@ -1,12 +1,15 @@
 // Representação visual das áreas: caches estáticos (piso, paredes, itens de parede fixos) e
 // listas de móveis/itens dinâmicos prontos para o desenho por frame.
-import { FURNITURE, TILE, type ArtModule, type FurnitureKind, type FurnitureSprites, type Sprite } from '../../art/api';
+import { FURNITURE, TILE, type ArtModule, type Dir, type FurnitureKind, type FurnitureSprites, type Sprite } from '../../art/api';
 import { hash32 } from '../../../../shared/hash';
 import type { AreaLayout, WallItemPlacement, WallSegment } from '../layout/types';
 import type { RoomState } from '../sim/room-state';
 import type { WallArtAsset, WorldAssets } from '../assets';
 import type { SeasonalTheme } from '../api';
 import { decorateSeasonalRug, decorateSeasonalWall, seasonalRugColor, seasonalWallStyle } from './seasonal';
+import type { Box } from '../iso';
+import { furnitureFacing } from '../layout/facing';
+import type { IsoAreaVis } from './iso-area';
 
 /** Margem acima da área no cache de paredes (itens que passam do topo da face). */
 export const WALL_MARGIN = 16;
@@ -24,6 +27,10 @@ export interface FurnVis {
   ay: number;
   order: number;
   areaId: string;
+  /** Caixa do footprint no chão (px de mundo, com o deslocamento do desenho): ordem de desenho na visão isométrica. */
+  box: Box;
+  /** Para onde a frente aponta (layout/facing.ts). */
+  facing: Dir;
   /** Mesa: spot do assento cuja atividade aparece na tela. */
   seatSpot?: string;
   /** Sprites por estado (resolvidos sob demanda). */
@@ -53,6 +60,8 @@ export interface AreaVis {
   wallItems: WallVis[];
   sign?: WallVis;
   version: number;
+  /** Visuais da visão isométrica (piso projetado, paredes fatiadas, itens de parede animados). */
+  iso?: IsoAreaVis;
 }
 
 function makeCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
@@ -144,9 +153,6 @@ function drawWallSegment(art: ArtModule, ctx: CanvasRenderingContext2D, w: WallS
   }
 }
 
-/** Topo (px acima do rodapé) de quadros e pôsteres na face da parede (logo abaixo da tampa). */
-const WALL_ART_TOP = 28;
-
 /**
  * Arte gerada por IA para um quadro/pôster: só do tamanho do lugar (quadros de 2 tiles nunca
  * recebem as pinturas largas); pôsteres preferem a mesma variante do procedural. Puro.
@@ -160,38 +166,6 @@ export function pickWallArt(assets: WorldAssets | null, kind: 'painting' | 'post
   }
   if (!pool.length) return null;
   return pool[(seed >>> 0) % pool.length];
-}
-
-/**
- * Desenha a arte pronta (com moldura/contorno próprios) no lugar do item procedural, em tamanho
- * nativo e pixels inteiros. Retorna false se o asset não tem versão pronta (pintura sem moldura).
- */
-function drawWallArtAsset(ctx: CanvasRenderingContext2D, item: WallVis, a: WallArtAsset): boolean {
-  const img = a.framed ?? (a.kind === 'poster' ? a : null);
-  if (!img) return false;
-  const x = Math.round(item.cx - img.w / 2);
-  const y = item.baseY - WALL_ART_TOP;
-  // sombra suave na parede (direita e embaixo), como nos itens procedurais
-  ctx.fillStyle = 'rgba(30,34,52,0.16)';
-  ctx.fillRect(x + img.w, y + 1, 1, img.h);
-  ctx.fillRect(x + 1, y + img.h, img.w, 1);
-  ctx.drawImage(img.img, x, y);
-  return true;
-}
-
-/** Pintura sem moldura pronta: recorte central em tamanho nativo dentro da moldura procedural. */
-function drawRawPainting(ctx: CanvasRenderingContext2D, s: Sprite, ox: number, oy: number, a: WallArtAsset): void {
-  let r = s.rects?.art;
-  if (!r) {
-    const b = opaqueBounds(s.canvas);
-    r = { x: b.x + 2, y: b.y + 2, w: b.w - 4, h: b.h - 4 };
-  }
-  if (r.w <= 2 || r.h <= 2) return;
-  const sw = Math.min(a.w, r.w);
-  const sh = Math.min(a.h, r.h);
-  const sx = Math.floor((a.w - sw) / 2);
-  const sy = Math.floor((a.h - sh) / 2);
-  ctx.drawImage(a.img, sx, sy, sw, sh, ox + r.x + Math.floor((r.w - sw) / 2), oy + r.y + Math.floor((r.h - sh) / 2), sw, sh);
 }
 
 /** Tom leve da sala sobre o piso (multiplicação: mantém veios e rejunte). */
@@ -236,30 +210,15 @@ export function buildAreaVis(art: ArtModule, layout: AreaLayout, room: RoomState
     decorateSeasonalRug(fctx, theme, rug);
   }
 
-  // ---- paredes + itens de parede fixos
-  const [walls, wctx] = makeCanvas(px.w, px.h + WALL_MARGIN);
-  wctx.translate(-px.x, -px.y + WALL_MARGIN);
-  const order = { face: 0, south: 1, cap: 2 } as const;
-  for (const w of [...layout.walls].sort((a, b) => order[a.kind] - order[b.kind])) drawWallSegment(art, wctx, { ...w, style: seasonalWallStyle(theme, w.style) });
-  for (const w of layout.walls) decorateSeasonalWall(wctx, theme, w);
-
+  // ---- itens de parede: os animados ficam na lista; paredes e itens fixos são desenhados na visão isométrica (iso-area.ts)
+  const walls = makeCanvas(1, 1)[0];
   const wallItems: WallVis[] = [];
   let sign: WallVis | undefined;
   for (const it of layout.wallItems) {
+    if (!DYNAMIC_WALL.has(it.kind)) continue;
     const vis = toWallVis(it, layout.id);
-    if (DYNAMIC_WALL.has(it.kind)) {
-      if (it.kind === 'sign') sign = vis;
-      else wallItems.push(vis);
-      continue;
-    }
-    // quadros e pôsteres: arte de IA pronta (quando houver) no lugar do procedural
-    const ai = it.kind === 'painting' || it.kind === 'poster' ? pickWallArt(assets, it.kind, it.kind === 'poster' ? 1 : it.variant === 'wide' ? 4 : 2, it.variant, vis.seed) : null;
-    if (ai && vis.on === 'face' && drawWallArtAsset(wctx, vis, ai)) continue;
-    const s = wallSprites(art, it.kind, it.variant === 'wide' ? undefined : it.variant, 0, vis.seed);
-    if (!s) continue;
-    const o = wallItemOrigin(vis, s.base);
-    wctx.drawImage(s.base.canvas, o.x, o.y);
-    if (ai && it.kind === 'painting') drawRawPainting(wctx, s.base, o.x, o.y, ai);
+    if (it.kind === 'sign') sign = vis;
+    else wallItems.push(vis);
   }
 
   // ---- móveis
@@ -274,6 +233,8 @@ export function buildAreaVis(art: ArtModule, layout: AreaLayout, room: RoomState
       seed: hash32(f.id),
       ax,
       ay,
+      facing: furnitureFacing(layout, f),
+      box: { x0: f.tx * TILE + (f.dx ?? 0), y0: f.ty * TILE + (f.dy ?? 0), x1: (f.tx + def.footprint.w) * TILE + (f.dx ?? 0), y1: (f.ty + def.footprint.h) * TILE + (f.dy ?? 0) },
       order: f.order,
       areaId: layout.id,
       seatSpot: layout.spots.find((s) => s.deskId === f.id)?.id,

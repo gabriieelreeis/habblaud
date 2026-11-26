@@ -12,6 +12,11 @@ do meio (0.**3**.0).
 
 ### Alterado
 
+- **Escritório em visão isométrica:** a sala deixa de ser vista de cima e passa a ser vista de lado, em 3/4, no estilo
+  dos hotéis isométricos em pixel art: piso em losangos, paredes do fundo com quadros, TV, janelas, relógio e a placa
+  com o nome inclinados na parede, móveis redesenhados no ângulo novo e personagens de corpo inteiro, em 3/4, nas quatro direções. Clique no agente, na sala
+  e na TV, festa, alarme, enfeites de época, noite e celular continuam funcionando. Telas e quadros animados ficam em
+  cache e só são refeitos quando mudam.
 - **Página abre mais leve:** o player do timelapse e a janela do Habblaud World passam a ser baixados só quando usados
   (o timelapse na primeira abertura; a janela do World quando o servidor do mundo está configurado ou ao abri-la).
   O pedaço principal do client (`app-*.js`) caiu de 718.878 bytes (236.489 com gzip) para 524.796 (173.383 com gzip); somando todo o JS carregado

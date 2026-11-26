@@ -100,6 +100,8 @@ export interface Rect {
   y: number;
   w: number;
   h: number;
+  /** (Aditivo) Retângulo inclinado numa face isométrica: px que desce a cada px para a direita (0,5 ou -0,5). */
+  skew?: number;
 }
 
 /** Regiões dinâmicas dentro de um sprite (em px do sprite, relativas ao canto superior esquerdo). */
@@ -288,6 +290,19 @@ export interface WallStyle {
   exterior?: boolean;
 }
 
+/** Parede da visão isométrica: 'south' corre em x com a face para +y; 'east' corre em y com a face para +x. */
+export interface IsoWallSpec {
+  facing: 'south' | 'east';
+  length: number;
+  height: number;
+  thickness: number;
+  /** Mureta baixa da frente (sem padrão nem vãos altos). */
+  low?: boolean;
+  /** Vãos [início, fim) em px a partir do começo da parede. */
+  doorways?: readonly (readonly [number, number])[];
+  seed?: number;
+}
+
 export interface Doorway {
   /** Início da passagem em px de mundo (absoluto) e largura em px. */
   x: number;
@@ -372,6 +387,22 @@ export interface ArtModule {
    * usa para a torcida comemorar junto com a TV.
    */
   footballLance?(t: number, seed: number): { lance: number; progress: number; right: boolean; period: number; goalAt: number };
+  /**
+   * (Opcional, aditivo) Visão isométrica 2:1 (ver client/src/world/iso.ts). Móvel de chão com âncora no canto de trás
+   * (noroeste) do footprint; rects.screen e afins podem ter `skew` (tela numa face inclinada).
+   */
+  isoFurnitureSprites?(kind: FurnitureKind, variant?: string, state?: number, opts?: { seed?: number; facing?: Dir }): FurnitureSprites;
+  /** (Opcional, aditivo) Personagem da visão isométrica (~2x), âncora no centro dos pés. `dir` é a direção no plano do mundo. */
+  isoCharacterSprite?(req: CharacterFrameRequest): Sprite;
+  /** (Opcional, aditivo) Parede isométrica; âncora no canto de trás do footprint (comprimento x espessura). */
+  isoWall?(style: WallStyle, spec: IsoWallSpec): Sprite;
+  /**
+   * (Opcional, aditivo) Item de parede redesenhado para a visão isométrica (de frente; o mundo inclina no plano da
+   * parede), ou null para usar o de sempre. Hoje: o elevador, na altura dos personagens.
+   */
+  isoWallSprite?(kind: FurnitureKind, variant: string | undefined, state: number, seed: number): Sprite | null;
+  /** (Opcional, aditivo) Carro andando ao longo de x (1 = leste, −1 = oeste); âncora no centro do carro no chão. */
+  isoCarSprite?(variant: number, dir: 1 | -1): Sprite;
   /** Avatar (cabeça + ombros) ampliado para a UI. `parts`: peças do personagem editado (ver AgentInfo.parts). */
   avatarCanvas(seed: number, opts?: { look?: 'f' | 'm'; sub?: boolean; scale?: number; parts?: AppearanceParts }): HTMLCanvasElement;
 }

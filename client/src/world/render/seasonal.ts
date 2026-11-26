@@ -1,5 +1,6 @@
 import type { CharacterFrameRequest, FurnitureKind, Sprite, WallStyle } from '../../art/api';
 import { mix } from '../../art/core/color';
+import { WALL_H, isoX, isoY } from '../iso';
 import { hash32 } from '../../../../shared/hash';
 import { renderSeasonalProp, type SeasonalProp } from '../../art/seasonal';
 import type { SeasonalTheme } from '../api';
@@ -164,6 +165,26 @@ export function drawSeasonalLights(ctx: CanvasRenderingContext2D, theme: Seasona
     ctx.restore();
   }
   ctx.restore();
+}
+
+/** Visão isométrica: o varal de luzes no alto da face das paredes do fundo. */
+export function drawSeasonalLightsIso(ctx: CanvasRenderingContext2D, theme: SeasonalTheme, layout: AreaLayout, light: number): void {
+  if (theme === 'none' || light <= 0.01) return;
+  for (const wall of layout.walls) {
+    if (wall.kind !== 'face') continue;
+    const y = wall.y + 32;
+    for (let x = wall.x + 14; x < wall.x + wall.w - 6; x += 24) {
+      if (wall.doorways?.some((d) => x >= d.x - 10 && x <= d.x + d.w + 10)) continue;
+      const ix = Math.round(isoX(x, y));
+      const iy = Math.round(isoY(x, y, WALL_H - 9));
+      ctx.globalAlpha = light * 0.3;
+      ctx.drawImage(glowSprite(theme), ix - 17, iy - 17);
+      ctx.globalAlpha = light * 0.85;
+      ctx.fillStyle = theme === 'christmas' ? '#ffe4a9' : '#ffd181';
+      ctx.fillRect(ix, iy, 2, 2);
+    }
+  }
+  ctx.globalAlpha = 1;
 }
 
 export function drawSeasonalWindow(ctx: CanvasRenderingContext2D, theme: SeasonalTheme, glass: { x: number; y: number; w: number; h: number }, now: number, seed: number): void {
