@@ -116,9 +116,16 @@ function slices(sp: Sprite, src: CanvasImageSource, plane: Plane, thick: number,
 }
 
 /** Copia um sprite num canvas próprio (os do cache são compartilhados). */
-function own(sp: Sprite): [HTMLCanvasElement, CanvasRenderingContext2D] {
-  const [c, ctx] = canvas(sp.canvas.width, sp.canvas.height);
-  ctx.drawImage(sp.canvas, 0, 0);
+function own(art: ArtModule, sp: Sprite): [HTMLCanvasElement, CanvasRenderingContext2D] {
+  // vai para a camada estática, que lê os pixels: canvas na memória, sem ler de volta a placa de vídeo
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, sp.canvas.width);
+  c.height = Math.max(1, sp.canvas.height);
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
+  ctx.imageSmoothingEnabled = false;
+  const px = art.spritePixels?.(sp.canvas);
+  if (px) ctx.putImageData(new ImageData(new Uint8ClampedArray(px.data), px.w, px.h), 0, 0);
+  else ctx.drawImage(sp.canvas, 0, 0);
   return [c, ctx];
 }
 
@@ -173,7 +180,7 @@ export function buildIsoArea(art: ArtModule, layout: AreaLayout, floorSrc: HTMLC
         }
       continue;
     }
-    const [c, ctx] = own(sp);
+    const [c, ctx] = own(art, sp);
     for (const it of items) {
       if (it.on !== 'face' || Math.abs(it.baseY - plane.at) > 1 || it.cx < plane.a0 - 1 || it.cx > plane.a1 + 1) continue;
       if (it.kind === 'door_frame') continue;

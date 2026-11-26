@@ -79,8 +79,19 @@ export function opaqueRect(buf: PixelBuf): Rect {
   return x1 < 0 ? { x: 0, y: 0, w, h } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
-function toSprite(s: BufSprite): Sprite {
-  return { canvas: toCanvas(s.buf), ax: s.ax, ay: s.ay, rects: s.rects, opaque: opaqueRect(s.buf) };
+/** Pixels dos sprites que entram na camada estática do mundo (móveis e paredes), para não ler o canvas de volta. */
+const spriteBufs = new WeakMap<HTMLCanvasElement, PixelBuf>();
+
+/** `keepPixels`: guarda o buffer junto do canvas (só para o que vai para a camada estática; personagens não). */
+function toSprite(s: BufSprite, keepPixels = false): Sprite {
+  const canvas = toCanvas(s.buf);
+  if (keepPixels) spriteBufs.set(canvas, s.buf);
+  return { canvas, ax: s.ax, ay: s.ay, rects: s.rects, opaque: opaqueRect(s.buf) };
+}
+
+/** Pixels RGBA de um sprite de móvel ou parede, quando a arte ainda tem o buffer dele. */
+export function spritePixels(c: HTMLCanvasElement): { data: Uint8ClampedArray; w: number; h: number } | undefined {
+  return spriteBufs.get(c);
 }
 
 const charCache = new Cache<Sprite>(30000);
@@ -154,7 +165,7 @@ export function furnitureSprites(kind: FurnitureKind, variant?: string, state?: 
   const key = `${kind}|${n.variant ?? '-'}|${n.state}|${n.vseed}`;
   return furnCache.get(key, () => {
     const f = renderFurniture(kind, n.variant, n.state, n.vseed);
-    return { base: toSprite(f.base), front: f.front ? toSprite(f.front) : undefined };
+    return { base: toSprite(f.base, true), front: f.front ? toSprite(f.front, true) : undefined };
   });
 }
 
@@ -171,7 +182,7 @@ export function isoFurnitureSprites(kind: FurnitureKind, variant?: string, state
   const key = `${kind}|${n.variant ?? '-'}|${n.state}|${n.vseed}|${facing}`;
   return isoFurnCache.get(key, () => {
     const f = renderIsoFurniture(kind, n.variant, n.state, n.vseed, facing);
-    return { base: toSprite(f.base), front: f.front ? toSprite(f.front) : undefined };
+    return { base: toSprite(f.base, true), front: f.front ? toSprite(f.front, true) : undefined };
   });
 }
 
@@ -214,6 +225,7 @@ export function isoWall(style: WallStyle, spec: IsoWallSpec): Sprite {
       spec.low
         ? renderLowWall(style, { along: spec.facing === 'south' ? 'x' : 'y', length: spec.length, height: spec.height, thickness: spec.thickness, doorways: spec.doorways })
         : renderIsoWall(style, { facing: spec.facing, length: spec.length, height: spec.height, thickness: spec.thickness, doorways: spec.doorways, seed: spec.seed }),
+      true,
     ),
   );
 }
@@ -222,7 +234,7 @@ export function isoWall(style: WallStyle, spec: IsoWallSpec): Sprite {
 export function isoWallSprite(kind: FurnitureKind, _variant: string | undefined, state: number, _seed: number): Sprite | null {
   if (kind !== 'elevator') return null;
   const st = Math.max(0, Math.min(4, Math.round(state)));
-  return isoWallCache.get(`elevator|${st}`, () => toSprite(renderTallElevator(st)));
+  return isoWallCache.get(`elevator|${st}`, () => toSprite(renderTallElevator(st), true));
 }
 
 /** Carro da rua na visão isométrica. */
@@ -423,6 +435,7 @@ const _contract: ArtModule = {
   isoFurnitureSprites,
   isoCharacterSprite,
   isoCharacterForget,
+  spritePixels,
   isoWall,
   isoWallSprite,
   isoCarSprite,

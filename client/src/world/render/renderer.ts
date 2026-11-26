@@ -1218,6 +1218,12 @@ export class Renderer {
   private pixelsOf(src: CanvasImageSource): Pixels {
     const hit = this.pixelCache.get(src);
     if (hit) return hit;
+    const known = this.art.spritePixels?.(src as HTMLCanvasElement);
+    if (known) {
+      const px = { data: known.data, w: known.w, h: known.h };
+      this.pixelCache.set(src, px);
+      return px;
+    }
     const s = src as HTMLCanvasElement;
     const w = Math.max(1, s.width);
     const h = Math.max(1, s.height);
