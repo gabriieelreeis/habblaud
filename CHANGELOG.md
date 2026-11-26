@@ -24,10 +24,20 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
-- **Seletor de esforço na gaveta do agente:** a linha **Esforço** fica logo abaixo de **Modelo**, com `low`, `medium`,
-  `high`, `xhigh` e `max`. Escolher um nível manda `/effort <nível>` pela fila de mensagens do escritório, como comando
-  (não como texto); a linha mostra o envio e diz que o comando entra quando a sessão estiver livre. A linha aparece em
-  todos os agentes e fica desativada nos que não são do Claude Code, onde o esforço não muda.
+- **Modelo e esforço na gaveta do agente:** a seção **Modelo e esforço** mostra o modelo da última resposta (e o
+  escolhido para as próximas) e o esforço atual de cada sessão, com a origem quando não é certeza: confirmado pelo
+  `/effort` desta abertura, aberta com `--effort` ou padrão do `settings.json` (provável). Dá para trocar os dois por
+  ali, com a situação na hora (enviando, entregue, confirmado ou o erro), também no celular.
+  - **Claude Code:** a troca vira `/effort <nível>` ou `/model <modelo>` (`opus`, `sonnet`, `haiku` ou o id completo)
+    pela fila de mensagens, e a saída do comando na conversa confirma. Por padrão vale só para a sessão: o Claude Code
+    grava o comando como padrão das sessões novas, e o Habblaud devolve ao `settings.json` só o que ele mudou. A
+    caixinha **Também como padrão das sessões novas** deixa gravado. No Docker, quem lê e devolve o padrão é o
+    auxiliar do host (`npm run codex:bridge`); sem ele, a troca só na sessão é recusada com o motivo. Até 1 h depois
+    da última resposta, o Claude Code pede confirmação na tela da sessão para trocar de modelo (a conversa em cache
+    seria relida) e ninguém vê essa tela pelo escritório: nesse intervalo a troca de modelo fica travada, com a hora
+    em que libera. O esforço troca a qualquer momento.
+  - **OpenCode:** a lista de modelos vem do próprio OpenCode e a troca vale para os próximos turnos da sessão, com o
+    nível de raciocínio do modelo quando ele tem (o Big Pickle não tem: o seletor fica desativado com o motivo).
 - **Enviar agora:** a caixa de mensagem ganhou a opção **Enviar agora**: o texto entra no turno em andamento do
   Claude Code, sem esperar o agente terminar o que está fazendo. Ela aparece só nas sessões do Claude Code (no Codex
   e no OpenCode fica desativada) e a dica avisa que, num Claude Code sem suporte a esse campo, a mensagem entra na

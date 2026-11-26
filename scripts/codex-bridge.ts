@@ -29,6 +29,8 @@ import { createWhisperTranscriber, findWhisper, type Transcriber } from '../serv
 import { checkFile, insideKnownFolder, tempRoots } from '../server/deliveries/files';
 import { discoverClaudeDirs } from '../server/accounts/detect';
 import { HOST_WAIT_MS } from '../server/host-wait';
+import { isJobId, readDefaultsFile, readJobFlags, restoreDefaultsFile } from '../server/claude-defaults/defaults';
+import { parseDefaults } from '../server/claude-defaults/service';
 import { readFileSync } from 'node:fs';
 
 export const DEFAULT_PORT = 4747;
@@ -321,6 +323,57 @@ export async function filesRound(
   return { state: 'ok', results: results.map(({ id, ok, error }) => ({ id, ok, ...(error ? { error } : {}) })) };
 }
 
+/** Mesma pasta de conta (no Windows, sem diferença de maiúsculas nem de barras). */
+function samePath(a: string, b: string): boolean {
+  const norm = (p: string) => (process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p));
+  return norm(a) === norm(b);
+}
+
+/**
+ * Padrões do Claude Code (troca de modelo e esforço só na sessão): busca os pedidos (POST /api/host/claude/poll), lê
+ * ou devolve só o modelo e o esforço do settings.json das contas conhecidas (e o --effort/--model dos jobs) e responde
+ * em /api/host/claude/ack. Nunca lança.
+ */
+export async function claudeRound(post: Post, accountDirs: readonly string[], log: (line: string) => void = () => {}, opts: { wait?: boolean } = {}): Promise<RoundResult> {
+  const polled = await post(`/api/host/claude/poll${opts.wait ? '?wait=1' : ''}`, {});
+  if (!polled) return { state: 'down' };
+  const list = rec(polled.json)?.requests;
+  if (polled.status !== 200 || !Array.isArray(list)) return { state: 'refused', status: polled.status };
+  const results: Array<Record<string, unknown> & { id: string; ok: boolean; error?: string }> = [];
+  for (const raw of list) {
+    const r = rec(raw);
+    const id = typeof r?.id === 'string' ? r.id : '';
+    if (!r || !id) continue;
+    const dir = typeof r.configDir === 'string' ? accountDirs.find((d) => samePath(d, r.configDir as string)) : undefined;
+    if (!dir) {
+      results.push({ id, ok: false, error: tr('pasta de conta do Claude Code desconhecida') });
+      continue;
+    }
+    if (r.op === 'read') {
+      const defaults = readDefaultsFile(dir);
+      if ('error' in defaults) {
+        results.push({ id, ok: false, error: defaults.error });
+        continue;
+      }
+      const flags: Record<string, unknown> = {};
+      for (const j of Array.isArray(r.jobs) ? r.jobs.slice(0, 64) : []) {
+        const f = isJobId(j) ? readJobFlags(dir, j) : undefined;
+        if (f) flags[j as string] = f;
+      }
+      results.push({ id, ok: true, defaults, flags });
+    } else if (r.op === 'restore' && (r.kind === 'effort' || r.kind === 'model') && typeof r.sent === 'string') {
+      const before = parseDefaults(r.before);
+      const out = before ? restoreDefaultsFile(dir, before, r.kind, r.sent) : { error: tr('padrão de antes inválido') };
+      if (typeof out === 'string') {
+        results.push({ id, ok: true, result: out });
+        if (out === 'restored') log(tr('↺ padrão das sessões novas devolvido ao settings.json ({0})', [r.kind === 'effort' ? tr('esforço') : tr('modelo')]));
+      } else results.push({ id, ok: false, error: out.error });
+    } else results.push({ id, ok: false, error: tr('pedido desconhecido') });
+  }
+  if (results.length) await post('/api/host/claude/ack', { results });
+  return { state: 'ok', results: results.map(({ id, ok, error }) => ({ id, ok, ...(error ? { error } : {}) })) };
+}
+
 /** Repete uma rodada com espera: fora do ar, de 2 em 2 s; recusada (recurso desligado), a cada minuto. */
 async function waitLoop(roundFn: () => Promise<RoundResult>): Promise<never> {
   for (;;) {
@@ -364,6 +417,7 @@ async function main(): Promise<void> {
     const roots = [...tempRoots(), attachmentsRoot()];
     const inside = (p: string) => insideKnownFolder(p, { accountDirs, roots });
     void waitLoop(() => filesRound(waitPost, log, undefined, undefined, { inside, wait: true }));
+    void waitLoop(() => claudeRound(waitPost, accountDirs, log, { wait: true }));
     if (transcribe) {
       const t = transcribe;
       void waitLoop(() => dictationRound(waitPost, t, log, { wait: true }));

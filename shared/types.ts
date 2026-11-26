@@ -171,7 +171,14 @@ export interface AgentInfo {
   tasks: TaskItem[];
   /** Shells rodando que o agente espera: em segundo plano e o comando em primeiro plano ainda sem resultado. */
   shells?: ShellJob[];
+  /** Modelo da última resposta. */
   model?: string;
+  /** Modelo escolhido para as próximas respostas (/model do Claude Code; a escolha da sessão no OpenCode). */
+  modelChoice?: ModelChoice;
+  /** Esforço (nível de raciocínio) da sessão e de onde veio. */
+  effort?: AgentEffort;
+  /** Última resposta do modelo nesta abertura da sessão (Claude Code). */
+  replyAt?: number;
   gitBranch?: string;
   permissionMode?: string;
   startedAt: number;
@@ -780,6 +787,60 @@ export interface PermissionDecision {
  * queued = esperando a sessão buscar; sent = a sessão buscou e está entregando; delivered = entrou na sessão (ou
  * na fila dela, se o agente estava ocupado); failed = não entrou (`error` diz por quê).
  */
+/**
+ * De onde veio o esforço: `command` = saída do /effort nesta abertura da sessão (certo); `flag` = o --effort com que a
+ * sessão foi aberta; `settings` = o padrão do settings.json (provável); `session` = a escolha da sessão no OpenCode.
+ */
+export type EffortSource = 'command' | 'flag' | 'settings' | 'session';
+
+export interface AgentEffort {
+  level: string;
+  source: EffortSource;
+  /** Quando o /effort rodou (só `command`). */
+  at?: number;
+}
+
+export interface ModelChoice {
+  /** Nome que o Claude Code mostrou ("Sonnet 5.5") ou "provedor/modelo" no OpenCode. */
+  label: string;
+  at: number;
+}
+
+/** Troca de modelo ou esforço pela gaveta (POST /api/controls). */
+export type ControlKind = 'effort' | 'model';
+
+/**
+ * `sending` = na fila da sessão; `waiting` = entregue, esperando a sessão rodar o comando; `confirmed` = a sessão
+ * confirmou; `failed` = não entrou.
+ */
+export type ControlStatus = 'sending' | 'waiting' | 'confirmed' | 'failed';
+
+/** O que aconteceu com o padrão das sessões novas no settings.json. */
+export type ControlDefaults = 'pending' | 'restored' | 'unchanged' | 'saved' | 'restore-failed';
+
+export interface ControlState {
+  id: string;
+  agentId: string;
+  kind: ControlKind;
+  value: string;
+  variant?: string;
+  status: ControlStatus;
+  defaults?: ControlDefaults;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Modelo do OpenCode para a gaveta (GET /api/controls/models). */
+export interface ModelOption {
+  /** "provedor/modelo". */
+  id: string;
+  name: string;
+  provider: string;
+  /** Níveis de raciocínio do modelo (vazio = não tem). */
+  variants: string[];
+}
+
 export type OutboxStatus = 'queued' | 'sent' | 'delivered' | 'failed';
 
 export interface OutboxMessage {

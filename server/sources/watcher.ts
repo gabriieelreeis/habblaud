@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { SPECIAL } from '../../shared/activity';
 import type { Activity, AgentStatus, SourceInfo } from '../../shared/types';
 import type { AccountsService } from '../accounts/service';
+import { sessionEffort, START_SLACK_MS, type ClaudeDefaults, type JobFlags } from '../claude-defaults/defaults';
 import { errMsg, log } from '../log';
 import type { Office, TranscriptSummary } from '../model/office';
 import { compareVersions, registryStatus, RegistryReader, SHELL_STATUS_VERSION, type RegistryEntry } from './registry';
@@ -56,6 +57,15 @@ export interface WatcherOptions {
   isAlive?: (pid: number) => boolean;
   /** Desliga o fs.watch (testes). */
   watch?: boolean;
+  /** Padrões do settings.json e opções de abertura (o esforço de cada sessão quando ela não rodou /effort). */
+  defaults?: SessionDefaults;
+}
+
+export interface SessionDefaults {
+  defaultsOf(account: string): ClaudeDefaults | undefined;
+  flagsOf(account: string, jobId: string | undefined): JobFlags | undefined;
+  wantJobs(account: string, jobIds: readonly string[]): void;
+  onChange(fn: () => void): () => void;
 }
 
 /** cwd -> nome da pasta em projects/ (todo caractere não alfanumérico vira "-"). */
@@ -180,11 +190,15 @@ export class ClaudeWatcher implements AgentSource {
   private stopped = false;
   /** Menor versão do Claude Code vista gravando "shell" no registro (começa na conhecida). */
   private shellStatusVersion = SHELL_STATUS_VERSION;
+  private readonly offDefaults?: () => void;
 
   constructor(private readonly opts: WatcherOptions) {
     this.now = opts.now ?? Date.now;
     this.tailBytes = opts.tailBytes ?? 1024 * 1024;
     this.useWatch = opts.watch ?? true;
+    this.offDefaults = opts.defaults?.onChange(() => {
+      for (const t of this.sessions.values()) this.applyMainSummary(t);
+    });
   }
 
   /** Boot + polling periódico. */
@@ -206,6 +220,7 @@ export class ClaudeWatcher implements AgentSource {
 
   stop(): void {
     this.stopped = true;
+    this.offDefaults?.();
     if (this.timer) clearInterval(this.timer);
     if (this.kick) clearTimeout(this.kick);
     this.timer = null;
@@ -285,6 +300,7 @@ export class ClaudeWatcher implements AgentSource {
           log.warnOnce(`session:${key}:${errMsg(err)}`, tr('Sessão {0}: {1}', [key, errMsg(err)]));
         }
       }
+      this.opts.defaults?.wantJobs(acc.id, res.entries.flatMap((e) => (e.jobId ? [e.jobId] : [])));
     }
     const now = this.now();
     for (const [key, t] of [...this.sessions]) {
@@ -527,6 +543,14 @@ export class ClaudeWatcher implements AgentSource {
     const title = titleOf(s);
     if (title) summary.title = title;
     if (s.model) summary.model = s.model;
+    const d = this.opts.defaults;
+    const flags = d?.flagsOf(t.accountId, t.entry.jobId);
+    const effort = sessionEffort(s.effortCmd, t.entry.startedAt, flags, d?.defaultsOf(t.accountId), s.model);
+    if (effort) summary.effort = effort;
+    const choice = s.modelCmd;
+    if (choice && choice.at >= (t.entry.startedAt ?? 0) - START_SLACK_MS && choice.at > (s.modelAt ?? 0)) summary.modelChoice = { ...choice };
+    else if (!s.model && flags?.model) summary.modelChoice = { label: flags.model, at: t.entry.startedAt ?? 0 };
+    if (s.modelAt !== undefined && s.modelAt >= (t.entry.startedAt ?? 0) - START_SLACK_MS) summary.replyAt = s.modelAt;
     if (s.gitBranch) summary.gitBranch = s.gitBranch;
     if (s.permissionMode) summary.permissionMode = s.permissionMode;
     if (s.lastAt !== undefined) summary.lastAt = s.lastAt;

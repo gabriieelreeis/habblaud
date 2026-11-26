@@ -270,6 +270,11 @@ export class MessageComposer {
     return this.mode.kind === 'ready';
   }
 
+  /** Por que a caixa não manda agora (vazio quando manda). */
+  get reason(): string {
+    return this.mode.kind === 'ready' ? '' : this.mode.text;
+  }
+
   // ---------------------------------------------------------------- internos
 
   private onKey(e: KeyboardEvent): void {

@@ -589,9 +589,14 @@ e espera o próximo pedido, dar uma instrução nova ou corrigir o rumo, sem pro
 - Nos agentes do Claude, comandos de barra como `/effort high` ou `/model opus` também entram por aqui: o plugin os manda
   como comando, não como texto, e o Claude executa de verdade. Comando que a sessão não conhece aparece como
   **não entregue**, com o motivo.
-- **Esforço:** na gaveta do agente, abaixo de **Modelo**, o seletor **Esforço** manda `/effort low`, `medium`, `high`,
-  `xhigh` ou `max` pela mesma fila. Ele aparece para todos os agentes, mas só muda o esforço nas sessões do Claude Code;
-  nos outros fica desativado. Como o comando vai pela fila, ele entra quando a sessão estiver livre.
+- **Modelo e esforço:** a seção **Modelo e esforço** da gaveta do agente mostra o modelo da última resposta e o
+  esforço atual da sessão, com a origem (`/effort` desta abertura, `--effort` da abertura ou padrão do `settings.json`).
+  Trocar um dos dois manda `/model` ou `/effort` pela mesma fila, e a saída do comando na conversa confirma. Por padrão
+  vale só para aquela sessão: o Habblaud devolve ao `settings.json` o padrão das sessões novas que o Claude Code
+  sobrescreve (no Docker, pelo `npm run codex:bridge`); marque **Também como padrão das sessões novas** para manter. Até
+  1 h depois da última resposta o Claude Code pede confirmação na tela da sessão para trocar de modelo, então a troca
+  de modelo fica travada nesse intervalo (a gaveta mostra a hora em que libera). No
+  OpenCode, a lista de modelos e os níveis de raciocínio vêm do serviço dele e valem para os próximos turnos da sessão.
 - **Enviar agora:** marque essa opção na caixa para o texto entrar no turno em andamento do Claude Code, sem esperar o
   agente terminar. Ela só aparece nas sessões do Claude Code; no Codex e no OpenCode a entrega continua na fila. A dica
   da opção avisa que, num Claude Code sem suporte, a mensagem volta para a fila.

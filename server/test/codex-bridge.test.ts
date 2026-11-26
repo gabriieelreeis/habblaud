@@ -2,11 +2,11 @@
 // /api/codex/bridge/*): a trava das mensagens (recurso ligado + Host local), a rodada completa página → auxiliar →
 // codex queue (binário falso) → confirmação, e a conferência de cada mensagem antes de rodar o comando.
 import http from 'node:http';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkMessage, dictationRound, filesRound, httpPost, parseArgs, round, spawnRound, type Post } from '../../scripts/codex-bridge';
+import { checkMessage, claudeRound, dictationRound, filesRound, httpPost, parseArgs, round, spawnRound, type Post } from '../../scripts/codex-bridge';
 import { spawnUrl } from '../spawn/spawn';
 import { AccountsService } from '../accounts/service';
 import { createApiHandler } from '../http/app';
@@ -229,6 +229,36 @@ describe('filesRound (arquivos das entregas pelo auxiliar)', () => {
     expect(r).toEqual({ state: 'ok', results: [{ id: 'f1', ok: false, error: 'fora das pastas de projeto conhecidas' }] });
     expect(reads).toBe(0);
     expect(paths[0]).toBe('/api/host/files/poll?wait=1');
+  });
+});
+
+describe('claudeRound (padrões do Claude Code pelo auxiliar)', () => {
+  it('lê e devolve o padrão só nas contas conhecidas', async () => {
+    const t = tempDir();
+    try {
+      const file = join(t.dir, 'settings.json');
+      writeFileSync(file, JSON.stringify({ theme: 'dark', model: 'haiku', modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' } } }));
+      mkdirSync(join(t.dir, 'jobs', 'cbb319f7'), { recursive: true });
+      writeFileSync(join(t.dir, 'jobs', 'cbb319f7', 'state.json'), JSON.stringify({ respawnFlags: ['--effort', 'xhigh'] }));
+      let acked: unknown;
+      const requests = [
+        { id: 'r1', op: 'read', configDir: t.dir, jobs: ['cbb319f7', '../x'] },
+        { id: 'r2', op: 'restore', configDir: t.dir, kind: 'model', sent: 'haiku', before: { modelEffort: { 'claude-opus-5-5': 'xhigh' } } },
+        { id: 'r3', op: 'read', configDir: '/outra/conta', jobs: [] },
+      ];
+      const post: Post = async (path, body) => {
+        if (path.startsWith('/api/host/claude/poll')) return { status: 200, json: { requests } };
+        acked = body;
+        return { status: 200, json: { ok: true } };
+      };
+      const r = await claudeRound(post, [t.dir], () => {}, { wait: true });
+      expect(r).toEqual({ state: 'ok', results: [{ id: 'r1', ok: true }, { id: 'r2', ok: true }, { id: 'r3', ok: false, error: 'pasta de conta do Claude Code desconhecida' }] });
+      expect((acked as { results: unknown[] }).results[0]).toEqual({ id: 'r1', ok: true, defaults: { model: 'haiku', modelEffort: { 'claude-opus-5-5': 'xhigh' } }, flags: { cbb319f7: { effort: 'xhigh' } } });
+      expect((acked as { results: unknown[] }).results[1]).toEqual({ id: 'r2', ok: true, result: 'restored' });
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ theme: 'dark', modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' } } });
+    } finally {
+      t.cleanup();
+    }
   });
 });
 

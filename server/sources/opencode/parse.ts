@@ -36,8 +36,10 @@ export interface OcSession {
   title?: string;
   /** Agente do OpenCode (build, plan, explore...). */
   agent?: string;
-  /** "provedor/modelo". */
+  /** "provedor/modelo" escolhido na sessão (sem escolha: o do agente ou o padrão). */
   model?: string;
+  /** Nível de raciocínio escolhido junto com o modelo. */
+  variant?: string;
   tokensIn: number;
   tokensOut: number;
   cost: number;
@@ -78,6 +80,8 @@ export function parseSession(raw: unknown): OcSession | undefined {
   if (agent) s.agent = agent;
   const model = modelLabel(r.model);
   if (model) s.model = model;
+  const variant = model ? variantOf(r.model) : undefined;
+  if (variant) s.variant = variant;
   const busy = num(time.busy);
   if (busy !== undefined) s.busyAt = busy;
   const idle = num(time.idle);
@@ -88,6 +92,12 @@ export function parseSession(raw: unknown): OcSession | undefined {
   if (archived !== undefined) s.archivedAt = archived;
   if (r.outcome === 'succeeded' || r.outcome === 'failed' || r.outcome === 'interrupted') s.outcome = r.outcome;
   return s;
+}
+
+/** Nível de raciocínio de um Model.Ref ("default" = nenhum escolhido). */
+export function variantOf(raw: unknown): string | undefined {
+  const v = str(rec(raw)?.variant);
+  return v && v !== 'default' ? v : undefined;
 }
 
 /** Model.Ref ({id, providerID}) -> "provedor/modelo". */
@@ -234,6 +244,8 @@ export interface MessageReading {
   subagents: number;
   /** Modelo da mensagem mais nova do assistente. */
   model?: string;
+  /** Última troca de modelo da sessão (mensagem model-switched). */
+  choice?: { model: string; variant?: string; at: number };
   /** Primeira e última data vistas. */
   firstAt?: number;
   lastAt?: number;
@@ -282,6 +294,12 @@ export function readMessages(messages: readonly unknown[], idPrefix: string): Me
         if (!text) break;
         turnStart = when;
         push(`${id}:p`, when, describeOpenCodePrompt(text));
+        break;
+      }
+      case 'model-switched': {
+        const model = modelLabel(m.model);
+        const variant = variantOf(m.model);
+        if (model) out.choice = variant ? { model, variant, at: when } : { model, at: when };
         break;
       }
       case 'assistant': {

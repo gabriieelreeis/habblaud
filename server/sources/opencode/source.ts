@@ -21,7 +21,7 @@
 //
 // Boot assíncrono, com beginBoot/endBoot em par (num `finally`) e tempo-limite curto: com o serviço fora do ar a fonte
 // só registra o erro (aparece em meta.sources) e tenta de novo no próximo ciclo.
-import type { AccountUsage, AgentStatus, SourceInfo } from '../../../shared/types';
+import type { AccountUsage, AgentStatus, ModelOption, SourceInfo } from '../../../shared/types';
 import { ACCOUNT_COLORS, type DetectedAccount } from '../../accounts/detect';
 import type { AccountEntry, AccountsService } from '../../accounts/service';
 import { errMsg, log } from '../../log';
@@ -64,6 +64,9 @@ const LIST_LIMIT = 60;
 const EVENT_TRUST_MS = 5_000;
 /** Espera para juntar uma rajada de eventos de uma sessão numa releitura só. */
 const SESSION_DEBOUNCE_MS = 300;
+/** Lista de modelos guardada (GET /api/model). */
+const MODELS_TTL_MS = 5 * 60_000;
+const MODELS_MAX = 600;
 const MAIN_ROLE = tr('Agente principal (OpenCode)');
 const SUB_ROLE = tr('Subagente (OpenCode)');
 
@@ -135,6 +138,7 @@ interface Tracker {
   subagents: Set<string>;
   tasks?: TranscriptSummary['tasks'];
   model?: string;
+  choice?: { model: string; variant?: string; at: number };
   firstAt?: number;
   lastAt?: number;
   /** Último sinal de vida (evento, mudança na sessão ou a sessão aberta numa TUI). */
@@ -149,6 +153,24 @@ interface Tracker {
 
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+
+/** Modelo escolhido na sessão: a troca mais nova das mensagens, ou o da sessão quando ela mudou depois. */
+export function sessionChoice(s: OcSession, fromMessages: Tracker['choice']): Tracker['choice'] {
+  if (!s.model) return fromMessages;
+  if (fromMessages && ((fromMessages.model === s.model && fromMessages.variant === s.variant) || fromMessages.at >= s.updatedAt)) return fromMessages;
+  return s.variant ? { model: s.model, variant: s.variant, at: s.updatedAt } : { model: s.model, at: s.updatedAt };
+}
+
+/** Model.Info do serviço -> opção da gaveta (só id, nome, provedor e níveis: nada de cabeçalhos nem configuração). */
+export function modelOptionOf(raw: unknown, providerNames: ReadonlyMap<string, string>): ModelOption | undefined {
+  const m = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : undefined;
+  const id = str(m?.id);
+  const provider = str(m?.providerID);
+  if (!m || !id || !provider || m.enabled === false || (m.type !== undefined && m.type !== 'chat')) return undefined;
+  if (typeof m.status === 'string' && m.status !== 'active') return undefined;
+  const variants = Array.isArray(m.variants) ? m.variants.flatMap((v) => (typeof str((v as Record<string, unknown>)?.id) === 'string' ? [str((v as Record<string, unknown>).id)!] : [])) : [];
+  return { id: `${provider}/${id}`, name: str(m.name)?.slice(0, 80) ?? id, provider: providerNames.get(provider) ?? provider, variants: variants.slice(0, 12) };
 }
 
 function roleOf(agent: string | undefined): string {
@@ -194,6 +216,7 @@ export class OpenCodeSource implements AgentSource {
   private readonly displayDir: string;
   private permissionSink?: OpenCodePermissionSink;
   private readonly pinned: Set<string>;
+  private modelCache?: { at: number; list: ModelOption[] };
 
   constructor(private readonly opts: OpenCodeSourceOptions) {
     this.now = opts.now ?? Date.now;
@@ -280,6 +303,45 @@ export class OpenCodeSource implements AgentSource {
     } catch (err) {
       return { ok: false, error: errMsg(err) };
     }
+  }
+
+  /**
+   * Troca o modelo (e o nível de raciocínio) dos próximos turnos da sessão: POST /api/session/<id>/model. O próprio
+   * OpenCode guarda a escolha. Nunca lança.
+   */
+  async selectModel(sessionId: string, model: string, variant?: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (!isSessionId(sessionId)) return { ok: false, error: tr('sessão do OpenCode inválida') };
+    const cut = model.indexOf('/');
+    if (cut <= 0 || cut === model.length - 1) return { ok: false, error: tr('modelo inválido') };
+    const ep = this.endpoint ?? this.resolve();
+    if (!ep) return { ok: false, error: this.error ?? tr('serviço do OpenCode desconhecido') };
+    const ref = { providerID: model.slice(0, cut), id: model.slice(cut + 1), ...(variant ? { variant } : {}) };
+    try {
+      await postJson(this.fetchFn, ep, `/api/session/${sessionId}/model`, { model: ref });
+      const t = this.sessions.get(sessionId);
+      if (t) this.kickSession(t);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: errMsg(err) };
+    }
+  }
+
+  /** Modelos de conversa do serviço (GET /api/model), guardados por alguns minutos. Lança se o serviço não respondeu. */
+  async models(): Promise<ModelOption[]> {
+    const now = this.now();
+    if (this.modelCache && now - this.modelCache.at < MODELS_TTL_MS) return this.modelCache.list;
+    if (!this.endpoint && !this.resolve()) throw new Error(this.error ?? tr('serviço do OpenCode desconhecido'));
+    const [models, providers] = await Promise.all([this.get<{ data?: unknown[] }>('/api/model'), this.get<{ data?: unknown[] }>('/api/provider').catch(() => ({ data: [] }))]);
+    const names = new Map<string, string>();
+    for (const p of providers?.data ?? []) {
+      const r = p && typeof p === 'object' ? (p as Record<string, unknown>) : {};
+      const id = str(r.id);
+      const name = str(r.name);
+      if (id && name) names.set(id, name.slice(0, 60));
+    }
+    const list = (models?.data ?? []).flatMap((m) => modelOptionOf(m, names) ?? []).slice(0, MODELS_MAX);
+    this.modelCache = { at: now, list };
+    return list;
   }
 
   /**
@@ -765,6 +827,7 @@ export class OpenCodeSource implements AgentSource {
     }
     if (r.tasks) t.tasks = r.tasks;
     if (r.model) t.model = r.model;
+    if (r.choice && (!t.choice || r.choice.at >= t.choice.at)) t.choice = r.choice;
     if (r.firstAt !== undefined && (t.firstAt === undefined || r.firstAt < t.firstAt)) t.firstAt = r.firstAt;
     if (r.lastAt !== undefined && (t.lastAt === undefined || r.lastAt > t.lastAt)) t.lastAt = r.lastAt;
     // A memória dos ids não cresce sem limite numa sessão longa.
@@ -782,6 +845,11 @@ export class OpenCodeSource implements AgentSource {
     if (s.title) summary.title = s.title;
     const model = t.model ?? s.model;
     if (model) summary.model = model;
+    const choice = sessionChoice(s, t.choice);
+    if (choice) {
+      summary.modelChoice = { label: choice.model, at: choice.at };
+      if (choice.variant) summary.effort = { level: choice.variant, source: 'session' };
+    }
     summary.firstAt = t.firstAt ?? s.createdAt;
     summary.lastAt = Math.max(t.lastAt ?? 0, s.updatedAt);
     this.opts.office.applyTranscript(t.key, summary);

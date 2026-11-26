@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { NAME_MAX, parseAppearanceParts, parseCharacterName, parseSeed } from '../../shared/appearance';
 import type { AccessInfo, AgentInfo, ModSummary, OfficeSnapshot, SourceInfo, UpdateStatus } from '../../shared/types';
 import type { AccountsService } from '../accounts/service';
+import type { ClaudeDefaultsService } from '../claude-defaults/service';
 import { handleCodexEvent } from '../codex/http';
 import type { DayStatsService } from '../history/daystats';
 import type { Office } from '../model/office';
@@ -57,6 +58,10 @@ export interface ApiDeps {
    * terminal e HABBLAUD_MENSAGENS); a trava do Host local é conferida aqui antes de chamá-las.
    */
   messages?: (req: IncomingMessage, res: ServerResponse, path: string) => void;
+  /** Troca de modelo e esforço pela gaveta (/api/controls*, controls/http.ts); a mesma trava das mensagens. */
+  controls?: (req: IncomingMessage, res: ServerResponse, path: string, url: URL) => void;
+  /** Padrões do Claude Code pelo auxiliar do host (/api/host/claude/*, claude-defaults/service.ts). */
+  claudeDefaults?: ClaudeDefaultsService;
   /**
    * Terminal interativo e ações nos agentes (/api/pty/*, POST /api/agents/:id/stop|takeover; http/pty.ts).
    * Ausente = desligado (sem HABBLAUD_PTY=1, Docker, sem node-pty ou sem bind local).
@@ -149,6 +154,8 @@ function isMessagesPath(path: string): boolean {
   return (
     path === '/api/messages' ||
     path.startsWith('/api/messages/') ||
+    path === '/api/controls' ||
+    path.startsWith('/api/controls/') ||
     path === '/api/mod/inbox' ||
     path === '/api/mod/inbox/ack' ||
     path === '/api/codex/bridge/poll' ||
@@ -720,6 +727,26 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       }
       return true;
     }
+    if (path === '/api/host/claude/poll' || path === '/api/host/claude/ack') {
+      // Só o auxiliar do host, pela porta local (nunca pela remota); fora do Docker, só pelo loopback.
+      const defaults = deps.claudeDefaults;
+      if (method !== 'POST') methodNotAllowed(res, 'POST');
+      else if (!defaults) sendJson(res, 403, { error: tr('troca de modelo e esforço desligada') });
+      else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, tr('só o auxiliar do próprio computador')) });
+      } else if (path === '/api/host/claude/poll') {
+        req.resume();
+        hostWait(res, url, (ms, signal) => defaults.pollWait(ms, signal)).then((list) => list && sendJson(res, 200, { requests: list }), (err) => fail(res, err));
+      } else {
+        readJson(req)
+          .then((body) => {
+            defaults.ack(body);
+            sendJson(res, 200, { ok: true });
+          })
+          .catch((err) => fail(res, err));
+      }
+      return true;
+    }
     if (path === '/api/host/dictation/poll' || path === '/api/host/dictation/ack') {
       // Só o auxiliar do host, pela porta local (nunca pela remota); fora do Docker, só pelo loopback.
       const dictation = deps.dictation;
@@ -768,6 +795,9 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         });
       } else if (!trusted(req, 'messages')) {
         sendJson(res, 403, { error: denied(req, tr('mensagens só são mandadas pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
+      } else if (path === '/api/controls' || path.startsWith('/api/controls/')) {
+        if (deps.controls) deps.controls(req, res, path, url);
+        else sendJson(res, 404, { error: tr('troca de modelo e esforço desligada') });
       } else {
         deps.messages(req, res, path);
       }
