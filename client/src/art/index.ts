@@ -35,6 +35,7 @@ import { renderIsoCharacter } from './character-iso/render';
 import { renderIsoFurniture } from './iso/index';
 import { renderIsoWall, renderLowWall } from './iso/walls';
 import { renderIsoCar } from './iso/car';
+import { isoSeatPlacement } from './iso/seats';
 import { renderTallElevator } from './iso/elevator';
 import { CHUNK_PX, floorChunk } from './surfaces/floor';
 import { WALL_CAP_H, WALL_FACE_H, capColor, southWallTile, wallFaceTile } from './surfaces/walls';
@@ -185,6 +186,11 @@ export function isoWallSprite(kind: FurnitureKind, _variant: string | undefined,
 /** Carro da rua na visão isométrica. */
 export function isoCarSprite(variant: number, dir: 1 | -1): Sprite {
   return isoWallCache.get(`car|${variant % 6}|${dir}`, () => toSprite(renderIsoCar(variant, dir)));
+}
+
+/** Onde fica (a partir do centro do tile) e quanto sobe quem senta num assento isométrico; null se não é assento. */
+export function isoSeatAnchor(kind: FurnitureKind, variant: string | undefined, facing: Dir): { dx: number; dy: number; lift: number } | null {
+  return isoSeatPlacement(kind, variant, facing);
 }
 
 export function iconSprite(name: IconName): Sprite {
@@ -377,6 +383,7 @@ const _contract: ArtModule = {
   isoWall,
   isoWallSprite,
   isoCarSprite,
+  isoSeatAnchor,
 };
 void _contract;
 

@@ -42,6 +42,42 @@ function filingCabinet(): BufFurniture {
   return { base: s.finish() };
 }
 
+/** Arquivo de aço visto por trás: painel com reforços prensados, etiqueta de patrimônio e a borda do tampo. */
+function filingCabinetBack(): BufFurniture {
+  const s = new Iso(1, 1, 34);
+  s.shadow(2, 2, 14, 14, 0.2, 1);
+  const m = M.steel;
+  const H = 22;
+  // rodapé recuado
+  s.box(3.5, 3.5, 0, 12.5, 12.5, 1.5, M.steelDark);
+  const rib = (z: number, h: number): string | undefined => {
+    for (const k of [1, 2]) {
+      const zr = (k * h) / 3;
+      if (z >= zr && z < zr + 1) return m.hi;
+      if (z >= zr - 1 && z < zr) return m.dd;
+    }
+    return undefined;
+  };
+  s.box(3, 3, 1.5, 13, 13, H - 1.5, {
+    top: m.lt,
+    east: (u, v, w, h) => {
+      const r = rib(h - v, h);
+      return u >= w - 1 ? m.dd : r === m.hi ? m.base : (r ?? m.dk);
+    },
+    south: (u, v, w, h) => {
+      if (u < 1 || u >= w - 1) return m.dk;
+      const r = rib(h - v, h);
+      if (r) return r;
+      // etiqueta de patrimônio
+      if (u >= 5 && u < 9.5 && v >= 2 && v < 4) return v >= 3 ? '#c3c7ce' : '#f4f2ea';
+      return u < 1.5 ? m.lt : m.base;
+    },
+  });
+  // tampo com a borda saliente
+  s.box(2.5, 2.5, H - 1.5, 13.5, 13.5, H, { top: (u, v, w, h) => (v >= h - 1 || u >= w - 1 ? m.hi : m.lt), south: m.hi, east: m.base });
+  return { base: s.finish() };
+}
+
 function printer(): BufFurniture {
   const s = new Iso(1, 1, 36);
   s.shadow(1, 2, 15, 15, 0.2, 1);
@@ -69,6 +105,50 @@ function printer(): BufFurniture {
   // bandeja de saída com papel
   s.box(4, 12, 12, 12, 15, 13, { top: '#f6f6f1', south: '#cfcfc9', east: '#bdbdb7' });
   s.box(5, 12, 13, 11, 14, 13.6, { top: '#ffffff', south: '#dededa', east: '#cacac4' });
+  return { base: s.finish() };
+}
+
+/** Impressora vista por trás: o móvel baixo, a traseira com ventilação e conectores, a bandeja de papel e os cabos. */
+function printerBack(): BufFurniture {
+  const s = new Iso(1, 1, 36);
+  s.shadow(1, 1, 15, 14, 0.2, 1);
+  // bandeja de saída, agora do outro lado
+  s.box(4, 1, 12, 12, 4, 13, { top: '#f6f6f1', south: '#cfcfc9', east: '#bdbdb7' });
+  // móvel baixo: painel liso com o passa-cabo
+  s.box(2, 3, 0, 14, 13, 10, {
+    top: M.white.lt,
+    east: M.white.dk,
+    south: (u, v, w, h) => {
+      if (u < 1 || u >= w - 1 || v >= h - 1) return M.white.dk;
+      if (v < 1) return M.white.hi;
+      if (u >= 7.5 && u < 10.5 && v >= 1.5 && v < 3) return DARK;
+      return M.white.base;
+    },
+  });
+  const pm = ramp('#d5d8de', 0.05);
+  s.box(2, 4, 10, 14, 12, 17, {
+    top: (u, v, w, h) => (v >= h - 1 || u >= w - 1 ? pm.hi : pm.lt),
+    east: pm.dk,
+    south: (u, v, w, h) => {
+      if (v < 1) return pm.hi;
+      if (v >= h - 1) return pm.dk;
+      // grade de ventilação
+      if (u >= 1.5 && u < 5 && v >= 1.5 && v < 5.5) return Math.floor(v) % 2 === 1 ? pm.dd : pm.base;
+      // conectores: energia e rede
+      if (u >= 6 && u < 7.5 && v >= 2 && v < 4.5) return DARK;
+      if (u >= 8.5 && u < 9.5 && v >= 2.5 && v < 4) return '#3f7fd8';
+      return pm.base;
+    },
+  });
+  s.box(3, 5, 17, 13, 10, 18, { top: pm.hi, south: pm.base, east: pm.dk });
+  // bandeja de entrada: folhas brancas acima da placa
+  s.box(4.5, 9.5, 17, 11.5, 11, 23, { top: '#ffffff', south: '#f4f4ef', east: '#dcdcd6' });
+  s.box(4, 11, 17, 12, 12, 20.5, { top: pm.hi, south: (_u, v) => (v < 1 ? pm.lt : pm.base), east: pm.dk });
+  // cabos: da traseira descem pelo móvel até o chão
+  s.line([8.7, 12.4, 13], [8.7, 13.4, 10], DARK);
+  s.line([8.7, 13.4, 10], [7.8, 13.4, 0.5], DARK);
+  s.line([11, 12.4, 13.5], [11, 13.4, 10], '#3f7fd8');
+  s.line([11, 13.4, 10], [11.8, 13.4, 0.5], '#3f7fd8');
   return { base: s.finish() };
 }
 
@@ -157,25 +237,95 @@ function glassPartition(variant: string | undefined): BufFurniture {
   return { base: s.finish() };
 }
 
-function binderShelf(seed: number): BufFurniture {
-  const s = new Iso(1, 1, 62);
-  s.shadow(2, 3, 14, 14, 0.2, 1);
-  const w = M.white;
-  const H = 52;
-  const shelves = [3, 15, 27, 39];
+const BINDER_H = 52;
+const BINDER_SHELVES = [3, 15, 27, 39];
+const BINDER_PAL = ['#3f7fd8', '#ec8a3c', '#4cae6a'];
+const PAGES = '#f4f2ea';
+
+/** Prateleiras da estante de pastas pela semente: 'b' = pastas, 'x' = caixas, 'm' = misto, e as cores das pastas. */
+function binderRows(seed: number): { kinds: string[]; cols: string[][] } {
   const r = rngOf(seed, 21);
-  const pal = ['#3f7fd8', '#ec8a3c', '#4cae6a'];
-  // por prateleira: 'b' = pastas, 'x' = caixas, 'm' = misto
-  const kinds = shelves.map((_, i) => ((seed + i) % 3 === 1 ? 'x' : (seed + i) % 3 === 2 ? 'm' : 'b'));
-  const cols: string[][] = shelves.map((_, i) => {
+  const kinds = BINDER_SHELVES.map((_, i) => ((seed + i) % 3 === 1 ? 'x' : (seed + i) % 3 === 2 ? 'm' : 'b'));
+  const cols: string[][] = BINDER_SHELVES.map((_, i) => {
     const row: string[] = [];
-    let c = pal[(seed + i) % pal.length];
+    let c = BINDER_PAL[(seed + i) % BINDER_PAL.length];
     for (let k = 0; k < 12; k++) {
-      if (r() < 0.35) c = pal[Math.floor(r() * pal.length)];
+      if (r() < 0.35) c = BINDER_PAL[Math.floor(r() * BINDER_PAL.length)];
       row.push(c);
     }
     return row;
   });
+  return { kinds, cols };
+}
+
+/**
+ * Estante de pastas vista por trás: painel de fundo entre as laterais, a lateral aberta com as prateleiras e as pastas,
+ * e as pastas da prateleira de cima aparecendo acima do painel.
+ */
+function binderShelfBack(seed: number): BufFurniture {
+  const s = new Iso(1, 1, 62);
+  s.shadow(2, 2, 14, 13, 0.2, 1);
+  const w = M.white;
+  const H = BINDER_H;
+  const shelves = BINDER_SHELVES;
+  const { kinds, cols } = binderRows(seed);
+  const board = ramp('#d6d1c4', 0.05);
+  const top = shelves[shelves.length - 1];
+  // o painel de fundo para abaixo da prateleira de cima
+  const panel = top + 4;
+  const inShelf = (z: number): number => shelves.findIndex((z0) => z >= z0 && z < z0 + 11);
+  const onBoard = (z: number): boolean => shelves.some((z0) => z >= z0 - 1.5 && z < z0);
+  s.box(3, 4, 0, 13, 12, H, {
+    top: (u, v, wd, h) => (v >= h - 1 || u >= wd - 1 ? w.hi : w.lt),
+    south: (u, v, wd, h) => {
+      const z = h - v;
+      if (u < 1 || u >= wd - 1) return u < 1 ? w.lt : w.base;
+      if (v < 1) return w.lt;
+      if (z < 1.5) return w.dk;
+      if (z >= panel) {
+        // vão acima do painel: as pastas de cima vistas por trás (capas coloridas e folhas)
+        const hz = z - top;
+        const x = 8 - Math.floor(u);
+        if (hz >= 10 - (x % 3 === 0 ? 1.5 : 0)) return w.dd;
+        const k = shelves.length - 1;
+        if (kinds[k] === 'x' || (kinds[k] === 'm' && x >= 4)) return x % 4 === 3 ? M.cardboard.dk : M.cardboard.base;
+        return x % 2 === 0 ? cols[k][x % cols[k].length] : PAGES;
+      }
+      if (z >= panel - 1) return board.lt;
+      // painel com a fileira de pregos de cada prateleira
+      if (onBoard(z + 0.5) && Math.floor(u) % 3 === 1) return board.dd;
+      return board.base;
+    },
+    east: (u, v, wd, h) => {
+      const z = h - v;
+      if (u < 1 || u >= wd - 1 || v < 1) return w.base;
+      if (z < 1.5) return w.dd;
+      if (onBoard(z)) return w.lt;
+      const k = inShelf(z);
+      if (k < 0) return w.dd;
+      // lateral aberta: a pasta (ou a caixa) da ponta vista de lado
+      const hz = z - shelves[k];
+      if (hz >= 10 || u >= wd - 2) return w.dd;
+      if (kinds[k] === 'x') {
+        if (hz >= 4 && hz < 5.5 && u >= 3 && u < 5) return M.cardboard.dd;
+        return hz >= 9 ? M.cardboard.lt : M.cardboard.dk;
+      }
+      const c = tone(cols[k][0], 0.08);
+      if (u < 2) return c.dd;
+      if (hz >= 5 && hz < 6.5 && u >= 2.5 && u < 3.5) return c.dd;
+      return hz >= 9 ? c.base : c.dk;
+    },
+  });
+  return { base: s.finish() };
+}
+
+function binderShelf(seed: number): BufFurniture {
+  const s = new Iso(1, 1, 62);
+  s.shadow(2, 3, 14, 14, 0.2, 1);
+  const w = M.white;
+  const H = BINDER_H;
+  const shelves = BINDER_SHELVES;
+  const { kinds, cols } = binderRows(seed);
   s.box(3, 4, 0, 13, 12, H, {
     top: (u, v, wd, h) => (v >= h - 1 || u >= wd - 1 ? w.hi : w.lt),
     east: (u, v) => (u < 1 || v < 1 ? w.base : w.dk),
@@ -249,6 +399,10 @@ function meetingTable(seed: number): BufFurniture {
   return { base: s.finish() };
 }
 
+/** Topo do assento da banqueta (px). */
+export const STOOL_TOP = SEAT_Z + 2;
+
+/** Banqueta redonda, sem encosto: quem senta pode olhar para qualquer lado; tudo na base. */
 function stool(): BufFurniture {
   const s = new Iso(1, 1, 24);
   s.shadow(3, 3, 13, 13, 0.2, 0);
@@ -265,7 +419,7 @@ function stool(): BufFurniture {
   s.line([4.6, 4.6, 4], [11.4, 4.6, 4], metal.dk);
   s.line([4.6, 11.4, 4], [11.4, 11.4, 4], metal.base);
   const c = tone('#3f62a3', 0.07);
-  s.cyl(8, 8, 5, SEAT_Z, SEAT_Z + 2, c, (u, v) => (u * u + v * v < 0.6 ? c.hi : c.lt));
+  s.cyl(8, 8, 5, STOOL_TOP - 2, STOOL_TOP, c, (u, v) => (u * u + v * v < 0.6 ? c.hi : c.lt));
   return { base: s.finish() };
 }
 
@@ -307,7 +461,12 @@ function waterCooler(): BufFurniture {
   // bandeja de gotejamento
   s.box(4, 13, 9, 12, 14.5, 10, { top: '#a0a8b6', south: '#6d7583', east: '#565d6b' });
   s.box(3, 3, 22, 13, 13, 24, { top: w.hi, south: w.dk, east: w.dd });
-  // galão translúcido
+  bottle(s);
+  return { base: s.finish() };
+}
+
+/** Galão translúcido sobre o bebedouro (igual dos dois lados). */
+function bottle(s: Iso): void {
   const wt = {
     hi: 'rgba(215,238,255,0.8)',
     lt: 'rgba(130,190,240,0.72)',
@@ -319,6 +478,42 @@ function waterCooler(): BufFurniture {
   s.cyl(8, 8, 1.8, 33, 35, tone('#d6e6f5', 0.06));
   s.px(6, 8, 30, 'rgba(255,255,255,0.8)');
   s.px(6, 8, 28, 'rgba(255,255,255,0.7)');
+}
+
+/** Bebedouro visto por trás: a serpentina preta do refrigerador, a grade de ventilação, o cabo e o galão por cima. */
+function waterCoolerBack(): BufFurniture {
+  const s = new Iso(1, 1, 46);
+  s.shadow(2, 2, 14, 14, 0.2, 1);
+  const w = ramp('#e1e4ea', 0.05);
+  // bandeja de gotejamento, agora do outro lado
+  s.box(4, 1.5, 9, 12, 3, 10, { top: '#a0a8b6', south: '#6d7583', east: '#565d6b' });
+  s.box(3, 3, 0, 13, 13, 22, {
+    top: (u, v, wd, h) => (v >= h - 1 || u >= wd - 1 ? w.hi : w.lt),
+    east: (u, v, wd) => (v < 1 ? w.base : v >= 4 && v < 9 && u >= 2 && u < wd - 2 && Math.floor(v) % 2 === 0 ? w.dd : w.dk),
+    south: (u, v, wd, h) => {
+      const z = h - v;
+      if (v < 1) return w.hi;
+      if (u < 1 || u >= wd - 1) return w.dk;
+      if (z < 2) return w.dk;
+      // serpentina: tubos horizontais ligados nas pontas, com as aletas entre eles
+      if (u >= 1.5 && u < wd - 1.5 && z >= 3.5 && z < 14.5) {
+        const row = Math.floor((z - 3.5) / 2.2);
+        const zz = (z - 3.5) % 2.2;
+        if (zz < 1) return DARK;
+        const left = u < 2.5;
+        const right = u >= wd - 2.5;
+        if ((left && row % 2 === 0) || (right && row % 2 === 1)) return DARK;
+        return Math.floor(u) % 2 === 0 ? '#59606e' : w.dk;
+      }
+      // grade de ventilação
+      if (z >= 16.5 && z < 20 && u >= 2 && u < wd - 2) return Math.floor(z) % 2 === 0 ? w.dd : w.base;
+      return w.base;
+    },
+  });
+  s.box(3, 3, 22, 13, 13, 24, { top: w.hi, south: w.dk, east: w.dd });
+  bottle(s);
+  // cabo de força
+  s.line([11, 13.2, 6], [11, 13.6, 0.5], DARK);
   return { base: s.finish() };
 }
 
@@ -346,6 +541,22 @@ export function officeMore(kind: FurnitureKind, variant: string | undefined, sta
       return floorLamp();
     case 'water_cooler':
       return waterCooler();
+    default:
+      return null;
+  }
+}
+
+/** Costas (o móvel de frente para o norte) de um kind deste grupo, ou null. */
+export function officeMoreBack(kind: FurnitureKind, seed: number): BufFurniture | null {
+  switch (kind) {
+    case 'filing_cabinet':
+      return filingCabinetBack();
+    case 'printer':
+      return printerBack();
+    case 'binder_shelf':
+      return binderShelfBack(seed);
+    case 'water_cooler':
+      return waterCoolerBack();
     default:
       return null;
   }

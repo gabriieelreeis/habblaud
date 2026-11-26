@@ -152,19 +152,80 @@ export function officeChairFront(variant: string | undefined): BufFurniture {
   return { base: s.finish() };
 }
 
+const SHELF_H = 52;
+const SHELF_ROWS = [4, 17, 30, 43];
+
+/** Cores dos livros de cada prateleira da estante ('' = vão), pela semente. */
+function shelfBooks(seed: number): string[][] {
+  const r = rngOf(seed, 11);
+  return SHELF_ROWS.map(() => {
+    const row: string[] = [];
+    for (let i = 0; i < 30; i++) row.push(r() < 0.12 ? '' : ACCENTS[Math.floor(r() * ACCENTS.length) % ACCENTS.length]);
+    return row;
+  });
+}
+
+/**
+ * Estante vista por trás: painel de tábuas entre as laterais, a lateral aberta com as prateleiras e os livros, e os
+ * livros de cima aparecendo acima do painel.
+ */
+export function bookshelfBack(seed: number): BufFurniture {
+  const w = M.oak;
+  const s = new Iso(2, 1, 60);
+  s.shadow(0, 2, 32, 14, 0.2);
+  const H = SHELF_H;
+  const shelves = SHELF_ROWS;
+  const books = shelfBooks(seed);
+  const board = ramp('#b98d62', 0.05);
+  const top = shelves[shelves.length - 1];
+  const panel = top + 3;
+  const inShelf = (z: number): number => shelves.findIndex((z0) => z >= z0 && z < z0 + 11);
+  const onBoard = (z: number): boolean => shelves.some((z0) => z >= z0 - 2 && z < z0);
+  s.box(0, 4, 0, 32, 14, H, {
+    top: w.lt,
+    south: (u, v, wd, h) => {
+      const z = h - v;
+      if (u < 2 || u >= wd - 2 || v < 2) return u < 1 || v < 1 ? w.lt : w.base;
+      if (z < 1) return w.dk;
+      if (z >= panel) {
+        // vão acima do painel: os livros de cima vistos por trás (capa e miolo)
+        const i = Math.floor((wd - 1 - u) / 2);
+        const col = books[shelves.length - 1][i % 30];
+        if (!col || z >= top + 8 + (i % 3 === 0 ? -2 : 0)) return w.dd;
+        return Math.floor(u) % 2 === 0 ? col : '#efe6d2';
+      }
+      if (z >= panel - 1) return board.lt;
+      // tábuas do fundo e os pregos de cada prateleira
+      if (Math.floor(u) % 10 === 6) return board.dk;
+      if (onBoard(z + 1) && Math.floor(u) % 4 === 1) return board.dd;
+      return board.base;
+    },
+    east: (u, v, wd, h) => {
+      const z = h - v;
+      if (u < 1.5 || u >= wd - 1.5 || v < 2) return u < 1 || v < 1 ? w.base : w.dk;
+      if (z < 1) return w.dd;
+      if (onBoard(z)) return w.base;
+      const k = inShelf(z);
+      if (k < 0) return w.dd;
+      // lateral aberta: o livro da ponta visto de lado
+      const col = books[k][0] || books[k][1] || ACCENTS[k];
+      const hz = z - shelves[k];
+      if (hz >= 8 || u >= wd - 2.5) return w.dd;
+      const c = tone(col);
+      return u < 2.5 ? c.dd : hz >= 7 ? c.base : c.dk;
+    },
+  });
+  return { base: s.finish() };
+}
+
 /** Estante 2x1 encostada na parede norte, com livros coloridos na face sul. */
 export function bookshelf(seed: number): BufFurniture {
   const w = M.oak;
   const s = new Iso(2, 1, 60);
   s.shadow(0, 2, 32, 14, 0.2);
-  const H = 52;
-  const shelves = [4, 17, 30, 43];
-  const r = rngOf(seed, 11);
-  const books: string[][] = shelves.map(() => {
-    const row: string[] = [];
-    for (let i = 0; i < 30; i++) row.push(r() < 0.12 ? '' : ACCENTS[Math.floor(r() * ACCENTS.length) % ACCENTS.length]);
-    return row;
-  });
+  const H = SHELF_H;
+  const shelves = SHELF_ROWS;
+  const books = shelfBooks(seed);
   s.box(0, 2, 0, 32, 12, H, {
     top: w.lt,
     east: w.dk,

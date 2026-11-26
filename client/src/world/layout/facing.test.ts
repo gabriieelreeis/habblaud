@@ -48,7 +48,7 @@ describe('direção dos móveis', () => {
       const byId = new Map(a.furniture.map((f) => [f.id, f]));
       for (const s of a.spots) {
         const f = s.furnitureId ? byId.get(s.furnitureId) : undefined;
-        if (!s.seated || !f || f.kind === 'stool' || f.kind === 'beanbag') continue;
+        if (!s.seated || !f || f.kind === 'stool') continue;
         expect(furnitureFacing(a, f), `${a.id} ${f.kind}/${f.variant}`).toBe(s.dir);
       }
     }
