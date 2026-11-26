@@ -622,7 +622,7 @@ export class Renderer {
         continue;
       }
       // sentado: a caixa é a do assento, entre a base (atrás) e o encosto/porta (na frente)
-      const seat = ch.seated ? this.seatBox(ch) : null;
+      const seat = ch.seated ? this.seatBox(ch, x, y) : null;
       push(K.Char, seat ?? { x0: x - CHAR_R, y0: y - CHAR_R, x1: x + CHAR_R, y1: y + CHAR_R }, rect, ch, null, 0.5);
     }
     for (const prop of this.exterior.props) {
@@ -770,9 +770,12 @@ export class Renderer {
   }
 
   /** Caixa do móvel em que o personagem está sentado (null se não achar). */
-  private seatBox(ch: Character): Box | null {
+  private seatBox(ch: Character, x: number, y: number): Box | null {
     const spot = ch.atSpot ? this.sim.spots.get(ch.atSpot) : undefined;
-    return spot ? (this.seatFurniture(spot)?.box ?? null) : null;
+    const b = spot ? this.seatFurniture(spot)?.box : undefined;
+    // só junto do assento: longe dele (andando ainda marcado como sentado) vale a caixa dos pés
+    if (!b || x < b.x0 - TILE || x > b.x1 + TILE || y < b.y0 - TILE || y > b.y1 + TILE) return null;
+    return b;
   }
 
   /** O móvel de um lugar (assento), pelo id gravado no spot. */

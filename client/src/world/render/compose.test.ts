@@ -5,7 +5,7 @@ import { renderIsoCharacter } from '../../art/character-iso/render';
 import type { BufSprite } from '../../art/core/sprite';
 import { renderIsoFurniture } from '../../art/iso/index';
 import { renderIsoWall } from '../../art/iso/walls';
-import { WALL_H, WALL_T, isoSort, isoX, isoY, wallSlices, type Box } from '../iso';
+import { isoSort, isoX, isoY, wallSlices, type Box } from '../iso';
 import { layoutCafe } from '../layout/core';
 import { layoutCorridor } from '../layout/corridor';
 import { furnitureFacing } from '../layout/facing';
@@ -13,10 +13,14 @@ import { layoutProjectRoom } from '../layout/room';
 import type { AreaLayout } from '../layout/types';
 import { roomTheme } from '../../art/theme';
 import { blendOnto, buildGrid, composeLayer, frontMask, markFront, maskBehind, restoreFront, type Composite, type LayerItem } from './compose';
+import { wallPlan } from './wall-plan';
 
 const px = (s: BufSprite) => ({ data: s.buf.data, w: s.buf.w, h: s.buf.h });
 
-/** Os mesmos pedaços que o renderizador põe na camada: móveis (base e front) e as paredes do fundo, em fatias. */
+/** Fatias das muretas (frente e lateral leste das salas), para os testes de oclusão. */
+const lowWalls = new Set<LayerItem>();
+
+/** Os mesmos pedaços que o renderizador põe na camada: móveis (base e front) e todas as paredes, em fatias. */
 function itemsOf(areas: AreaLayout[]): LayerItem[] {
   const out: LayerItem[] = [];
   for (const a of areas) {
@@ -30,12 +34,12 @@ function itemsOf(areas: AreaLayout[]): LayerItem[] {
         out.push({ box, rect: { x: dx, y: dy, w: s.buf.w, h: s.buf.h }, bias, px: px(s), sx: 0, sy: 0, sw: s.buf.w, sh: s.buf.h, dx, dy });
       }
     }
-    for (const w of a.walls) {
-      if (w.kind !== 'face') continue;
-      const sp = renderIsoWall(w.style, { facing: 'south', length: w.w, height: WALL_H, thickness: WALL_T });
-      const plane = { facing: 'south' as const, at: w.y + 2 * TILE, a0: w.x, a1: w.x + w.w };
-      for (const q of wallSlices(sp.ax, sp.ay, sp.buf.w, sp.buf.h, plane, WALL_T)) {
-        out.push({ box: q.box, rect: q.rect, bias: 0, px: px(sp), sx: q.sx0, sy: 0, sw: q.sx1 - q.sx0, sh: sp.buf.h, dx: q.dx, dy: q.dy });
+    for (const w of wallPlan(a)) {
+      const sp = renderIsoWall(w.seg.style, w.spec);
+      for (const q of wallSlices(sp.ax, sp.ay, sp.buf.w, sp.buf.h, w.plane, w.thick)) {
+        const it: LayerItem = { box: q.box, rect: q.rect, bias: 0, px: px(sp), sx: q.sx0, sy: 0, sw: q.sx1 - q.sx0, sh: sp.buf.h, dx: q.dx, dy: q.dy };
+        if (!w.tall) lowWalls.add(it);
+        out.push(it);
       }
     }
   }
@@ -43,7 +47,8 @@ function itemsOf(areas: AreaLayout[]): LayerItem[] {
 }
 
 const scene = (() => {
-  const areas = [layoutCorridor(5), layoutCafe(), layoutProjectRoom({ id: 'sala', slot: 4, seed: 7 }, roomTheme(3)), layoutProjectRoom({ id: 'sala2', slot: 5, seed: 11 }, roomTheme(5))];
+  const room = (slot: number, seed: number) => layoutProjectRoom({ id: `sala${slot}`, slot, seed }, roomTheme(slot));
+  const areas = [layoutCorridor(5), layoutCafe(), room(0, 3), room(1, 5), room(4, 7), room(5, 11)];
   const order = isoSort(itemsOf(areas));
   const comp = composeLayer(order)!;
   return { areas, order, comp, grid: buildGrid(order) };
@@ -105,7 +110,7 @@ describe('camada com dono por pixel', () => {
   it('com alguém em qualquer lugar (bebedouro do corredor, copa, sala), o cenário fora do desenho dele fica idêntico', () => {
     const c = scene.comp;
     // corredor (bebedouros e bancos), copa e salas: centenas de posições; confere uma janela de 48 px em volta dele
-    const spots = [...points(2 * 16 + 1, 12, 6, 5), ...points(16 + 2, 3, 8, 6), ...points(4 * 16 + 1, 3, 6, 6)];
+    const spots = [...points(2 * 16 + 1, 12, 6, 5), ...points(2 * 16 + 1, 9, 8, 3), ...points(16 + 2, 3, 8, 6), ...points(4 * 16 + 1, 3, 6, 6)];
     let checked = 0;
     for (const [x, y] of spots) {
       const r = withPerson(c, x, y);
@@ -141,7 +146,7 @@ describe('camada com dono por pixel', () => {
       }
       checked++;
     }
-    expect(checked).toBeGreaterThan(300);
+    expect(checked).toBeGreaterThan(400);
     // e o quadro inteiro, em algumas posições: nada muda longe dele
     for (const [x, y] of spots.filter((_, k) => k % 97 === 0)) {
       const r = withPerson(c, x, y);
@@ -152,6 +157,22 @@ describe('camada com dono por pixel', () => {
       expect(diff).toBeLessThanOrEqual(opaque * 4);
     }
   }, 120_000);
+
+  it('mureta: quem está no corredor aparece inteiro; dentro da sala, junto dela, some a parte de baixo', () => {
+    const c = scene.comp;
+    const low = new Set(scene.order.map((it, i) => (lowWalls.has(it) ? i : -1)).filter((i) => i >= 0));
+    expect(low.size).toBeGreaterThan(20);
+    const byLow = (r: ReturnType<typeof withPerson>) => [...low].reduce((n, i) => n + (r.byOwner.get(i) ?? 0), 0);
+    const front = scene.areas.find((a) => a.id === 'sala0')!.walls.find((w) => w.kind === 'south')!;
+    let behind = 0;
+    for (let x = front.x + 8; x < front.x + front.w - 8; x += 6) {
+      // no corredor (a primeira fileira começa no fim do tile da mureta), perto do bebedouro e da porta
+      for (const dy of [TILE + 2, TILE + 8, TILE + 18]) expect(byLow(withPerson(c, x, front.y + dy)), `corredor ${x},${front.y + dy}`).toBe(0);
+      // dentro da sala, encostado nela: a mureta cobre as pernas (menos no vão da porta)
+      if (byLow(withPerson(c, x, front.y - 4)) > 0) behind++;
+    }
+    expect(behind).toBeGreaterThan(20);
+  });
 
   it('atrás de móvel alto, some só a parte de trás; na frente, aparece inteiro', () => {
     const c = scene.comp;
