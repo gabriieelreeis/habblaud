@@ -97,15 +97,17 @@ const cellKey = (gx: number, gy: number): number => (gx + 4096) * 8192 + (gy + 4
 const POPCORN_DX: Readonly<Record<string, number>> = { down: 0, up: -9, left: -5, right: 5 };
 const POPCORN_DY: Readonly<Record<string, number>> = { down: 11, up: 8, left: 9, right: 9 };
 /** Teia ao lado de um vizinho: no máximo isto (px) para fora do corpo. */
-const WEB_MAX_OUT = 18;
+const WEB_MAX_OUT = 10;
 /** Tom das bordas da área externa (vinheta) e do gramado além dela. */
 const VIGNETTE_ALPHA = 0.2;
 const VIGNETTE_EDGE = `rgba(18,40,26,${VIGNETTE_ALPHA})`;
-/** Escala dos personagens e dos ícones sobre a cabeça na visão isométrica. */
+/** Ampliação da arte antiga dos personagens, quando a arte não tem a versão isométrica. */
 const CHAR_SCALE = 2;
+/** Personagem isométrico / personagem antigo (altura): converte as medidas da arte antiga (pipoca, nuvem). */
+const ART_K = 1.5;
 /** Meia largura (px de mundo) da caixa de um personagem no chão. */
 const CHAR_R = 4;
-/** Quanto o personagem sentado sobe (px) para assentar na altura do assento. */
+/** Quanto o personagem da arte antiga (ampliada) sobe sentado, para assentar na altura do assento. */
 const SEAT_LIFT = 4;
 /** Margem do canvas de rascunho dos itens de parede (contorno da TV nova passa da tela). */
 const SCRATCH_M = 3;
@@ -586,10 +588,10 @@ export class Renderer {
       const y = ch.y + ch.offY;
       const ix = isoX(x, y);
       const iy = isoY(x, y);
-      const rect = { x: ix - 28, y: iy - 72, w: 56, h: 80 };
+      const rect = { x: ix - 20, y: iy - 56, w: 40, h: 62 };
       if (!visible(rect)) {
         head.x = ix;
-        head.y = iy - 52;
+        head.y = iy - 40;
         head.feetY = iy;
         continue;
       }
@@ -687,7 +689,7 @@ export class Renderer {
       const s = this.icon(ic.name);
       if (!s) continue;
       ctx.globalAlpha = ic.alpha;
-      const k = CHAR_SCALE;
+      const k = 1;
       const ix = Math.round(ic.x - s.ax * k);
       const iy = Math.round(ic.y - s.ay * k - ic.bounce * k);
       ctx.drawImage(s.canvas, ix, iy, s.canvas.width * k, s.canvas.height * k);
@@ -1373,7 +1375,7 @@ export class Renderer {
         got = null;
       }
     }
-    const lift = ch.seated ? SEAT_LIFT : 0;
+    const lift = ch.seated && got && got.k !== 1 ? SEAT_LIFT : 0;
     if (got) {
       const { s, k } = got;
       const sx = x - s.ax * k;
@@ -1386,11 +1388,11 @@ export class Renderer {
       head.bh = b.h * k;
       head.y = sy + b.y * k;
     } else {
-      head.bx = x - 14;
-      head.by = y - 52;
-      head.bw = 28;
-      head.bh = 52;
-      head.y = y - 52;
+      head.bx = x - 8;
+      head.by = y - 40;
+      head.bw = 16;
+      head.bh = 40;
+      head.y = y - 40;
     }
     ctx.globalAlpha = 1;
     head.x = x;
@@ -1415,20 +1417,20 @@ export class Renderer {
             : name === 'hourglass' || name === 'hourglass_flip'
               ? now % HOURGLASS_FLIP_MS < 110 ? 1 : 0
               : Math.round(Math.max(0, 1 - (now - ch.iconAt) / 250) * 4);
-      const lift2 = name === 'storm' ? STORM_LIFT * CHAR_SCALE : 0;
-      this.pushIcon(x, head.y - 4 - lift2, name, bounce, ch.alpha, badge);
+      const lift2 = name === 'storm' ? Math.round(STORM_LIFT * ART_K) : 0;
+      this.pushIcon(x, head.y - 2 - lift2, name, bounce, ch.alpha, badge);
       // chuva: pingos caem da nuvem até a cabeça
       if (name === 'storm' && Math.random() < this.dt * 24) this.particles.rain(x - 6 + Math.floor(Math.random() * 13), head.y - 6 - lift2, lift2 + 2);
     }
     if (shell && ch.shellStage === 'nap' && ch.pose === 'sleep') {
       // cochilando: "zzz" flutuando acima e à direita da ampulheta (o selo "×N" fica embaixo)
-      this.pushIcon(x + 20, head.y - 26, 'zzz', Math.round(Math.sin(now / 500) * 1.5), ch.alpha, 0);
+      this.pushIcon(x + 12, head.y - 15, 'zzz', Math.round(Math.sin(now / 500) * 1.5), ch.alpha, 0);
     }
     // pipoca pulando do balde de vez em quando
     if (shell && ch.pose === 'wait' && ch.held === 'popcorn' && got && now >= ch.popcornAt) {
       ch.popcornAt = now + 450 + Math.random() * 1200;
-      const px = x - 2 + (POPCORN_DX[ch.dir] ?? 0) * CHAR_SCALE;
-      const py = y - lift - 2 - (POPCORN_DY[ch.dir] ?? 10) * CHAR_SCALE;
+      const px = x - 2 + (POPCORN_DX[ch.dir] ?? 0) * ART_K;
+      const py = y - lift - 2 - (POPCORN_DY[ch.dir] ?? 10) * ART_K;
       this.particles.popcorn(px, py);
       if (Math.random() < 0.3) this.particles.popcorn(px, py);
     }
@@ -1470,8 +1472,8 @@ export class Renderer {
       const busyR = this.neighborAt(head, 1);
       if (left ? busyL && !busyR : busyR && !busyL) left = !left;
       ctx.globalAlpha = ch.alpha;
-      this.drawWeb(web, head, left, scale * CHAR_SCALE, left ? busyL : busyR);
-      if (ch.shellStage === 'nap') this.drawWeb(web, head, !left, CHAR_SCALE, left ? busyR : busyL);
+      this.drawWeb(web, head, left, scale, left ? busyL : busyR);
+      if (ch.shellStage === 'nap') this.drawWeb(web, head, !left, 1, left ? busyR : busyL);
     }
     ctx.globalAlpha = 1;
   }
@@ -1593,7 +1595,7 @@ export class Renderer {
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.ellipse(x, y, 14 * k, 7 * k, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y, 11 * k, 5.5 * k, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -1606,7 +1608,7 @@ export class Renderer {
     ctx.lineWidth = 2;
     ctx.globalAlpha *= 0.9 * (1 - ph);
     ctx.beginPath();
-    ctx.ellipse(x, y, 10 + ph * 20, 5 + ph * 10, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y, 8 + ph * 16, 4 + ph * 8, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }

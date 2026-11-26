@@ -30,7 +30,7 @@ import type { BufSprite } from './core/sprite';
 import { drawBoard, drawClock, drawScreen, drawWindowView, footballLance } from './dynamic';
 import { normalizeFurniture, renderFurniture } from './furniture/index';
 import { renderIcon } from './icons';
-import { scale2x } from './core/scale2x';
+import { renderIsoCharacter } from './character-iso/render';
 import { renderIsoFurniture } from './iso/index';
 import { renderIsoWall, renderLowWall } from './iso/walls';
 import { renderIsoCar } from './iso/car';
@@ -138,7 +138,7 @@ export function furnitureSprites(kind: FurnitureKind, variant?: string, state?: 
 // ------------------------------------------------------------------ visão isométrica
 
 const isoFurnCache = new Cache<FurnitureSprites>(4000);
-const isoCharCache = new Cache<Sprite>(8000);
+const isoCharCache = new Cache<Sprite>(20000);
 const isoWallCache = new Cache<Sprite>(1500);
 
 /** Móvel de chão na visão isométrica: âncora no canto de trás (noroeste) do footprint. */
@@ -157,10 +157,7 @@ export function isoCharacterSprite(req: CharacterFrameRequest): Sprite {
   const frame = ((Math.floor(req.frame) % n) + n) % n;
   const seated = isSeated(req.pose, req.seated);
   const key = `${keyOf(req.appearance)}|${req.dir}|${req.pose}|${frame}|${req.held ?? 'none'}|${seated ? 1 : 0}|${req.costume ?? 'none'}`;
-  return isoCharCache.get(key, () => {
-    const s = renderCharacter({ ...req, frame, seated });
-    return toSprite({ buf: scale2x(s.buf), ax: s.ax * 2, ay: s.ay * 2 });
-  });
+  return isoCharCache.get(key, () => toSprite(renderIsoCharacter({ ...req, frame, seated })));
 }
 
 /** Parede isométrica (alta, do fundo, ou mureta baixa da frente). Âncora no canto de trás do footprint dela. */

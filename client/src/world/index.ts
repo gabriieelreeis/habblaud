@@ -186,7 +186,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     if (!ch) return;
     userMoved = true;
     const zoom = Math.max(camera.zoom, camera.snapZoom(2.5));
-    const c = camera.centerFor(isoX(ch.x, ch.y), isoY(ch.x, ch.y) - 28, zoom);
+    const c = camera.centerFor(isoX(ch.x, ch.y), isoY(ch.x, ch.y) - 20, zoom);
     camera.animateTo(c.x, c.y, zoom, Date.now(), 420);
     camera.follow = opts.follow ? id : null;
   };
@@ -417,7 +417,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       const cx = camera.x;
       const cy = camera.y;
       const cz = camera.zoom;
-      camera.update(real, followCh ? camera.centerFor(isoX(followCh.x, followCh.y), isoY(followCh.x, followCh.y) - 28, camera.zoom) : null, realDt);
+      camera.update(real, followCh ? camera.centerFor(isoX(followCh.x, followCh.y), isoY(followCh.x, followCh.y) - 20, camera.zoom) : null, realDt);
       // seguir alguém andando ou a câmera deslizando: 30 qps aí viraria tranco
       cameraMoved = Math.abs(camera.x - cx) + Math.abs(camera.y - cy) > 0.01 || Math.abs(camera.zoom - cz) > 1e-4;
       renderer.frame(now, dt, options, { agent: selection?.type === 'agent' ? selection.id : null, room: selection?.type === 'room' ? selection.id : null, hover });
