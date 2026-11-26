@@ -66,8 +66,9 @@ export function renderIsoCharacter(req: CharacterFrameRequest): BufSprite {
     for (const arm of backArms) drawHand(c, arm, 0.05);
   }
 
-  // 2) pernas, quadril e tronco (sentado de frente, as coxas vêm por cima do tronco)
-  const legs = [r.far.leg, r.near.leg].sort((x, y) => depth(v, x.b) - depth(v, y.b));
+  // 2) pernas, quadril e tronco (sentado de frente, as coxas vêm por cima do tronco). Sentado de costas, as pernas vão
+  // dobradas para a frente, embaixo da mesa, escondidas pelo corpo e pelo encosto: não aparecem.
+  const legs = r.seated && v.back ? [] : [r.far.leg, r.near.leg].sort((x, y) => depth(v, x.b) - depth(v, y.b));
   const legsFirst = !(r.seated && !v.back);
   if (legsFirst) for (const l of legs) drawLeg(c, l);
   drawPelvis(c);

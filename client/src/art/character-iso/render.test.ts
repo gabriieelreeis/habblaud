@@ -81,3 +81,32 @@ describe('renderIsoCharacter', () => {
     }
   });
 });
+
+describe('pernas de quem senta', () => {
+  const SEATED: Pose[] = ['sit', 'type', 'sleep', 'wait'];
+  /** Linha (y) do pixel opaco mais baixo da folha. */
+  const lowest = (b: PixelBuf): number => {
+    for (let y = b.h - 1; y >= 0; y--) for (let x = 0; x < b.w; x++) if (b.data[(y * b.w + x) * 4 + 3] > 0) return y;
+    return -1;
+  };
+  it('de costas, as pernas não aparecem: nada abaixo do quadril (nem pés no chão atrás da cadeira)', () => {
+    for (let i = 0; i < 6; i++) {
+      const a = appearanceFromSeed(17 * i + 3, { look: i % 2 ? 'm' : 'f' });
+      for (const pose of SEATED)
+        for (const dir of ['up', 'left'] as const)
+          for (let frame = 0; frame < POSE_FRAMES[pose]; frame++) {
+            const s = renderIsoCharacter({ appearance: a, dir, pose, frame, held: pose === 'wait' ? 'popcorn' : 'none', seated: true });
+            expect(lowest(s.buf), `${pose} ${dir} ${frame}`).toBeLessThanOrEqual(s.ay - 6);
+          }
+    }
+  });
+  it('de frente, as pernas dobram para a frente e os pés tocam o chão', () => {
+    for (let i = 0; i < 6; i++) {
+      const a = appearanceFromSeed(17 * i + 3, { look: i % 2 ? 'm' : 'f' });
+      for (const dir of ['down', 'right'] as const) {
+        const s = renderIsoCharacter({ appearance: a, dir, pose: 'sit', frame: 0, seated: true });
+        expect(lowest(s.buf), dir).toBeGreaterThanOrEqual(s.ay - 3);
+      }
+    }
+  });
+});
