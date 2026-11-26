@@ -28,6 +28,7 @@ describe('modelo e esforço (peças puras)', () => {
     expect(claudeAlias('claude-opus-5-5')).toBe('opus');
     expect(claudeAlias('claude-sonnet-5-5[1m]')).toBe('sonnet');
     expect(claudeAlias('claude-haiku-5-5')).toBe('haiku');
+    expect(claudeAlias('Sonnet 5.5')).toBe('sonnet');
     expect(claudeAlias('gpt-6')).toBeUndefined();
     expect(claudeAlias(undefined)).toBeUndefined();
   });
@@ -42,7 +43,8 @@ describe('modelo e esforço (peças puras)', () => {
   it('mostra o modelo da última resposta e o escolhido para as próximas', () => {
     expect(modelSummary({ model: 'claude-opus-5-5', provider: 'claude' })).toBe('última resposta: Opus 5.5');
     expect(modelSummary({ model: 'claude-opus-5-5', provider: 'claude', modelChoice: { label: 'Sonnet 5.5', at: 2 } })).toBe('última resposta: Opus 5.5 · próximas: Sonnet 5.5');
-    expect(modelSummary({ model: 'opencode/big-pickle', provider: 'opencode', modelChoice: { label: 'opencode/big-pickle', at: 2 } })).toBe('última resposta: opencode/big-pickle');
+    expect(modelSummary({ model: 'opencode/big-pickle', provider: 'opencode', modelChoice: { label: 'opencode/big-pickle', at: 2 } })).toBe('escolhido na sessão: opencode/big-pickle');
+    expect(modelSummary({ model: 'opencode/big-pickle', provider: 'opencode' })).toBe('última resposta: opencode/big-pickle');
     expect(modelSummary({ provider: 'claude' })).toBe('ainda sem resposta nesta sessão');
   });
 
@@ -54,6 +56,7 @@ describe('modelo e esforço (peças puras)', () => {
     expect(controlStatusText(state({ status: 'confirmed', defaults: 'restore-failed', error: 'sem acesso' }), 'claude')).toEqual({ text: 'Confirmado: esforço high. sem acesso', tone: 'error' });
     expect(controlStatusText(state({ status: 'failed', error: 'a sessão saiu' }), 'claude')).toEqual({ text: 'Não deu: a sessão saiu', tone: 'error' });
     expect(controlStatusText(state({ kind: 'model', value: 'opencode/gpt-6.2-sol', variant: 'high', status: 'confirmed' }), 'opencode').text).toBe('Confirmado: opencode/gpt-6.2-sol · high nas próximas respostas.');
+    expect(controlStatusText(state({ kind: 'effort', value: 'opencode/gpt-6.2-sol', variant: 'high', status: 'confirmed' }), 'opencode').text).toBe('Confirmado: raciocínio high.');
   });
 
   it('trava a troca de modelo do Claude Code por 1 h depois da última resposta', () => {

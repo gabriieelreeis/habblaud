@@ -40,7 +40,7 @@ export function controlsAvailable(provider: Provider | undefined): boolean {
 /** Apelido do Claude Code para um id de modelo ("claude-opus-5-5" -> "opus"). */
 export function claudeAlias(model: string | undefined): string | undefined {
   const m = model?.toLowerCase() ?? '';
-  return CLAUDE_MODELS.find((a) => new RegExp(`(^|[-/])${a}($|[-\\d\\[])`).test(m));
+  return CLAUDE_MODELS.find((a) => new RegExp(`(^|[-/\\s])${a}($|[-\\s\\d\\[])`).test(m));
 }
 
 /**
@@ -55,7 +55,7 @@ export function modelLockedUntil(a: Pick<AgentInfo, 'provider' | 'replyAt'>, now
 
 /** De onde veio o esforço mostrado, em palavras. */
 export function effortOrigin(e: AgentEffort | undefined, provider: Provider | undefined): string {
-  if (!e) return (provider ?? 'claude') === 'opencode' ? tr('padrão do modelo no OpenCode') : tr('padrão do modelo (o settings.json não define)');
+  if (!e) return (provider ?? 'claude') === 'opencode' ? tr('padrão do modelo no OpenCode') : tr('não informado: vale o padrão do modelo ou do settings.json');
   switch (e.source) {
     case 'command':
       return e.at ? tr('confirmado pelo /effort às {0}', [formatClock(e.at, false)]) : tr('confirmado pelo /effort');
@@ -72,13 +72,21 @@ export function effortOrigin(e: AgentEffort | undefined, provider: Provider | un
 export function modelSummary(a: Pick<AgentInfo, 'model' | 'modelChoice' | 'provider'>): string {
   const last = a.model ? tr('última resposta: {0}', [a.provider === 'opencode' ? a.model : prettyModel(a.model)]) : tr('ainda sem resposta nesta sessão');
   const next = a.modelChoice?.label;
+  if (a.provider === 'opencode' && next && next === a.model) return tr('escolhido na sessão: {0}', [next]);
   if (!next || next === a.model) return last;
   return tr('{0} · próximas: {1}', [last, next]);
 }
 
 /** Linha de situação de uma troca. */
 export function controlStatusText(s: ControlState, provider: Provider | undefined): { text: string; tone: 'muted' | 'ok' | 'error' } {
-  const what = s.kind === 'effort' ? (provider === 'opencode' ? tr('raciocínio {0}', [s.value]) : tr('esforço {0}', [s.value])) : s.variant ? `${s.value} · ${s.variant}` : s.value;
+  const what =
+    s.kind === 'effort'
+      ? provider === 'opencode'
+        ? tr('raciocínio {0}', [s.variant ?? tr('padrão do modelo')])
+        : tr('esforço {0}', [s.value])
+      : s.variant
+        ? `${s.value} · ${s.variant}`
+        : s.value;
   const cmd = s.kind === 'effort' ? effortCommand(s.value) : modelCommand(s.value);
   if (s.status === 'failed') return { text: tr('Não deu: {0}', [s.error ?? tr('a sessão não recebeu a troca')]), tone: 'error' };
   if (s.status === 'sending') return { text: provider === 'opencode' ? tr('Trocando para {0}…', [what]) : tr('Enviando {0}…', [cmd]), tone: 'muted' };
@@ -195,7 +203,7 @@ export class SessionControls {
     const lockText = lockedUntil ? tr('troca liberada às {0}: com a conversa em cache, o Claude Code pede confirmação na tela da sessão', [formatClock(lockedUntil, false)]) : '';
     setText(this.modelNow, lockText ? `${modelSummary(agent)}\n${lockText}` : modelSummary(agent));
     const variants = opencode ? this.variantsOf(this.currentModel(agent)) : [];
-    const noVariants = opencode && this.models !== null && variants.length === 0;
+    const noVariants = opencode && this.models !== null && !!this.currentModel(agent) && variants.length === 0;
     setText(this.effortNow, noVariants ? tr('este modelo não tem níveis de raciocínio no OpenCode') : effortOrigin(agent.effort, agent.provider));
     this.renderSelects(agent, local);
     this.modelSel.disabled = !ready || busy || !!lockedUntil || (opencode && !this.models?.length);

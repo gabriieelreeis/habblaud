@@ -3874,7 +3874,7 @@ export const ES: Readonly<Record<string, string>> = {
   "sem conexão com o Habblaud": "sin conexión con Habblaud",
   "Modelo e esforço": "Modelo y esfuerzo",
   "padrão do modelo no OpenCode": "predeterminado del modelo en OpenCode",
-  "padrão do modelo (o settings.json não define)": "predeterminado del modelo (settings.json no lo define)",
+  "não informado: vale o padrão do modelo ou do settings.json": "sin dato: vale el predeterminado del modelo o de settings.json",
   "confirmado pelo /effort às {0}": "confirmado por /effort a las {0}",
   "confirmado pelo /effort": "confirmado por /effort",
   "aberta com --effort {0}": "abierta con --effort {0}",
@@ -3945,4 +3945,7 @@ export const ES: Readonly<Record<string, string>> = {
   // troca de modelo e esforço pela gaveta
   "com a conversa em cache (até 1 h depois da última resposta), o Claude Code pede confirmação na tela da sessão para trocar de modelo, e ela ficaria parada esperando; troque mais tarde ou digite /model no terminal dela": "con la conversación en caché (hasta 1 h después de la última respuesta), Claude Code pide confirmación en la pantalla de la sesión para cambiar de modelo, y la sesión quedaría esperando; cámbialo más tarde o escribe /model en su terminal",
   "troca liberada às {0}: com a conversa em cache, o Claude Code pede confirmação na tela da sessão": "cambio disponible a las {0}: con la conversación en caché, Claude Code pide confirmación en la pantalla de la sesión",
+
+  // troca de modelo e esforço pela gaveta
+  "escolhido na sessão: {0}": "elegido en la sesión: {0}",
 };

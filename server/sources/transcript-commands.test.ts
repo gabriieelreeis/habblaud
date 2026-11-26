@@ -39,6 +39,7 @@ describe('saída do /effort e do /model na conversa', () => {
     expect(s.effortCmd).toEqual({ level: 'low', at: T0 + 10 });
     expect(s.modelCmd).toEqual({ label: 'Haiku 5.5', at: T0 + 20 });
     expect(r[1].changed).toBe(true);
+    expect(r[0].activities).toEqual([]);
     expect(r[1].activities).toEqual([]);
   });
 

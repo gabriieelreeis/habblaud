@@ -291,7 +291,6 @@ export class ClaudeWatcher implements AgentSource {
       const info: SourceInfo = { label: acc.id, path: acc.detected.configDir, sessions: res.entries.length, ok: res.ok };
       if (res.error) info.error = res.error;
       this.sourceInfo.set(acc.dir, info);
-      this.opts.defaults?.wantJobs(acc.id, res.entries.flatMap((e) => (e.jobId ? [e.jobId] : [])));
       for (const entry of res.entries) {
         const key = `${acc.id}:${entry.pid}`;
         seen.add(key);
@@ -301,6 +300,7 @@ export class ClaudeWatcher implements AgentSource {
           log.warnOnce(`session:${key}:${errMsg(err)}`, tr('Sessão {0}: {1}', [key, errMsg(err)]));
         }
       }
+      this.opts.defaults?.wantJobs(acc.id, res.entries.flatMap((e) => (e.jobId ? [e.jobId] : [])));
     }
     const now = this.now();
     for (const [key, t] of [...this.sessions]) {
@@ -544,10 +544,12 @@ export class ClaudeWatcher implements AgentSource {
     if (title) summary.title = title;
     if (s.model) summary.model = s.model;
     const d = this.opts.defaults;
-    const effort = sessionEffort(s.effortCmd, t.entry.startedAt, d?.flagsOf(t.accountId, t.entry.jobId), d?.defaultsOf(t.accountId), s.model);
+    const flags = d?.flagsOf(t.accountId, t.entry.jobId);
+    const effort = sessionEffort(s.effortCmd, t.entry.startedAt, flags, d?.defaultsOf(t.accountId), s.model);
     if (effort) summary.effort = effort;
     const choice = s.modelCmd;
     if (choice && choice.at >= (t.entry.startedAt ?? 0) - START_SLACK_MS && choice.at > (s.modelAt ?? 0)) summary.modelChoice = { ...choice };
+    else if (!s.model && flags?.model) summary.modelChoice = { label: flags.model, at: t.entry.startedAt ?? 0 };
     if (s.modelAt !== undefined && s.modelAt >= (t.entry.startedAt ?? 0) - START_SLACK_MS) summary.replyAt = s.modelAt;
     if (s.gitBranch) summary.gitBranch = s.gitBranch;
     if (s.permissionMode) summary.permissionMode = s.permissionMode;

@@ -298,7 +298,7 @@ const REJECTED = /doesn't want to proceed|tool use was rejected|user rejected/i;
 const SYSTEM_TAG = /^<(local-command-[\w-]+|command-stdout|command-stderr|system-reminder|bash-[\w-]+|user-memory-input|user-prompt-submit-hook|persisted-output)\b/;
 // Comandos de barra que não são instruções de trabalho.
 const LOCAL_COMMANDS = new Set([
-  '/clear', '/compact', '/model', '/cost', '/usage', '/status', '/config', '/login', '/logout', '/exit', '/quit', '/resume',
+  '/clear', '/compact', '/model', '/effort', '/cost', '/usage', '/status', '/config', '/login', '/logout', '/exit', '/quit', '/resume',
   '/context', '/mcp', '/help', '/permissions', '/memory', '/doctor', '/theme', '/vim', '/terminal-setup', '/rename', '/agents',
   '/hooks', '/ide', '/statusline', '/output-style', '/add-dir', '/plugin', '/rewind', '/export', '/release-notes', '/upgrade',
 ]);
