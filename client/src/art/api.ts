@@ -22,7 +22,7 @@
 // - Paleta clara (neutros frios + madeira quente + acentos saturados nos objetos); contorno 1px cinza-azulado
 //   escuro (não preto); 3–4 tons por material; brilhos especulares; sombras de contato; muitos detalhes pequenos.
 
-import type { AppearanceParts } from '../../../shared/appearance';
+import type { AppearanceParts, LookParts } from '../../../shared/appearance';
 
 export const TILE = 16;
 
@@ -93,6 +93,8 @@ export interface Appearance {
   facialHair?: 'none' | 'stubble' | 'beard' | 'mustache' | 'goatee';
   /** (Opcional, aditivo) Parte de baixo da roupa. Ausente = calça. */
   bottomStyle?: 'pants' | 'shorts' | 'skirt';
+  /** (Opcional, aditivo) Peças do visual novo escolhidas no editor (ver shared/appearance.ts, LookParts). */
+  pieces?: LookParts;
 }
 
 export interface Rect {

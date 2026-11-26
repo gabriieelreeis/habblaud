@@ -3,7 +3,7 @@
 // Tudo é desenhado em código: a geração acontece em PixelBuf (puro, testável em Node) e só no fim
 // vira canvas, uma única vez por combinação de parâmetros (cache). As funções draw* chamadas a cada
 // quadro (telas, quadro, janela, relógio, pisos, paredes) só fazem fillRect/drawImage de tiles prontos.
-import { partsKey, type AppearanceParts } from '../../../shared/appearance';
+import { LOOK_KEYS, partsKey, type AgentParts, type AppearanceParts, type LookParts } from '../../../shared/appearance';
 import { hash32 } from '../../../shared/hash';
 import {
   TILE,
@@ -114,8 +114,13 @@ function keyOf(a: Appearance): string {
 
 // ------------------------------------------------------------------ personagens
 
-export function appearanceFromSeed(seed: number, opts: { look?: 'f' | 'm'; sub?: boolean; parts?: AppearanceParts } = {}): Appearance {
-  return appearanceFromSeedPure(seed, opts);
+export function appearanceFromSeed(seed: number, opts: { look?: 'f' | 'm'; sub?: boolean; parts?: AgentParts } = {}): Appearance {
+  const a = appearanceFromSeedPure(seed, opts);
+  const p = opts.parts;
+  if (!p) return a;
+  const pieces: LookParts = {};
+  for (const k of LOOK_KEYS) if (p[k] !== undefined) (pieces as Record<string, string>)[k] = p[k] as string;
+  return Object.keys(pieces).length ? { ...a, pieces } : a;
 }
 
 export function poseFrameCount(pose: Pose): number {
