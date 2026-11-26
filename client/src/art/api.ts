@@ -141,7 +141,15 @@ export interface CharacterFrameRequest {
   seated?: boolean;
   /** Acessório sazonal; ausente mantém a aparência original. */
   costume?: 'santa' | 'witch' | 'pumpkin' | 'vampire';
+  /**
+   * (Opcional, aditivo) Direção na TELA, entre as 8 (s = olhando para quem vê). Ausente: a diagonal que corresponde a
+   * `dir` (down = sw, right = se, up = ne, left = nw).
+   */
+  view?: ScreenDir;
 }
+
+/** As 8 direções na tela do personagem isométrico. */
+export type ScreenDir = 's' | 'sw' | 'w' | 'nw' | 'n' | 'ne' | 'e' | 'se';
 
 export type FurnitureKind =
   // --- escritório (salas de projeto)

@@ -32,6 +32,7 @@ import { countBadge, fallbackIcon } from './shell-sprites';
 import { decorateElevator, drawSeasonalLightsIso, drawSeasonalWindow, seasonalCostume, seasonalFurniture } from './seasonal';
 import { buildAreaVis, opaqueBounds, paintShell, toWallVis, wallSprites, type AreaVis, type FurnVis, type WallVis } from './scene';
 import { MOBILE_BASE, SpriteWarmer, idleScheduler, type WarmPerson } from './sprite-warm';
+import { ViewTracker } from './facing-view';
 
 const enum K {
   Char,
@@ -230,6 +231,9 @@ export class Renderer {
 
   /** Gera nas folgas do quadro os sprites que os personagens presentes vão usar (ver sprite-warm.ts). */
   private warmer: SpriteWarmer | null = null;
+  /** Para onde cada personagem olha na tela (8 direções, com o giro). */
+  private views = new ViewTracker();
+  private viewsKeptAt = 0;
   private costumeOf = (p: WarmPerson) => seasonalCostume(this.theme, p.info.seed);
 
   /** Troca o canvas em que o mundo é desenhado (economia de energia: um canvas em 1× fora da tela). */
@@ -517,6 +521,10 @@ export class Renderer {
     this.dt = dt;
     this.updateCars(now, dt);
     this.warmer?.sync(this.sim.people(), this.costumeOf);
+    if (now - this.viewsKeptAt > 5000) {
+      this.viewsKeptAt = now;
+      this.views.keep(new Set([...this.sim.people()].map((p) => p.id)));
+    }
     const W = this.canvas.width;
     const H = this.canvas.height;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -630,8 +638,8 @@ export class Renderer {
       const y = at.y;
       const ix = isoX(x, y);
       const iy = isoY(x, y);
-      // sprite (32 x 52, âncora nos pés), anéis do chão (até 24 px para os lados) e a subida no assento
-      const rect = { x: Math.floor(ix) - 26, y: Math.floor(iy) - 50 - Math.max(0, at.lift), w: 52, h: 64 + Math.max(0, -at.lift) };
+      // sprite (40 x 64, âncora nos pés), anéis do chão (até 24 px para os lados) e a subida no assento
+      const rect = { x: Math.floor(ix) - 26, y: Math.floor(iy) - 62 - Math.max(0, at.lift), w: 52, h: 76 + Math.max(0, -at.lift) };
       if (!visible(rect)) {
         head.x = ix;
         head.y = iy - 40;
@@ -1500,6 +1508,7 @@ export class Renderer {
     const req: CharacterFrameRequest = this.req;
     req.appearance = ch.appearance;
     req.dir = ch.dir;
+    req.view = this.views.view(ch.id, wx, wy, ch.dir, ch.pose === 'walk' || ch.pose === 'run', now);
     req.pose = ch.pose;
     req.held = ch.held;
     req.seated = ch.seated;

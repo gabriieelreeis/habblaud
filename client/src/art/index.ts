@@ -19,6 +19,7 @@ import {
   type IsoWallSpec,
   type Pose,
   type Rect,
+  type ScreenDir,
   type RoomTheme,
   type Sprite,
   type WallStyle,
@@ -37,6 +38,11 @@ import { renderIsoFurniture } from './iso/index';
 import { renderIsoWall, renderLowWall } from './iso/walls';
 import { renderIsoCar } from './iso/car';
 import { isoSeatPlacement } from './iso/seats';
+import { lookFromAppearance } from './avatar/from-appearance';
+import { renderAvatar } from './avatar/render';
+
+/** Diagonal da tela de cada direção do mundo (a projeção 2:1 gira o mundo 45°). */
+const VIEW_OF_DIR: Readonly<Record<Dir, ScreenDir>> = { down: 'sw', right: 'se', up: 'ne', left: 'nw' };
 import { renderTallElevator } from './iso/elevator';
 import { CHUNK_PX, floorChunk } from './surfaces/floor';
 import { WALL_CAP_H, WALL_FACE_H, capColor, southWallTile, wallFaceTile } from './surfaces/walls';
@@ -200,12 +206,12 @@ export function isoCharacterSprite(req: CharacterFrameRequest): Sprite {
   const frame = ((Math.floor(req.frame) % n) + n) % n;
   const seated = isSeated(req.pose, req.seated);
   const ak = keyOf(req.appearance);
-  const key = `${ak}|${req.dir}|${req.pose}|${frame}|${req.held ?? 'none'}|${seated ? 1 : 0}|${req.costume ?? 'none'}`;
+  const key = `${ak}|${req.view ?? req.dir}|${req.pose}|${frame}|${req.held ?? 'none'}|${seated ? 1 : 0}|${req.costume ?? 'none'}`;
   return isoCharCache.get(key, () => {
     let keys = isoCharKeys.get(ak);
     if (!keys) isoCharKeys.set(ak, (keys = new Set()));
     keys.add(key);
-    return toSprite(renderIsoCharacter({ ...req, frame, seated }));
+    return toSprite(renderAvatar(lookFromAppearance(req.appearance), req.view ?? VIEW_OF_DIR[req.dir], { pose: req.pose, frame, held: req.held, seated, costume: req.costume }));
   });
 }
 
