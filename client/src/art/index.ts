@@ -51,6 +51,7 @@ import { roomTheme as roomThemePure } from './theme';
 
 export * from './api';
 export { hash32 };
+export { AVATAR_H, AVATAR_W } from './avatar/render';
 export { drawBoard, drawClock, drawScreen, drawWindowView, footballLance };
 export { editorConflict, editorOptions, fitToOptions, type EditorOptions } from './character/appearance';
 
@@ -145,13 +146,14 @@ export function characterSprite(req: CharacterFrameRequest): Sprite {
   return charCache.get(key, () => toSprite(renderCharacter({ ...req, frame, seated })));
 }
 
-export function avatarCanvas(seed: number, opts: { look?: 'f' | 'm'; sub?: boolean; scale?: number; parts?: AppearanceParts } = {}): HTMLCanvasElement {
+export function avatarCanvas(seed: number, opts: { look?: 'f' | 'm'; sub?: boolean; scale?: number; parts?: AgentParts } = {}): HTMLCanvasElement {
   const scale = Math.max(1, Math.round(opts.scale ?? 3));
   const key = `${seed}|${opts.look ?? '-'}|${opts.sub ? 1 : 0}|${scale}|${partsKey(opts.parts)}`;
   return avatarCache.get(key, () => {
-    const s = renderCharacter({ appearance: appearanceFromSeedPure(seed, opts), dir: 'down', pose: 'stand', frame: 0 });
-    // Busto: cabeça + ombros (20x20 a partir do topo do cabelo).
-    const crop = s.buf.crop(2, 2, CHAR_W - 4, 20);
+    // Busto do personagem novo, de frente: cabeça e ombros (24x24 a partir do alto do cabelo).
+    const look = lookFromAppearance(appearanceFromSeed(seed, opts));
+    const s = renderAvatar(look, 's', { pose: 'stand', frame: 0 });
+    const crop = s.buf.crop(BUST.x, BUST.y, BUST.w, BUST.h);
     const out = new PixelBuf(crop.w * scale, crop.h * scale);
     for (let y = 0; y < out.h; y++) {
       for (let x = 0; x < out.w; x++) {
@@ -167,6 +169,22 @@ export function avatarCanvas(seed: number, opts: { look?: 'f' | 'm'; sub?: boole
   });
 }
 
+/** Recorte do busto na folha do personagem (a cabeça fica nas linhas 12 a 31, os ombros logo abaixo). */
+const BUST = { x: 8, y: 10, w: 24, h: 24 } as const;
+
+const avatarViewCache = new Cache<HTMLCanvasElement>(1500);
+
+/**
+ * Personagem inteiro (folha de AVATAR_W x AVATAR_H pixels) de qualquer direção e pose, para o editor de visual.
+ * Guardado por visual: a mesma combinação não é desenhada duas vezes.
+ */
+export function avatarCanvas2(a: Appearance, view: ScreenDir, pose: Pose, frame: number): HTMLCanvasElement {
+  const n = poseFrameCount(pose);
+  const f = ((Math.floor(frame) % n) + n) % n;
+  const look = lookFromAppearance(a);
+  const key = `${JSON.stringify(look)}|${view}|${pose}|${f}`;
+  return avatarViewCache.get(key, () => toCanvas(renderAvatar(look, view, { pose, frame: f }).buf));
+}
 
 // ------------------------------------------------------------------ móveis e ícones
 
