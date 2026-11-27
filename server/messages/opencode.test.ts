@@ -74,6 +74,13 @@ describe('MessageRegistry: OpenCode pelo serviço local', () => {
     expect(registry.inbox({ session: SID, account: '.opencode' })).toEqual([]);
   });
 
+  it('sendNow não se aplica ao OpenCode: a flag não aparece na mensagem nem na caixa do plugin', () => {
+    const { registry } = setup();
+    const id = sent(registry.send({ agentId: MAIN, text: 'oi', sendNow: true }));
+    expect(registry.get(id)!.sendNow).toBeUndefined();
+    expect(registry.inbox({ session: SID, account: '.opencode' })).toEqual([]);
+  });
+
   it('serviço fora do alcance: não recebe (com o motivo)', () => {
     const { office, registry, service } = setup();
     service.up = false;

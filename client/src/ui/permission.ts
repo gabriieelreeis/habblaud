@@ -153,6 +153,13 @@ export function isQuestionRequest(p: Pick<PermissionRequestInfo, 'tool' | 'quest
   return !!p && p.provider !== 'codex' && p.tool === ASK_TOOL && !!p.questions?.length;
 }
 
+/** Áudio liberado para esta pergunta; a URL vem do servidor e nunca aponta para fora do Habblaud. */
+export function questionAudio(q: AskQuestion): { name: string; url: string } | undefined {
+  const a = q.audio;
+  if (!a || typeof a.name !== 'string' || !a.name.trim() || a.name.length > 120 || typeof a.url !== 'string') return undefined;
+  return /^\/api\/permissions\/audio\/[A-Za-z0-9_-]{6,64}$/.test(a.url) ? { name: a.name, url: a.url } : undefined;
+}
+
 /** O que está marcado numa pergunta do cartão: as opções (posições do original) e o "Outro" (marcado, e o texto). */
 export interface AskChoice {
   options: readonly number[];
@@ -611,6 +618,7 @@ export class PermissionCard {
   /** Uma pergunta: rádios (escolha única) ou caixas (várias), cada opção com a descrição, e o "Outro" com texto. */
   private askQuestion(requestId: string, q: AskQuestion): AskRefs {
     const name = `ask-${requestId}-${q.index}`;
+    const audio = questionAudio(q);
     const input = (value: string) => h('input', { class: 'ui-perm-ask__input', type: q.multiSelect ? 'checkbox' : 'radio', attrs: { name, value } });
     const optionText = (label: string, description?: string) =>
       h('span', { class: 'ui-perm-ask__opt-text' }, h('strong', { text: label }), description ? h('span', { class: 'ui-ask__desc', text: description }) : null);
@@ -641,6 +649,9 @@ export class PermissionCard {
       { class: 'ui-perm-ask__q' },
       h('legend', { class: 'ui-perm-ask__legend' }, q.header ? h('span', { class: 'ui-ask__tag', text: q.header }) : null, h('span', { class: 'ui-ask__question', text: q.question })),
       h('p', { class: 'ui-ask__hint', text: q.multiSelect ? tr('Pode escolher mais de uma') : tr('Escolha uma') }),
+      audio
+        ? h('div', { class: 'ui-perm-ask__audio' }, h('span', { class: 'ui-perm-ask__audio-name', text: tr('Ouça: {0}', [audio.name]) }), h('audio', { class: 'ui-perm-ask__player', attrs: { src: audio.url, controls: true, preload: 'metadata' } }))
+        : null,
       ...options.map(({ input: box, o }) => h('label', { class: 'ui-perm-ask__opt' }, box, optionText(o.label, o.description))),
       h('div', { class: 'ui-perm-ask__other' }, h('label', { class: 'ui-perm-ask__opt' }, other, optionText(tr('Outro'))), text),
     );

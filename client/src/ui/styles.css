@@ -2459,6 +2459,129 @@
   font-weight: 500;
 }
 
+.ui-ctl {
+  display: grid;
+  gap: 10px;
+}
+
+.ui-ctl__row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: start;
+}
+
+.ui-ctl__label {
+  padding-top: 7px;
+  color: var(--ui-muted);
+  font-size: 12px;
+}
+
+.ui-ctl__field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ui-ctl__select,
+.ui-ctl__input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ui-text);
+  font: 500 12.5px/1 var(--font-ui);
+}
+
+.ui-ctl__select {
+  cursor: pointer;
+}
+
+.ui-ctl__select option,
+.ui-ctl__select optgroup {
+  background: var(--ui-bg-solid);
+  color: var(--ui-text);
+}
+
+.ui-ctl__select:disabled,
+.ui-ctl__input:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.ui-ctl__other {
+  display: flex;
+  gap: 6px;
+}
+
+.ui-ctl__now {
+  margin: 0;
+  color: var(--ui-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.ui-ctl__default {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ui-muted);
+  cursor: pointer;
+}
+
+.ui-ctl__check {
+  margin: 0;
+  accent-color: var(--st-working);
+}
+
+.ui-ctl__default:has(.ui-ctl__check:disabled) {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.ui-ctl__status {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ui-muted);
+  overflow-wrap: anywhere;
+}
+
+.ui-ctl__status.is-ok {
+  color: #b9f2d2;
+}
+
+.ui-ctl__status.is-error {
+  color: #ffb3aa;
+}
+
+@media (max-width: 600px) {
+  .ui-ctl__row {
+    grid-template-columns: 1fr;
+  }
+
+  .ui-ctl__label {
+    padding-top: 0;
+  }
+
+  .ui-ctl__select,
+  .ui-ctl__input {
+    height: 40px;
+    font-size: 16px;
+  }
+
+  .ui-ctl__default {
+    min-height: 32px;
+    font-size: 13px;
+  }
+}
+
 .ui-lines {
   display: inline-flex;
   gap: 8px;
@@ -5272,6 +5395,26 @@ button.ui-term__think:hover,
   margin-top: 6px;
 }
 
+.ui-msg__now {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--ui-muted);
+  cursor: pointer;
+}
+
+.ui-msg__now-check {
+  margin: 0;
+  accent-color: var(--st-working);
+}
+
+.ui-msg__now:has(.ui-msg__now-check:disabled) {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .ui-msg__status {
   margin-top: 6px;
   font-size: 12px;
@@ -6637,6 +6780,25 @@ html.is-replay #world {
 
 .ui-perm-ask__q > .ui-ask__hint {
   clear: both;
+}
+
+.ui-perm-ask__audio {
+  clear: both;
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ui-perm-ask__audio-name {
+  font-size: 12px;
+  color: #fff3df;
+  overflow-wrap: anywhere;
+}
+
+.ui-perm-ask__player {
+  width: 100%;
+  max-width: 340px;
+  height: 34px;
 }
 
 .ui-perm-ask__opt {
@@ -8328,6 +8490,189 @@ html.is-replay #world {
   margin-left: auto;
 }
 
+/* Editor de visual (ui/look-fields.ts): prévia que gira, abas por peça, grade de opções com miniatura e cores. */
+.ui-look__stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.ui-look__turner {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ui-look__canvas {
+  image-rendering: pixelated;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  max-width: 100%;
+  height: auto;
+}
+
+.ui-look__turn {
+  flex: none;
+  width: 32px;
+  height: 44px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.ui-look {
+  margin-top: 10px;
+}
+
+.ui-look__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ui-line-strong);
+}
+
+/* Na gaveta: a prévia em cima, o nome logo abaixo, em toda a largura. */
+.ui-char--look .ui-char__top {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ui-look__tab {
+  flex: none;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  font: 600 12px/1 var(--font-ui);
+  color: var(--ui-muted);
+  white-space: nowrap;
+}
+
+.ui-look__tab:hover {
+  background: var(--ui-bg-hover);
+  color: var(--ui-text);
+}
+
+.ui-look__tab[aria-selected='true'] {
+  border-color: rgba(124, 200, 255, 0.6);
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent);
+}
+
+.ui-root .ui-look__tab:focus-visible,
+.ui-root .ui-look__opt:focus-visible,
+.ui-root .ui-look__turn:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+.ui-look__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 10px;
+}
+
+.ui-look__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ui-look__row-label {
+  font: 600 11px/1.2 var(--font-ui);
+  color: var(--ui-faint);
+}
+
+.ui-look__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 6px;
+}
+
+.ui-look__opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 72px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line-strong);
+  background: var(--ui-bg-soft);
+  color: var(--ui-text);
+}
+
+.ui-look__opt:hover {
+  background: var(--ui-bg-hover);
+}
+
+.ui-look__opt[aria-pressed='true'] {
+  border-color: rgba(124, 200, 255, 0.6);
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent);
+}
+
+.ui-look__thumb {
+  display: block;
+  max-width: 100%;
+  max-height: 56px;
+  width: auto;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.ui-look__opt-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.ui-look__colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Toque de 44 px no celular: a bolinha cresce e a grade de opções tem tiles maiores. */
+.ui-look__swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+
+@media (pointer: coarse), (max-width: 640px) {
+  .ui-look__swatch {
+    width: 44px;
+    height: 44px;
+  }
+
+  .ui-look__tab {
+    min-height: 44px;
+  }
+
+  .ui-look__turn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .ui-look__opt {
+    min-height: 88px;
+  }
+
+  .ui-look__grid {
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  }
+}
+
 /* ------------------------------------------------------------------ terminal interativo (ui/pty.ts) */
 
 .ui-actions {
@@ -9126,6 +9471,11 @@ html.is-replay #world {
   max-height: 100%;
   object-fit: contain;
   border-radius: 6px;
+}
+
+.ui-deliv-viewer__audio {
+  width: 100%;
+  max-width: 460px;
 }
 
 .ui-deliv-viewer__img {
@@ -11698,6 +12048,19 @@ html.is-replay #world {
 .ui-tv__inline-img {
   max-height: 1.6em;
   vertical-align: middle;
+}
+
+.ui-tv__img-error {
+  display: block;
+  max-width: 100%;
+  padding: 0.5em 0.8em;
+  border: 2px dashed rgba(255, 181, 71, 0.6);
+  border-radius: 0.3em;
+  background: rgba(255, 181, 71, 0.1);
+  color: #ffe0b2;
+  font-size: 0.8em;
+  line-height: 1.3;
+  text-align: center;
 }
 
 /* ---- lista, pedido e mensagens */

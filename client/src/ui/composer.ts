@@ -77,6 +77,8 @@ export class MessageComposer {
   private row: HTMLElement;
   private box: HTMLTextAreaElement;
   private sendBtn: HTMLButtonElement;
+  private nowRow: HTMLLabelElement;
+  private nowInput: HTMLInputElement;
   private hint: HTMLElement;
   private tip: HTMLElement | null;
   private status: HTMLElement;
@@ -139,6 +141,13 @@ export class MessageComposer {
       },
       term ? '↵' : tr('Enviar'),
     );
+    this.nowInput = h('input', { type: 'checkbox', class: 'ui-msg__now-check' }) as HTMLInputElement;
+    this.nowRow = h(
+      'label',
+      { class: 'ui-msg__now', hidden: true },
+      this.nowInput,
+      h('span', { text: tr('Enviar agora') }),
+    );
     this.dictStatus = h('p', { class: 'ui-msg__status ui-msg__dictation', role: 'status', hidden: true, attrs: { 'aria-live': 'polite' } });
     this.dictate = new DictationButton(
       (t) => this.insertDictated(t.text),
@@ -160,7 +169,7 @@ export class MessageComposer {
     this.hint = h('p', { class: 'ui-msg__hint', hidden: true });
     this.status = h('p', { class: 'ui-msg__status', role: 'status', hidden: true, attrs: { 'aria-live': 'polite' } });
     this.tip = term ? null : h('p', { class: 'ui-msg__tip', text: composerTip() });
-    this.el = h('div', { class: `ui-msg ui-msg--${variant}` }, this.hint, this.imagesRow, this.row, this.dictStatus, this.status, this.tip);
+    this.el = h('div', { class: `ui-msg ui-msg--${variant}` }, this.hint, this.imagesRow, this.row, this.nowRow, this.dictStatus, this.status, this.tip);
     // arrastar e soltar imagens em qualquer parte da caixa
     this.el.addEventListener('dragover', (e) => {
       if (!this.canImages || !e.dataTransfer?.types.includes('Files')) return;
@@ -233,6 +242,12 @@ export class MessageComposer {
     setHidden(this.dictate.el, !this.canDictate || (!ready && !this.dictate.busy));
     // Na gaveta, a dica do plugin entra no lugar da caixa; no terminal ela já está no lugar do texto.
     setHidden(this.row, !term && !ready);
+    const claude = this.provider === 'claude';
+    if (!claude) this.nowInput.checked = false;
+    this.nowInput.disabled = !ready || !claude;
+    setTitle(this.nowInput, claude ? tr('Entra no turno em andamento, sem esperar o agente terminar; em Claude Code sem suporte, entra na fila') : tr('O envio imediato só funciona em sessões do Claude Code'));
+    setTitle(this.nowRow, claude ? tr('Entra no turno em andamento, sem esperar o agente terminar; em Claude Code sem suporte, entra na fila') : tr('O envio imediato só funciona em sessões do Claude Code'));
+    setHidden(this.nowRow, !ready);
     if (this.tip) {
       setHidden(this.tip, !ready);
       setText(this.tip, composerTip(this.provider));
@@ -248,6 +263,16 @@ export class MessageComposer {
     this.status.classList.toggle('is-error', state?.phase === 'failed' || state?.phase === 'rejected');
     this.status.classList.toggle('is-ok', state?.phase === 'delivered');
     return mode.kind;
+  }
+
+  /** A caixa está pronta para mandar mensagens ao agente aberto agora. */
+  get ready(): boolean {
+    return this.mode.kind === 'ready';
+  }
+
+  /** Por que a caixa não manda agora (vazio quando manda). */
+  get reason(): string {
+    return this.mode.kind === 'ready' ? '' : this.mode.text;
   }
 
   // ---------------------------------------------------------------- internos
@@ -387,7 +412,7 @@ export class MessageComposer {
     }
     let r: { message: OutboxMessage } | { error: string };
     try {
-      r = await this.ctx.store.sendMessage(agentId, messageText(raw), ids);
+      r = await this.ctx.store.sendMessage(agentId, messageText(raw), ids, this.nowInput.checked && this.provider === 'claude');
     } catch {
       r = { error: OFFLINE_ERROR };
     }

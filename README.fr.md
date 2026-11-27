@@ -11,6 +11,8 @@
 
 <p align="center"><a href="README.md">English</a> · <a href="README.pt-BR.md">Português</a> · <a href="README.es.md">Español</a> · <b>Français</b></p>
 
+> **Fork ReisCorp :** ce guide installe la branche `reiscorp/local` de [gabriieelreeis/habblaud](https://github.com/gabriieelreeis/habblaud), la version utilisée dans le bureau ReisCorp. Voir [Ce qui change dans notre fork](#ce-qui-change-dans-notre-fork).
+
 <p align="center">
   <img alt="Node.js 22.12+" src="https://img.shields.io/badge/node-%E2%89%A522.12-5fa04e?logo=node.js&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white" />
@@ -43,6 +45,7 @@ aucun identifiant et ne fait aucun appel externe.
 
 - [À quoi ça ressemble](#à-quoi-ça-ressemble)
 - [Installation](#installation)
+- [Ce qui change dans notre fork](#ce-qui-change-dans-notre-fork)
 - [Mode d'emploi](#mode-demploi)
 - [Comptes et utilisation (5 heures et semaine)](#comptes-et-utilisation-5-heures-et-semaine)
 - [Configuration](#configuration)
@@ -139,13 +142,16 @@ l'immeuble ne garde pas de trous et rétrécit tout seul.
 ### 1. Téléchargez le projet
 
 ```bash
-git clone https://github.com/marmottajr/habblaud.git
+git clone https://github.com/gabriieelreeis/habblaud.git
 cd habblaud
+git checkout reiscorp/local
 npm install
 ```
 
 > `npm install` ne télécharge que des outils de compilation (Vite, TypeScript, tsx…). Le serveur de Habblaud n'a
-> aucune dépendance d'exécution : il n'utilise que les modules natifs de Node.
+> aucune dépendance d'exécution : il n'utilise que les modules natifs de Node. Restez sur la branche `reiscorp/local`
+> pour avoir la version du bureau décrite ici ; les différences avec le projet d'origine sont dans
+> [Ce qui change dans notre fork](#ce-qui-change-dans-notre-fork).
 
 ### 2. Lancez Habblaud
 
@@ -283,8 +289,8 @@ en vérifiant l'empreinte que le setup a affichée.
   des virgules, ou `none` (consultation seule, sans fête). La fête marche avec n'importe quelle liste, sauf `none`. Le
   terminal interactif ne fonctionne jamais depuis le téléphone.
 - **Livraisons** (téléphone, avec `terminal` autorisé) : le bouton en forme de boîte dans la barre du haut liste ce que
-  chaque agent a terminé, avec un résumé et des pièces jointes (captures d'écran, PDF, fichiers qu'il a envoyés) qui
-  s'ouvrent d'un simple toucher.
+  chaque agent a terminé, avec un résumé et des pièces jointes (captures d'écran, PDF, fichiers qu'il a envoyés, y
+  compris de l'audio) qui s'ouvrent d'un simple toucher.
 - **Nouvel agent** (le bouton **+**) : lance une session Claude Code en arrière-plan sur l'ordinateur (`claude --bg`,
   dans le dossier choisi), qui apparaît dans le bureau et reçoit les messages et les demandes de permission via
   Habblaud. Dans un dossier auquel Claude Code ne fait pas encore confiance, il ouvre, déjà rempli, l'écran de nouvelle
@@ -380,6 +386,33 @@ l'ancienne dérivation et l'ancien hook, ainsi que les anciens installateurs et 
 `settings.json.habblaud-backup-<data>` dans le dossier de chaque compte (ex. : `~/.claude/`) ; supprimez-les si vous
 n'en avez plus besoin.
 
+## Ce qui change dans notre fork
+
+Ceci est le fork ReisCorp du [projet d'origine](https://github.com/marmottajr/habblaud), sous licence MIT. La branche
+`reiscorp/local` ajoute ces changements côté navigateur ; le serveur, les sources de données de Claude Code, Codex et
+OpenCode et le protocole de Habblaud World restent les mêmes.
+
+- **Bureau isométrique :** les salles sont dessinées en trois quarts, avec un sol en losanges, des meubles sur les murs
+  du fond, une lumière qui suit l'heure locale et des personnages à la bonne profondeur. Clics, fête, TV, décorations
+  de saison et téléphone fonctionnent comme avant. La simulation garde quatre directions ; le dessin en utilise huit.
+- **Décor en calques :** les meubles sont peints une fois et découpés pixel par pixel quand quelqu'un passe devant, si
+  bien qu'un agent ne force plus à redessiner toute la salle. Les sprites des poses et des directions sont préparés
+  pendant les moments d'inactivité.
+- **Nouveaux personnages :** des personnages pixel art plus grands, à la tête grosse et contourée, huit directions à
+  l'écran, 20 poses, objets à la main et costumes. Les noms et apparences existants sont convertis automatiquement ;
+  les nouvelles pièces sont stockées dans des champs séparés et Habblaud World ne reçoit toujours que les 13 pièces
+  d'origine. Le dessin est original, pas copié d'un jeu commercial.
+- **Éditeur d'apparence :** le crayon à côté du nom de l'agent, dans le panneau, ouvre des onglets corps, cheveux,
+  chapeau, lunettes, haut, bas, chaussures et accessoire, avec des miniatures, des couleurs, un aperçu qui tourne dans
+  les huit directions et un seul bouton **Au hasard**. Enregistrer fixe le personnage dans la salle du projet. Les
+  personnages de World gardent leur propre éditeur.
+- **Modèle, effort et envoi immédiat :** le panneau affiche et change le modèle et l'effort de chaque session ; la zone
+  de message propose **Envoyer maintenant** sur Claude Code, avec retour à la file si cette version ne prend pas en
+  charge le champ.
+
+Détails pour la maintenance : [docs/dev/ISOMETRIC-VIEW.md](docs/dev/ISOMETRIC-VIEW.md) et
+[docs/dev/MODEL-EFFORT-CONTROLS.md](docs/dev/MODEL-EFFORT-CONTROLS.md).
+
 ## Mode d'emploi
 
 ### Ce que fait chaque personnage
@@ -408,7 +441,7 @@ une **pastille colorée avec la lettre du compte** (C, D…).
 - **Fil d'activité :** les dernières activités de tout le bureau.
 - **Réglages (⚙) :** noms, bulles, à quel point les inactifs se promènent, cycle jour/nuit, sons, notifications du
   navigateur, mode démonstration et **À propos** (version utilisée et nouvelle version). **Aide (?) :** légende complète
-  et raccourcis.
+  et raccourcis. Avec le push activé, l'appareil dont la fenêtre du Habblaud est au premier plan ne reçoit aucune notification ; **Envoyer un test** fonctionne toujours.
 - **Ma journée (📊) :** où est passé le temps de la journée (voir [Ma journée](#ma-journée)). **Timelapse** et
   **Historique** (les horloges de la barre du haut) : voir [Timelapse de la journée](#timelapse-de-la-journée) et [Terminal](#terminal).
 
@@ -550,7 +583,10 @@ répondez dans le terminal, la demande disparaît toute seule du bureau. Le comp
 `P`) vous emmène à chaque demande.
 
 Les **questions de l'agent** (`AskUserQuestion`) aussi : la carte de questions montre chaque question avec ses
-options et leurs descriptions, comme le terminal les afficherait. Choisissez une option (ou plusieurs, quand la question
+options et leurs descriptions, comme le terminal les afficherait. Si la question (ou la description d'une option)
+contient `Ouça: <chemin absolu>` vers un audio (WAV, MP3, OGG/Opus ou M4A, jusqu'à 25 Mo), la carte affiche un lecteur
+avec le nom du fichier au-dessus des options ; l'audio vient du Habblaud lui-même et n'est valable que pour cette
+question. Sur le téléphone, `permissions` doit être autorisé pour l'écouter. Choisissez une option (ou plusieurs, quand la question
 le permet) ou écrivez la vôtre dans **Autre**, puis utilisez **Répondre** ; **Refuser…** indique à l'agent que vous ne
 voulez pas répondre, et **Répondre dans le terminal** laisse la question là-bas. La réponse arrive à l'agent comme si
 vous l'aviez choisie dans le terminal.
@@ -587,6 +623,21 @@ son tour et attend la demande suivante, donner une nouvelle instruction ou corri
 - La zone indique l'état : **en file** (la session récupère les messages toutes les 2 secondes), **remis** ou **non
   remis**, avec la raison. Si l'agent est occupé, le message attend et entre quand il finit son tour, comme un
   prompt tapé pendant que l'agent travaille.
+- Avec les agents Claude, les commandes slash comme `/effort high` ou `/model opus` fonctionnent aussi ici : le plugin les
+  envoie comme commande, et non comme texte, pour que Claude les exécute vraiment. Une commande inconnue apparaît
+  comme **non remise**, avec la raison.
+- **Modèle et effort :** la section **Modèle et effort** des détails de l'agent montre le modèle de la dernière
+  réponse et l'effort actuel de la session, avec son origine (`/effort` de ce lancement, `--effort` au lancement ou le
+  réglage par défaut de `settings.json`). Changer l'un des deux envoie `/model` ou `/effort` par la même file, et la
+  sortie de la commande dans la conversation le confirme. Par défaut, cela ne vaut que pour cette session : Habblaud
+  remet dans `settings.json` le réglage par défaut des nouvelles sessions que Claude Code écrase (dans Docker, via
+  `npm run codex:bridge`) ; cochez **Aussi par défaut pour les nouvelles sessions** pour le garder. Jusqu'à 1 h après
+  la dernière réponse, Claude Code demande une confirmation à l'écran de la session pour changer de modèle : le
+  changement de modèle est donc bloqué pendant ce délai (les détails indiquent quand il se libère). Dans OpenCode, la
+  liste des modèles et les niveaux de raisonnement viennent de son service et valent pour les prochains tours.
+- **Envoyer maintenant :** cochez cette option dans la zone pour que le texte s'ajoute au tour en cours de Claude Code,
+  sans attendre la fin de l'agent. Elle n'apparaît que dans les sessions Claude Code ; Codex et OpenCode gardent leur
+  file. L'astuce prévient que sur un Claude Code sans prise en charge, le message retourne dans la file.
 - Le plugin tourne dans chaque session et ne parle à Habblaud que sur `127.0.0.1`. Sans lui (ou dans une session ouverte
   avant l'installation : utilisez `/reload-plugins`), l'astuce d'installation apparaît à la place de la zone. Les
   sous-agents ne reçoivent pas de messages.
@@ -626,7 +677,9 @@ bureau flouté derrière.
   `Edit(~/.habblaud/apresentacoes/**)`, qui laisse les agents y écrire (et seulement là) sans demander la permission ;
   sans elle, vous approuvez l'écriture à chaque présentation. Dans Docker, `npm run docker:up` monte le dossier en
   lecture seule. Les diapositives sont dessinées par Habblaud lui-même : aucun HTML de l'agent ne s'exécute dans la
-  page. `HABBLAUD_PRESENTATIONS=0` éteint les TV.
+  page. Une image citée par chemin absolu suppose que le fichier reste là (et que l'auxiliaire de l'ordinateur tourne
+  dans Docker) ; copiez-la dans ce dossier si elle peut être déplacée : une image manquante affiche un avertissement
+  clair sur la TV au lieu d'une image cassée. `HABBLAUD_PRESENTATIONS=0` éteint les TV.
 
 ### Modifier le personnage
 
@@ -635,8 +688,10 @@ détails de l'agent principal et cliquez sur le crayon à côté du nom (**Modif
 
 - **Nom :** jusqu'à 24 caractères. Il ne peut pas reprendre celui de quelqu'un qui est dans le bureau ni celui choisi
   pour un autre projet.
-- **Tirer au sort :** propose une autre apparence.
-- **Éléments :** peau, cheveux, barbe, yeux, haut, bas, chaussures et accessoire, avec l'aperçu à côté.
+- **Au hasard :** propose une autre apparence complète.
+- **Éléments :** onglets corps, cheveux (coupe, couleur et barbe), chapeau (modèle et couleur), lunettes, haut, bas,
+  chaussures et accessoire. Chaque option a une miniature ; l'aperçu ci-dessus tourne dans les huit directions, marche
+  sur place et peut aussi être tourné à la main avec les flèches.
 - **Enregistrer :** s'applique au projet (la salle). La prochaine session ouverte dans ce projet arrive avec ce
   personnage. Avec deux sessions en même temps dans la même salle, la seconde reçoit un personnage tiré au sort.
 - **Revenir au tirage au sort :** annule le choix.

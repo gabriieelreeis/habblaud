@@ -1,10 +1,11 @@
 // Testes do plugin de mensagens, rodados pelo próprio Claude Code: `claude plugin test` dentro de
 // mod/habblaud-mensagens (sem sessão, sem login, sem rede). Os stubs respondem no lugar do Claude Code e do
 // Habblaud: env, relógio (mock.clock), $.session.id, $.session.surfaces, $.http.fetch (as duas rotas do
-// servidor) e o prompt.submit de baixo (a sessão: aceita, um hook recusa, a chamada lança ou fica presa).
+// servidor), o prompt.submit de baixo (a sessão: aceita, um hook recusa, a chamada lança ou fica presa) e o
+// command.run (o comando de barra com nome e argumentos).
 import type { HttpResponse, On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
-import { accountIdOf, ackBody, configDirOf, inboxBody, MAX_REASON, normalizePath, parseInbox, portOf, reasonText, type InboxMessage } from '../hooks/register'
+import { accountIdOf, ackBody, configDirOf, inboxBody, MAX_REASON, normalizePath, parseInbox, portOf, promptArgsOf, reasonText, slashCommandOf, type InboxMessage } from '../hooks/register'
 
 const NOW = Date.parse('2026-10-09T12:00:00Z')
 const PORT = '4850'
@@ -50,11 +51,13 @@ function world(on: On, w: World = {}) {
   mock.env(on, w.env ?? { HOME: '/home/fulano', CLAUDE_CONFIG_DIR: '~/.claude-conta2', HABBLAUD_PORT: PORT })
   const sent: Sent[] = []
   const submits: Array<{ text: string; origin: unknown }> = []
+  const commands: Array<{ command: string; args: string }> = []
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.id', () => ({ value: 'sess-1' }))
   on('session.surfaces', () => ({ value: w.surfaces ?? ['terminal'] }))
   on('http.fetch', async ($, e) => {
-    const body = e.init?.body
+    const raw = e.init?.body
+    const body = typeof raw === 'string' ? raw : undefined
     sent.push({ url: e.url, method: e.init?.method, headers: e.init?.headers, body: body === undefined ? undefined : JSON.parse(body) })
     if (e.url.endsWith('/ack')) {
       const a = w.ack ? w.ack() : 'ok'
@@ -81,10 +84,15 @@ function world(on: On, w: World = {}) {
     if (fate === 'hang') await clock.sleep(60_000)
     return { text: e.text }
   })
+  on('command.run', async ($, e) => {
+    commands.push({ command: e.command, args: e.args })
+    return {}
+  })
   return {
     clock,
     sent,
     submits,
+    commands,
     inboxes: () => sent.filter((s) => s.url === INBOX_URL),
     acks: () => sent.filter((s) => s.url === ACK_URL),
     texts: () => submits.map((s) => s.text),
@@ -117,6 +125,56 @@ describe('rodadas', () => {
     await w.clock.advance(2_000)
     expect(w.sent.map((s) => s.url)).toEqual([INBOX_URL, ACK_URL, INBOX_URL])
     expect(w.submits.length).toBe(2)
+  })
+
+  test('comando de barra entra por $.command.run (o Claude recusa / no prompt.submit), com os argumentos intactos', async ($, on) => {
+    const w = world(on, {
+      inbox: batches([
+        { id: 'c1', text: '/effort high' },
+        { id: 'c2', text: '/model  opus  ' },
+        { id: 'c3', text: 'texto normal' },
+        { id: 'c4', text: '/compact' },
+      ]),
+    })
+    await $.session.start(START)
+    await w.clock.advance(2_000)
+    expect(w.commands).toEqual([
+      { command: 'effort', args: 'high' },
+      { command: 'model', args: 'opus  ' },
+      { command: 'compact', args: '' },
+    ])
+    expect(w.texts()).toEqual(['texto normal'])
+    expect(w.acks()[0]?.body).toEqual({
+      session: 'sess-1',
+      results: [
+        { id: 'c1', ok: true },
+        { id: 'c2', ok: true },
+        { id: 'c3', ok: true },
+        { id: 'c4', ok: true },
+      ],
+    })
+  })
+
+  test('sendNow entra no turno em andamento; sem a flag entra na fila; comando de barra segue por $.command.run', async ($, on) => {
+    const w = world(on, {
+      inbox: batches([
+        { id: 'n1', text: 'responde agora', sendNow: true },
+        { id: 'n2', text: 'pode esperar' },
+        { id: 'n3', text: '/effort high', sendNow: true },
+      ]),
+    })
+    await $.session.start(START)
+    await w.clock.advance(2_000)
+    const origin = { kind: 'plugin', name: 'habblaud-mensagens', asUser: true }
+    expect(w.submits).toEqual([
+      { text: 'responde agora', origin },
+      { text: 'pode esperar', origin },
+    ])
+    expect(w.commands).toEqual([{ command: 'effort', args: 'high' }])
+    expect(w.acks()[0]?.body).toEqual({
+      session: 'sess-1',
+      results: [{ id: 'n1', ok: true }, { id: 'n2', ok: true }, { id: 'n3', ok: true }],
+    })
   })
 
   test('recusa de um hook e exceção viram falha com o motivo; sem texto, falha sem ir para a sessão', async ($, on) => {
@@ -271,6 +329,11 @@ describe('funções puras', () => {
       { id: 'a', text: ' x\n' },
       { id: 'b', text: '' },
     ])
+    expect(parseInbox(JSON.stringify({ messages: [{ id: 'n', text: 'oi', sendNow: true }, { id: 'f', text: 'oi', sendNow: false }, { id: 'x', text: 'oi', sendNow: 'sim' }] }))).toEqual([
+      { id: 'n', text: 'oi', sendNow: true },
+      { id: 'f', text: 'oi' },
+      { id: 'x', text: 'oi' },
+    ])
   })
 
   test('corpos das duas rotas', () => {
@@ -294,6 +357,21 @@ describe('funções puras', () => {
     const long = reasonText('x'.repeat(2_000), 'padrão')
     expect(long.length).toBe(MAX_REASON)
     expect(long.endsWith('…')).toBe(true)
+  })
+
+  test('argumentos do prompt: sendNow pede o turno em andamento; sem ele, entra na fila', () => {
+    expect(promptArgsOf('oi', false)).toEqual({ text: 'oi', asUser: true })
+    expect(promptArgsOf('oi', true)).toEqual({ text: 'oi', asUser: true, wait: false })
+  })
+
+  test('comando de barra: nome e argumentos, sem confundir texto comum', () => {
+    expect(slashCommandOf('/effort high')).toEqual({ command: 'effort', args: 'high' })
+    expect(slashCommandOf('/model  opus max')).toEqual({ command: 'model', args: 'opus max' })
+    expect(slashCommandOf('/compact')).toEqual({ command: 'compact', args: '' })
+    expect(slashCommandOf('/effort\nhigh')).toEqual({ command: 'effort', args: 'high' })
+    expect(slashCommandOf(' /effort')).toBeUndefined()
+    expect(slashCommandOf('c:/Users')).toBeUndefined()
+    expect(slashCommandOf('/')).toBeUndefined()
   })
 
   test('conta e porta como o mod habblaud calcula (também no Windows)', () => {

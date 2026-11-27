@@ -12,6 +12,22 @@ do meio (0.**3**.0).
 
 ### Alterado
 
+- **READMEs dos quatro idiomas:** a instalação agora clona o fork `gabriieelreeis/habblaud` e usa a branch
+  `reiscorp/local`, a versão do escritório. Cada README ganhou uma seção com as mudanças do fork (visão isométrica,
+  cenário em camadas, personagens novos, editor de visual, modelo/esforço e Enviar agora) e o editor de personagem foi
+  atualizado para as abas e a prévia nas 8 direções.
+- **Personagens novos no escritório:** bonecos maiores, com cabeça grande e contorno, desenhados nas 8 direções (ao
+  virar, o corpo passa pelo meio do giro). Todo mundo mantém as cores, o cabelo e o tipo de roupa que tinha; os
+  chapéus, os óculos e os acessórios viram peças próprias. O avatar pequeno é o busto do boneco novo.
+- **Editor de visual na gaveta do agente:** abas por peça (corpo, cabelo, chapéu, óculos, roupa de cima e de baixo,
+  sapatos e acessório), com miniaturas, cores, prévia girando e andando nas 8 direções e "Aleatório". Funciona no
+  celular. Quem escolhe um chapéu fica com ele mesmo no Natal. O Habblaud World continua recebendo só as peças de
+  antes (a mais parecida com a escolhida).
+- **Escritório em visão isométrica:** a sala deixa de ser vista de cima e passa a ser vista de lado, em 3/4, no estilo
+  dos hotéis isométricos em pixel art: piso em losangos, paredes do fundo com quadros, TV, janelas, relógio e a placa
+  com o nome inclinados na parede, móveis redesenhados no ângulo novo e personagens de corpo inteiro, em 3/4, nas quatro direções. Clique no agente, na sala
+  e na TV, festa, alarme, enfeites de época, noite e celular continuam funcionando. Telas e quadros animados ficam em
+  cache e só são refeitos quando mudam.
 - **Página abre mais leve:** o player do timelapse e a janela do Habblaud World passam a ser baixados só quando usados
   (o timelapse na primeira abertura; a janela do World quando o servidor do mundo está configurado ou ao abri-la).
   O pedaço principal do client (`app-*.js`) caiu de 718.878 bytes (236.489 com gzip) para 524.796 (173.383 com gzip); somando todo o JS carregado
@@ -24,6 +40,32 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- **Modelo e esforço na gaveta do agente:** a seção **Modelo e esforço** mostra o modelo da última resposta (e o
+  escolhido para as próximas) e o esforço atual de cada sessão, com a origem quando não é certeza: confirmado pelo
+  `/effort` desta abertura, aberta com `--effort` ou padrão do `settings.json` (provável). Dá para trocar os dois por
+  ali, com a situação na hora (enviando, entregue, confirmado ou o erro), também no celular.
+  - **Claude Code:** a troca vira `/effort <nível>` ou `/model <modelo>` (`opus`, `sonnet`, `haiku` ou o id completo)
+    pela fila de mensagens, e a saída do comando na conversa confirma. Por padrão vale só para a sessão: o Claude Code
+    grava o comando como padrão das sessões novas, e o Habblaud devolve ao `settings.json` só o que ele mudou. A
+    caixinha **Também como padrão das sessões novas** deixa gravado. No Docker, quem lê e devolve o padrão é o
+    auxiliar do host (`npm run codex:bridge`); sem ele, a troca só na sessão é recusada com o motivo. Até 1 h depois
+    da última resposta, o Claude Code pede confirmação na tela da sessão para trocar de modelo (a conversa em cache
+    seria relida) e ninguém vê essa tela pelo escritório: nesse intervalo a troca de modelo fica travada, com a hora
+    em que libera. O esforço troca a qualquer momento.
+  - **OpenCode:** a lista de modelos vem do próprio OpenCode e a troca vale para os próximos turnos da sessão, com o
+    nível de raciocínio do modelo quando ele tem (o Big Pickle não tem: o seletor fica desativado com o motivo).
+- **Enviar agora:** a caixa de mensagem ganhou a opção **Enviar agora**: o texto entra no turno em andamento do
+  Claude Code, sem esperar o agente terminar o que está fazendo. Ela aparece só nas sessões do Claude Code (no Codex
+  e no OpenCode fica desativada) e a dica avisa que, num Claude Code sem suporte a esse campo, a mensagem entra na
+  fila como antes. Comandos de barra continuam indo pela fila. O plugin `habblaud-mensagens` subiu para **1.0.5**
+  (marketplace `habblaud`, versão do pacote e os três `plugin.json` também); em sessões que já tinham o plugin, rode
+  `claude plugin update habblaud-mensagens@habblaud` e `/reload-plugins` depois.
+- **Áudio nas perguntas e nas entregas:** quando a pergunta (ou a descrição de uma opção) do `AskUserQuestion` traz
+  `Ouça: <caminho absoluto>` de um arquivo WAV, MP3, OGG/Opus ou M4A de até 25 MB, o cartão mostra um player com o
+  nome do arquivo acima das opções. Nas entregas, anexos de áudio também tocam com um toque. Vale nas mesmas regras
+  dos outros arquivos que aparecem no escritório (nada com cara de segredo, só caminho absoluto) e o áudio fica
+  liberado só para aquela pergunta. No celular, é preciso ter `permissions` liberado; o arquivo vem do próprio
+  Habblaud, com o tipo certo e busca por faixa para tocar no Safari do iPhone.
 - **Economia de energia** (Configurações › Escritório, desligada por padrão): desenha o escritório sempre a 10
   quadros por segundo (5 com a janela sem foco), mesmo com gente andando, e o cenário em resolução menor e ampliado;
   nomes e balões continuam na resolução da tela, nítidos, e com o zoom bem afastado (visão geral no celular) o cenário
@@ -125,9 +167,26 @@ do meio (0.**3**.0).
   mandar só a imagem, sem texto). O `npm run mod:install` pergunta antes de liberar a leitura só dessa pasta sem pedir
   permissão (`--imagens`/`--sem-imagens` respondem sem perguntar); no Docker, o `npm run docker:up` monta essa pasta com
   escrita, a única montagem gravável. `HABBLAUD_MESSAGE_IMAGES=0` desliga.
+- **Comandos do Claude Code pela caixa de mensagem:** digitar `/effort high`, `/model opus` ou outro comando de barra
+  no terminal do Habblaud agora executa o comando na sessão, como aconteceria digitando no terminal do Claude Code.
+  Antes o texto começado por `/` era recusado pelo Claude Code e aparecia como não entregue. O plugin
+  `habblaud-mensagens` subiu para **1.0.4** (marketplace `habblaud` também) para que as sessões que já tinham o plugin
+  instalado recebam a correção com `claude plugin update habblaud-mensagens@habblaud` — sessões abertas precisam de
+  `/reload-plugins` depois.
 
 ### Corrigido
 
+- **Escritório isométrico sem engasgos:** quem troca de pose (festa, pipoca, rodas) não trava mais a tela por um
+  instante. Os desenhos de cada pessoa ficam prontos aos poucos, nas folgas, antes de aparecer, e o escritório não lê
+  mais pixels de volta da placa de vídeo durante o uso; os desenhos de quem vai embora são descartados.
+- **Escritório isométrico:** o cenário (paredes, móveis, plantas, postes) é pintado uma vez só e não muda mais conforme
+  quem passa perto (na área do bebedouro, a ordem de quem ficava na frente trocava); cada pessoa fica escondida só
+  onde o cenário está na frente dela. Quem senta no sofá, na poltrona, no banco e no pufe fica no assento, com o encosto
+  e o braço do lado certo. Cabine do banheiro livre com a porta fechada e a luz verde. Estantes, impressora, arquivo e
+  bebedouro encostados nas paredes de baixo aparecem de costas com o desenho de costas (antes, caixas lisas).
+- **Player de áudio nas perguntas funciona com arquivos fora das pastas montadas no Docker.** Antes o cartão só mostrava o player quando o arquivo existia dentro do container, então um áudio numa pasta comum do computador não aparecia. Agora o player aparece para qualquer caminho absoluto permitido e o arquivo é lido pelo auxiliar do computador na hora de tocar, com as mesmas regras de tipo, tamanho e segredo.
+- **Push só quando o Habblaud não está em foco.** Com as notificações ligadas, o aparelho que tem a janela do Habblaud em foco deixa de receber push: o aviso já está na tela. Os outros aparelhos continuam avisando, e o botão **Enviar teste** continua funcionando. A página avisa o servidor quando a janela entra ou sai do foco; se fechar sem avisar, a marca expira em 45 segundos.
+- **Imagem quebrada na TV agora vira aviso.** Se uma imagem citada nos slides não carrega — arquivo de fora da pasta que sumiu, auxiliar do computador parado no Docker — a TV mostra no lugar um aviso com o nome do arquivo e o que fazer: copiar a imagem para a pasta da apresentação ou deixar `npm run codex:bridge` rodando. Antes ficava só a quebra com a legenda.
 - **A conversa reaberta volta com o mesmo visual.** A aparência sorteada vinha do processo, então `claude --resume`
   (ou fechar e abrir a sessão) trazia o nome de volta, mas com outra cara. Agora a aparência fica guardada com o nome
   da sessão em `names.json`, inclusive a escolhida no editor, que não se perde quando outro agente da sala salva o dele.
@@ -191,6 +250,12 @@ do meio (0.**3**.0).
   notificação do navegador), a linha do tempo da gaveta, os Detalhes da atividade e o terminal também trazem a
   pergunta inteira, sem “…”, no computador e no celular (um texto muito longo rola dentro do aviso). A linha curta do
   feed diz só “Pergunta para você”, em vez de cortar a pergunta no meio.
+
+## [1.0.5] - 2026-11-25
+
+- Versão dos plugins e do marketplace alinhada em **1.0.5** para levar às sessões que já tinham o plugin instalado a
+  entrega imediata das mensagens e os comandos de barra. As mudanças visíveis desta rodada estão em **Não lançado**
+  acima.
 
 ## [1.0.3] - 2026-10-16
 

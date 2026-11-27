@@ -6,6 +6,7 @@ import { SPECIAL, type ShellOutcome } from '../../../shared/activity';
 import { hash32 } from '../../../shared/hash';
 import { TILE } from '../art/api';
 import type { Camera } from './camera';
+import { isoX, isoY } from './iso';
 import type { Renderer } from './render/renderer';
 import { oldestShell } from './sim/shell';
 import type { Sim } from './sim/sim';
@@ -312,8 +313,8 @@ export function createDebug(sim: Sim, renderer: Renderer, camera: Camera, onCame
       onCameraMoved();
       camera.follow = null;
       camera.stop();
-      camera.x = tx * TILE;
-      camera.y = ty * TILE;
+      camera.x = isoX(tx * TILE, ty * TILE);
+      camera.y = isoY(tx * TILE, ty * TILE);
       if (zoom) camera.zoom = zoom;
       camera.clamp();
     },
@@ -325,8 +326,8 @@ export function createDebug(sim: Sim, renderer: Renderer, camera: Camera, onCame
       onCameraMoved();
       camera.follow = null;
       camera.stop();
-      camera.x = (r.x + r.w / 2) * TILE;
-      camera.y = (r.y + r.h / 2) * TILE;
+      camera.x = isoX((r.x + r.w / 2) * TILE, (r.y + r.h / 2) * TILE);
+      camera.y = isoY((r.x + r.w / 2) * TILE, (r.y + r.h / 2) * TILE, 24);
       camera.zoom = zoom;
       camera.clamp();
     },

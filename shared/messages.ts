@@ -5,6 +5,11 @@ import { tr } from './i18n';
 
 /** Tamanho máximo de uma mensagem (caracteres). */
 export const MESSAGE_MAX = 20_000;
+/**
+ * Depois de uma resposta, o Claude Code (2.1.332) pede confirmação na tela da sessão para trocar de modelo enquanto a
+ * conversa está em cache (até 1 h); pelo escritório ninguém vê essa tela e a sessão pararia esperando.
+ */
+export const MODEL_SWITCH_LOCK_MS = 60 * 60_000;
 /** `Activity.tool` da atividade "Mensagem pelo Habblaud" (não é uma ferramenta do agente: é o seu texto entrando). */
 export const MESSAGE_TOOL = 'HabblaudMessage';
 /** Detalhe da atividade: o começo do texto, mascarado e cortado (o texto inteiro vai só para a sessão). */

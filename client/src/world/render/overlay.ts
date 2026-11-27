@@ -12,6 +12,7 @@ import type { Character } from '../sim/character';
 import { shellAgeKey, shellBubbleAlpha, shellBubbleText, STORM_LIFT, unitHash } from '../sim/shell';
 import type { Sim } from '../sim/sim';
 import { buildAnim } from './anim';
+import { WALL_H, isoX, isoY } from '../iso';
 import { drawFxBanner } from './github-fx';
 import type { HeadInfo, Renderer } from './renderer';
 import { tr } from '../../../../shared/i18n';
@@ -297,17 +298,22 @@ export class Overlay {
     if (sel.room) {
       const room = this.sim.rooms.get(sel.room);
       if (room && room.present) {
+        // contorno do volume da sala: piso e as duas paredes do fundo
         const r = room.layout.rect;
-        const ax = this.sx(r.x * TILE);
-        const ay = this.sy(r.y * TILE);
-        const bx = this.sx((r.x + r.w) * TILE);
-        const by = this.sy((r.y + r.h) * TILE);
+        const x0 = r.x * TILE;
+        const y0 = (r.y + 2) * TILE;
+        const x1 = (r.x + r.w) * TILE;
+        const y1 = (r.y + r.h) * TILE;
+        const pt = (x: number, y: number, z: number): [number, number] => [this.sx(isoX(x, y)), this.sy(isoY(x, y, z))];
+        const poly = [pt(x0, y1, 0), pt(x0, y1, WALL_H), pt(x0, y0, WALL_H), pt(x1, y0, WALL_H), pt(x1, y0, 0), pt(x1, y1, 0)];
         ctx.save();
         ctx.strokeStyle = room.theme.accent;
         ctx.lineWidth = 2.5;
+        ctx.lineJoin = 'round';
         ctx.globalAlpha = 0.85 + Math.sin(now / 300) * 0.15;
         ctx.beginPath();
-        ctx.roundRect(ax - 2, ay - 2, bx - ax + 4, by - ay + 4, 6);
+        poly.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.closePath();
         ctx.stroke();
         ctx.restore();
       }
@@ -436,14 +442,24 @@ export class Overlay {
         const ay = this.sy(rect.y);
         const w = rect.w * zoom;
         const h = rect.h * zoom;
-        if (ax + w > 0 && ax < vw && ay + h > 0 && ay < vh) {
-          this.drawSignText(text, ax, ay, w, h, this.renderer.signIsDark(vis), room?.accounts ?? []);
-          this.place(ax, ay, w, h);
+        const tilt = rect.skew * w;
+        if (ax + w > 0 && ax < vw && ay + h + Math.max(0, tilt) > 0 && ay + Math.min(0, tilt) < vh) {
+          // o texto acompanha a inclinação da placa na parede
+          const { ctx } = this;
+          ctx.save();
+          ctx.translate(ax, ay);
+          ctx.transform(1, rect.skew, 0, 1, 0, 0);
+          this.drawSignText(text, 0, 0, w, h, this.renderer.signIsDark(vis), room?.accounts ?? []);
+          ctx.restore();
+          this.place(ax, ay + Math.min(0, tilt), w, h + Math.abs(tilt));
         }
       }
       if (room ? readable : zoom >= 1.4) continue;
-      const cx = this.sx((r.x + r.w / 2) * TILE);
-      const cy = this.sy(r.y * TILE + 6);
+      // pílula no alto da parede do fundo, no meio da sala
+      const mx = (r.x + r.w / 2) * TILE;
+      const my = (r.y + 2) * TILE;
+      const cx = this.sx(isoX(mx, my));
+      const cy = this.sy(isoY(mx, my, WALL_H + 8));
       if (cx < -200 || cx > vw + 200 || cy < -40 || cy > vh + 40) continue;
       if (room) {
         // endereço antigo de uma mudança: o nome já está na sala nova
@@ -476,8 +492,10 @@ export class Overlay {
       if (!room || !room.present || now >= fx.end) continue;
       const r = room.layout.rect;
       const below = fx === office && !!this.sim.roomFx.get(fx.roomId, now);
-      const cx = this.sx((r.x + r.w / 2) * TILE);
-      const top = this.sy((r.y + 2) * TILE) + 4 + (below ? 26 : 0);
+      const mx = (r.x + r.w / 2) * TILE;
+      const my = (r.y + 2) * TILE;
+      const cx = this.sx(isoX(mx, my));
+      const top = this.sy(isoY(mx, my, WALL_H - 6)) + (below ? 26 : 0);
       if (cx < -200 || cx > camera.viewW + 200 || top < -40 || top > camera.viewH + 40) continue;
       const b = drawFxBanner(this.ctx, fx, cx, top, r.w * TILE * zoom - 12, now, (f, t, w) => this.fit(f, t, w), (f, t) => this.measure(f, t));
       if (b) this.place(b.x, b.y, b.w, b.h);

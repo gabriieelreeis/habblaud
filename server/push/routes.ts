@@ -3,6 +3,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tr } from '../../shared/i18n';
 import { HttpError, readJson, sendJson } from '../http/app';
+import { TAB_ID_MAX } from './focus';
 import { pushReason } from './sender';
 import type { PushService } from './service';
 
@@ -14,6 +15,8 @@ interface Body {
   keys?: { p256dh?: unknown; auth?: unknown };
   label?: unknown;
   types?: unknown;
+  tab?: unknown;
+  focused?: unknown;
 }
 
 /**
@@ -69,6 +72,32 @@ export function createPushRoutes(push: PushService): (req: IncomingMessage, res:
         res.setHeader('Allow', 'GET');
         sendJson(res, 405, { error: tr('método não permitido') });
       } else sendJson(res, 200, { ...push.status(), testReadyIn: Math.ceil(push.testReadyIn() / 1000) });
+      return true;
+    }
+
+    /**
+     * Window focus: called on every focus change and while the window stays focused. Nothing is written to disk,
+     * so this does not spend the subscription write budget.
+     */
+    if (path === '/api/push/focus') {
+      if (method !== 'POST') {
+        req.resume();
+        res.setHeader('Allow', 'POST');
+        sendJson(res, 405, { error: tr('método não permitido') });
+        return true;
+      }
+      void (async () => {
+        try {
+          const body = ((await readJson(req, BODY_MAX)) ?? {}) as Body;
+          const endpoint = endpointOf(body, push);
+          if (typeof body.focused !== 'boolean') throw new HttpError(400, tr('esperado {focused: booleano}'));
+          if (typeof body.tab !== 'string' || !body.tab || body.tab.length > TAB_ID_MAX) throw new HttpError(400, tr('esperado {tab: id da janela}'));
+          push.setFocus(endpoint, body.tab, body.focused);
+          sendJson(res, 200, { ok: true });
+        } catch (err) {
+          fail(err);
+        }
+      })();
       return true;
     }
 

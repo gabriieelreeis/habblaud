@@ -11,6 +11,8 @@
 
 <p align="center"><a href="README.md">English</a> · <a href="README.pt-BR.md">Português</a> · <b>Español</b> · <a href="README.fr.md">Français</a></p>
 
+> **Bifurcación de ReisCorp:** esta guía instala la rama `reiscorp/local` de [gabriieelreeis/habblaud](https://github.com/gabriieelreeis/habblaud), la versión que corre en la oficina de ReisCorp. Consulta [Qué cambia en nuestro fork](#qué-cambia-en-nuestro-fork).
+
 <p align="center">
   <img alt="Node.js 22.12+" src="https://img.shields.io/badge/node-%E2%89%A522.12-5fa04e?logo=node.js&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white" />
@@ -42,6 +44,7 @@ llamadas externas.
 
 - [Cómo se ve](#cómo-se-ve)
 - [Instalación](#instalación)
+- [Qué cambia en nuestro fork](#qué-cambia-en-nuestro-fork)
 - [Cómo usar](#cómo-usar)
 - [Cuentas y uso (5 horas y semanal)](#cuentas-y-uso-5-horas-y-semanal)
 - [Configuración](#configuración)
@@ -137,13 +140,16 @@ solo.
 ### 1. Descarga el proyecto
 
 ```bash
-git clone https://github.com/marmottajr/habblaud.git
+git clone https://github.com/gabriieelreeis/habblaud.git
 cd habblaud
+git checkout reiscorp/local
 npm install
 ```
 
 > `npm install` solo descarga herramientas de compilación (Vite, TypeScript, tsx…). El servidor de Habblaud no tiene
-> dependencias de runtime: usa solo módulos nativos de Node.
+> dependencias de runtime: usa solo módulos nativos de Node. Quédate en la rama `reiscorp/local` para tener la versión
+> de la oficina descrita aquí; las diferencias con el proyecto original están en
+> [Qué cambia en nuestro fork](#qué-cambia-en-nuestro-fork).
 
 ### 2. Inicia Habblaud
 
@@ -279,7 +285,8 @@ comprobando la huella digital que mostró el setup.
   comas, o `none` (solo ver, sin fiesta). La fiesta funciona con cualquier lista, menos `none`. La terminal interactiva
   nunca funciona desde el celular.
 - **Entregas** (celular, con `terminal` permitido): el botón de la cajita en la barra superior lista lo que terminó
-  cada agente, con un resumen y adjuntos (capturas de pantalla, PDFs, archivos que envió) que se abren con un toque.
+  cada agente, con un resumen y adjuntos (capturas de pantalla, PDFs, archivos que envió, incluido audio) que se abren
+  con un toque.
 - **Nuevo agente** (el botón **+**): inicia una sesión de Claude Code en segundo plano en la computadora (`claude --bg`,
   en la carpeta elegida), que aparece en la oficina y recibe mensajes y solicitudes de permiso a través de Habblaud. En
   una carpeta en la que Claude Code todavía no confía, abre ya completada la pantalla de sesión nueva de la app de
@@ -377,6 +384,32 @@ el tap y el hook antiguos, y los instaladores y desinstaladores antiguos dejan c
 `settings.json.habblaud-backup-<data>` en la carpeta de cada cuenta (p. ej., `~/.claude/`); bórralas si ya no las
 necesitas.
 
+## Qué cambia en nuestro fork
+
+Este es el fork de ReisCorp del [proyecto original](https://github.com/marmottajr/habblaud), que es MIT. La rama
+`reiscorp/local` añade estos cambios en el navegador; el servidor, las fuentes de datos de Claude Code, Codex y
+OpenCode y el protocolo de Habblaud World siguen siendo los mismos.
+
+- **Oficina isométrica:** las salas se dibujan en tres cuartos, con suelo en rombos, muebles en las paredes del fondo,
+  luz que sigue la hora local y personajes a la profundidad correcta. Los clics, la fiesta, la TV, los adornos de
+  temporada y el teléfono funcionan como antes. La simulación sigue en cuatro direcciones; el dibujo usa ocho.
+- **Escenario por capas:** los muebles se pintan una vez y se recortan por píxel cuando alguien pasa por delante, así
+  que un agente ya no obliga a redibujar toda la sala. Los sprites de las poses y direcciones se preparan en los ratos
+  libres.
+- **Personajes nuevos:** muñecos de pixel art más grandes, con cabeza grande y contorno, ocho direcciones en pantalla,
+  20 poses, objetos en la mano y disfraces. Los nombres y apariencias existentes se convierten solos; las piezas
+  nuevas se guardan en campos aparte y Habblaud World sigue recibiendo solo las 13 piezas de antes. El arte es
+  original, no copiado de un juego comercial.
+- **Editor de apariencia:** el lápiz junto al nombre del agente, en el panel, abre pestañas de cuerpo, cabello,
+  sombrero, gafas, parte de arriba, parte de abajo, zapatos y accesorio, con miniaturas, colores, una vista previa que
+  gira en las ocho direcciones y un único botón **Al azar**. Al guardar, el personaje queda fijado en la sala del
+  proyecto. Los personajes de World conservan su editor.
+- **Modelo, esfuerzo y envío inmediato:** el panel muestra y cambia el modelo y el esfuerzo de cada sesión; el cuadro
+  de mensajes ofrece **Enviar ahora** en Claude Code, y vuelve a la cola si esa versión no admite el campo.
+
+Detalles para mantenimiento: [docs/dev/ISOMETRIC-VIEW.md](docs/dev/ISOMETRIC-VIEW.md) y
+[docs/dev/MODEL-EFFORT-CONTROLS.md](docs/dev/MODEL-EFFORT-CONTROLS.md).
+
 ## Cómo usar
 
 ### Qué está haciendo cada personaje
@@ -405,7 +438,7 @@ sesión, y un **chip de color con la letra de la cuenta** (C, D…).
 - **Feed:** las últimas actividades de toda la oficina.
 - **Configuración (⚙):** nombres, globos, cuánto pasean los ociosos, ciclo día/noche, sonidos, notificaciones del
   navegador, modo demostración y **Acerca de** (versión en uso y versión nueva). **Ayuda (?):** leyenda completa y
-  atajos.
+  atajos. Con el push activado, el dispositivo con la ventana del Habblaud enfocada no recibe avisos; **Enviar prueba** sigue funcionando.
 - **Mi día (📊):** adónde se fue el tiempo del día (consulta [Mi día](#mi-día)). **Timelapse** e **Historial** (los
   relojes de la barra superior): consulta [Timelapse del día](#timelapse-del-día) y [Terminal](#terminal).
 
@@ -549,7 +582,10 @@ terminal, la solicitud desaparece de la oficina sola. El contador **te necesitan
 solicitud.
 
 **Las preguntas del agente** (`AskUserQuestion`) también: la tarjeta de preguntas muestra cada pregunta con las
-opciones y sus descripciones, como las mostraría la terminal. Elige una opción (o varias, cuando la pregunta lo
+opciones y sus descripciones, como las mostraría la terminal. Si la pregunta (o la descripción de una opción) trae
+`Ouça: <ruta absoluta>` de un audio (WAV, MP3, OGG/Opus o M4A, hasta 25 MB), la tarjeta muestra un reproductor con el
+nombre del archivo encima de las opciones; el audio sale del propio Habblaud y solo sirve para esa pregunta. En el
+celular hay que tener `permissions` permitido para escucharlo. Elige una opción (o varias, cuando la pregunta lo
 permite) o escribe la tuya en **Otro**, y usa **Responder**; **Rechazar…** le dice al agente que no quieres responder,
 y **Responder en la terminal** deja la pregunta allá. La respuesta le llega al agente como si la hubieras elegido en la
 terminal.
@@ -587,6 +623,21 @@ ventana correcta.
 - El cuadro muestra el estado: **en cola** (la sesión busca los mensajes cada 2 segundos), **entregado** o **no se
   entregó**, con el motivo. Con el agente ocupado, el mensaje espera y entra cuando termine su turno, como un prompt
   escrito con el agente trabajando.
+- En los agentes de Claude, los comandos de barra como `/effort high` o `/model opus` también funcionan aquí: el plugin los
+  envía como comando, no como texto, para que Claude los ejecute de verdad. Un comando desconocido aparece como
+  **no se entregó**, con el motivo.
+- **Modelo y esfuerzo:** la sección **Modelo y esfuerzo** de los detalles del agente muestra el modelo de la última
+  respuesta y el esfuerzo actual de la sesión, con su origen (`/effort` de esta apertura, `--effort` al abrir o el
+  predeterminado de `settings.json`). Cambiar cualquiera de los dos envía `/model` o `/effort` por la misma cola, y la
+  salida del comando en la conversación lo confirma. Por defecto vale solo para esa sesión: Habblaud devuelve a
+  `settings.json` el predeterminado de las sesiones nuevas que Claude Code sobrescribe (en Docker, con
+  `npm run codex:bridge`); marca **También como predeterminado de las sesiones nuevas** para conservarlo. Hasta 1 h
+  después de la última respuesta Claude Code pide confirmación en la pantalla de la sesión para cambiar de modelo, así
+  que el cambio de modelo queda bloqueado en ese intervalo (los detalles muestran cuándo se libera). En OpenCode,
+  la lista de modelos y los niveles de razonamiento vienen de su servicio y valen para los próximos turnos.
+- **Enviar ahora:** marca esa opción en el cuadro para que el texto entre en el turno en curso de Claude Code, sin
+  esperar a que el agente termine. Solo aparece en las sesiones de Claude Code; Codex y OpenCode siguen usando su cola.
+  La sugerencia avisa de que, en un Claude Code sin soporte, el mensaje vuelve a la cola.
 - El plugin se ejecuta dentro de cada sesión y solo habla con Habblaud en `127.0.0.1`. Sin él (o en una sesión abierta
   antes de la instalación: usa `/reload-plugins`), aparece la sugerencia de instalación en lugar del cuadro. Los
   subagentes no reciben mensajes.
@@ -623,8 +674,10 @@ desenfocada detrás.
   por `---`), fuera del proyecto. `npm run mod:install` pregunta antes de poner la regla
   `Edit(~/.habblaud/apresentacoes/**)`, que deja a los agentes escribir ahí (y solo ahí) sin pedir permiso; sin ella,
   apruebas la escritura en cada presentación. En Docker, `npm run docker:up` monta la carpeta en solo lectura. Las
-  diapositivas las dibuja el propio Habblaud: ningún HTML del agente corre en la página. `HABBLAUD_PRESENTATIONS=0`
-  apaga las TV.
+  diapositivas las dibuja el propio Habblaud: ningún HTML del agente corre en la página. Una imagen citada por ruta
+  absoluta necesita que el archivo siga ahí (y el auxiliar del computador en marcha en Docker); cópiala a esta carpeta
+  si puede moverse: una imagen ausente muestra un aviso claro en la TV en lugar de una imagen rota.
+  `HABBLAUD_PRESENTATIONS=0` apaga las TV.
 
 ### Editar el personaje
 
@@ -633,9 +686,10 @@ del agente principal y haz clic en el lápiz junto al nombre (**Editar personaje
 
 - **Nombre:** hasta 24 caracteres. No puede repetir el de alguien que está en la oficina ni el elegido para otro
   proyecto.
-- **Sortear:** trae otra apariencia.
-- **Piezas:** piel, cabello, barba, ojos, parte de arriba, parte de abajo, zapatos y accesorio, con la vista previa al
-  lado.
+- **Al azar:** trae otra apariencia completa.
+- **Piezas:** pestañas de cuerpo, cabello (corte, color y barba), sombrero (modelo y color), gafas, parte de arriba,
+  parte de abajo, zapatos y accesorio. Cada opción tiene miniatura; la vista previa de arriba gira en las ocho
+  direcciones, camina en el sitio y también se puede girar a mano con las flechas.
 - **Guardar:** vale para el proyecto (la sala). La próxima sesión que se abra en él llega con ese personaje. Con dos
   sesiones al mismo tiempo en la misma sala, la segunda recibe un personaje sorteado.
 - **Volver al sorteo:** deshace la elección.

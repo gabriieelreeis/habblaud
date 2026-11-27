@@ -5,6 +5,7 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tr } from '../../shared/i18n';
+import { FocusTracker, TAB_ID_MAX } from './focus';
 import { parsePushEndpoint, parsePushHosts } from './hosts';
 import { generateVapidKeys, publicFromPrivate } from './vapid';
 import { endpointTag, PushStore, type PushSubscription } from './store';
@@ -84,6 +85,7 @@ export class PushService {
   private readonly store: PushStore;
   private readonly types = new Map<string, PushType>();
   private readonly hosts: readonly string[];
+  private readonly focus = new FocusTracker();
   /** Marcas de tempo das escritas de inscrição desta janela (teto de ritmo das três rotas). */
   private writes: number[] = [];
   private readonly lastByKey = new Map<string, number>();
@@ -145,6 +147,23 @@ export class PushService {
     return !!parsePushEndpoint(endpoint, this.hosts);
   }
 
+  /** This device's `tab` entered or left focus. Reported by the page; it spends no write budget. */
+  setFocus(endpoint: string, tab: string, focused: boolean): void {
+    if (!tab || tab.length > TAB_ID_MAX) return;
+    if (focused) this.focus.set(endpoint, tab, this.now());
+    else this.focus.clear(endpoint, tab);
+  }
+
+  /** Does this device have a focused Habblaud window? */
+  isFocused(endpoint: string): boolean {
+    return this.focus.isFocused(endpoint, this.now());
+  }
+
+  /** How many subscribed devices are focused right now (used by the tests). */
+  get focusedCount(): number {
+    return this.store.list().filter((s) => this.isFocused(s.endpoint)).length;
+  }
+
   /** Lista de anfitriões em uso (para a página e para o log do arranque; não é segredo). */
   get pushHosts(): readonly string[] {
     return this.hosts;
@@ -180,6 +199,7 @@ export class PushService {
   }
 
   unsubscribe(endpoint: string): boolean {
+    this.focus.clearEndpoint(endpoint);
     const removed = this.store.remove(endpoint);
     if (removed) this.deps.log?.(`push inscrição ${endpointTag(endpoint)} apagada (${this.store.list().length} aparelhos)`);
     return removed;
@@ -214,7 +234,7 @@ export class PushService {
   async notify(typeId: string, input: NotifyInput): Promise<void> {
     const type = this.types.get(typeId);
     if (!type) return;
-    const subs = this.store.list().filter((s) => (s.types[typeId] ?? type.enabled));
+    const subs = this.store.list().filter((s) => (s.types[typeId] ?? type.enabled) && !this.isFocused(s.endpoint));
     if (!subs.length) return;
 
     const key = `${typeId}|${input.key ?? ''}`;
@@ -300,9 +320,13 @@ export class PushService {
     // Só os aparelhos com algum dos tipos ENGOLIDOS ligado: um aparelho que desligou o `needs-you` não tem de receber
     // o resumo de uma rajada de `needs-you`.
     const types = [...this.suppressedTypes];
+    const subs = this.store
+      .list()
+      .filter((s) => types.some((id) => (s.types[id] ?? this.types.get(id)?.enabled ?? false)) && !this.isFocused(s.endpoint));
+    // Nobody to deliver to: keep the count for the next notice instead of losing it in an undelivered summary.
+    if (!subs.length) return;
     const n = this.takeSuppressed();
     this.lastSummaryAt = this.now();
-    const subs = this.store.list().filter((s) => types.some((id) => (s.types[id] ?? this.types.get(id)?.enabled ?? false)));
     for (const sub of [...subs]) {
       await this.deliver(sub, { title: tr('{0} avisos novos no Habblaud', [n]), url: '/?app=1', tag: SUMMARY_TOPIC }, { ttlS: 600, urgency: 'high', topic: SUMMARY_TOPIC });
     }

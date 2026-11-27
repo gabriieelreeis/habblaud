@@ -4,6 +4,7 @@ import { mkdtempSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FOCUS_TTL_MS } from './focus';
 import { BURST_MAX, BURST_TOTAL_MAX, BURST_WINDOW_MS, createPushService, KEY_FILE, KEY_KEEP_MS, loadVapidKeys, PER_KEY_MS, PushService, safePath, SUMMARY_DELAY_MS, SUMMARY_EVERY_MS, SUMMARY_TOPIC, TEST_MS, TEXT_MAX, WRITE_WINDOW_MS, WRITES_PER_MIN } from './service';
 import { MAX_SUBSCRIPTIONS } from './store';
 import { fakePushServer } from '../test/fake-push-server';
@@ -584,5 +585,100 @@ describe('loadVapidKeys: rasto da identidade gerada', () => {
     const linhas: string[] = [];
     expect(createPushService({ dataDir: dir(), env: {}, log: (m) => linhas.push(m) })).toBeTruthy();
     expect(linhas.filter((l) => l.includes('identidade nova gerada'))).toHaveLength(1);
+  });
+});
+
+describe('focused windows', () => {
+  const OTHER = 'https://web.push.apple.com/outro12345';
+
+  it('a focused device gets no push while another device still does', async () => {
+    const api = fakePush();
+    let t = 1_000_000;
+    const svc = service({ fetch: api.fetch, now: () => t });
+    svc.subscribe({ endpoint: ENDPOINT, keys: KEYS });
+    svc.subscribe({ endpoint: OTHER, keys: KEYS });
+    svc.setFocus(ENDPOINT, 'tab-1', true);
+    expect(svc.focusedCount).toBe(1);
+    await svc.notify('needs-you', { title: 'x' });
+    expect(api.calls).toHaveLength(1);
+    expect(api.calls[0].url).toContain('outro12345');
+    svc.setFocus(ENDPOINT, 'tab-1', false);
+    t += 5_000;
+    await svc.notify('needs-you', { title: 'y', key: 'depois' });
+    expect(api.calls).toHaveLength(3);
+    expect(api.calls.filter((c) => c.url === ENDPOINT)).toHaveLength(1);
+    svc.stop();
+  });
+
+  it('a focused device consumes no burst budget', async () => {
+    const api = fakePush();
+    let t = 1_000_000;
+    const svc = service({ fetch: api.fetch, now: () => t });
+    svc.subscribe({ endpoint: ENDPOINT, keys: KEYS });
+    svc.setFocus(ENDPOINT, 'tab-1', true);
+    for (let i = 0; i < BURST_MAX + 1; i++) {
+      await svc.notify('needs-you', { title: 'x', key: `a-${i}` });
+      t += 1_000;
+    }
+    svc.setFocus(ENDPOINT, 'tab-1', false);
+    await svc.notify('needs-you', { title: 'x', key: 'livre' });
+    expect(api.calls).toHaveLength(1);
+    svc.stop();
+  });
+
+  it('a stale focus mark expires without a pagehide', async () => {
+    const api = fakePush();
+    let t = 1_000_000;
+    const svc = service({ fetch: api.fetch, now: () => t });
+    svc.subscribe({ endpoint: ENDPOINT, keys: KEYS });
+    svc.setFocus(ENDPOINT, 'tab-1', true);
+    await svc.notify('needs-you', { title: 'x' });
+    expect(api.calls).toHaveLength(0);
+    t += FOCUS_TTL_MS;
+    await svc.notify('needs-you', { title: 'y', key: 'depois' });
+    expect(api.calls).toHaveLength(1);
+    svc.stop();
+  });
+
+  it('the manual test still reaches a focused device', async () => {
+    const api = fakePush();
+    const svc = service({ fetch: api.fetch, now: () => 1_000_000 });
+    svc.subscribe({ endpoint: ENDPOINT, keys: KEYS });
+    svc.setFocus(ENDPOINT, 'tab-1', true);
+    expect((await svc.test(ENDPOINT, { title: 'Habblaud', body: 'teste' })).sent).toBe(true);
+    expect(api.calls).toHaveLength(1);
+  });
+
+  it('unsubscribing clears the focus mark', async () => {
+    const api = fakePush();
+    const svc = service({ fetch: api.fetch, now: () => 1_000_000 });
+    svc.subscribe({ endpoint: ENDPOINT, keys: KEYS });
+    svc.setFocus(ENDPOINT, 'tab-1', true);
+    svc.unsubscribe(ENDPOINT);
+    expect(svc.focusedCount).toBe(0);
+    svc.subscribe({ endpoint: ENDPOINT, keys: KEYS });
+    await svc.notify('needs-you', { title: 'x' });
+    expect(api.calls).toHaveLength(1);
+  });
+
+  it('a summary stays queued while every device is focused', async () => {
+    const api = fakePush();
+    let t = 1_000_000;
+    const svc = service({ fetch: api.fetch, now: () => t });
+    svc.subscribe({ endpoint: ENDPOINT, keys: KEYS });
+    for (let i = 0; i < BURST_MAX + 2; i++) {
+      await svc.notify('needs-you', { title: 'x', key: `a-${i}` });
+      t += 5_000;
+    }
+    svc.setFocus(ENDPOINT, 'tab-1', true);
+    t += SUMMARY_EVERY_MS + 1;
+    svc.setFocus(ENDPOINT, 'tab-1', true);
+    await svc.flushSummary();
+    expect(svc.suppressedCount).toBe(2);
+    expect(api.calls.filter((c) => c.headers.Topic === safeTopic(SUMMARY_TOPIC))).toHaveLength(0);
+    svc.setFocus(ENDPOINT, 'tab-1', false);
+    await svc.flushSummary();
+    expect(api.calls.filter((c) => c.headers.Topic === safeTopic(SUMMARY_TOPIC))).toHaveLength(1);
+    svc.stop();
   });
 });

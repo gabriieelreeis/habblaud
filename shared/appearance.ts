@@ -27,6 +27,52 @@ export interface AppearanceParts {
   facialHair?: (typeof FACIAL_HAIR)[number];
 }
 
+// Peças do visual por peças (editor de visual): só no escritório. Não sobem ao Habblaud World, que continua com as 13
+// de PART_KEYS (cada escolha nova também ajusta a peça antiga mais parecida, ver o editor). Os ids são os mesmos da
+// arte (client/src/art/avatar/look.ts; um teste confere).
+export const LOOK_BODIES = ['a', 'b'] as const;
+export const LOOK_HAIRS = [
+  'bald', 'short', 'buzz', 'afro', 'bun', 'mohawk', 'ponytail', 'long', 'curly', 'spiky', 'side_part', 'wavy', 'bob', 'pigtails',
+  'bangs', 'braids', 'dreads', 'quiff', 'space_buns', 'undercut', 'long_bangs',
+] as const;
+export const LOOK_HATS = ['none', 'cap', 'cap_back', 'beanie', 'bucket', 'top', 'straw', 'bow'] as const;
+export const LOOK_GLASSES = ['none', 'glasses', 'round', 'shades'] as const;
+export const LOOK_TOPS = ['tee', 'polo', 'hoodie', 'jacket', 'suit', 'tank', 'dress', 'shirt_tie', 'sweater', 'blouse'] as const;
+export const LOOK_BOTTOMS = ['jeans', 'shorts', 'skirt', 'slacks', 'long_skirt'] as const;
+export const LOOK_SHOES = ['sneakers', 'dress', 'boots', 'sandals'] as const;
+export const LOOK_EXTRAS = ['none', 'necklace', 'earring', 'headphones', 'backpack', 'scarf'] as const;
+
+/** Peças do visual novo (opcionais): ausente = a peça convertida da aparência antiga. */
+export interface LookParts {
+  body?: (typeof LOOK_BODIES)[number];
+  cut?: (typeof LOOK_HAIRS)[number];
+  hat?: (typeof LOOK_HATS)[number];
+  hatColor?: string;
+  glasses?: (typeof LOOK_GLASSES)[number];
+  topCut?: (typeof LOOK_TOPS)[number];
+  bottomCut?: (typeof LOOK_BOTTOMS)[number];
+  shoesCut?: (typeof LOOK_SHOES)[number];
+  extra?: (typeof LOOK_EXTRAS)[number];
+  extraColor?: string;
+}
+
+export const LOOK_KEYS = ['body', 'cut', 'hat', 'hatColor', 'glasses', 'topCut', 'bottomCut', 'shoesCut', 'extra', 'extraColor'] as const satisfies readonly (keyof LookParts)[];
+export type LookKey = (typeof LOOK_KEYS)[number];
+
+const LOOK_VALUES: Partial<Record<LookKey, readonly string[]>> = {
+  body: LOOK_BODIES,
+  cut: LOOK_HAIRS,
+  hat: LOOK_HATS,
+  glasses: LOOK_GLASSES,
+  topCut: LOOK_TOPS,
+  bottomCut: LOOK_BOTTOMS,
+  shoesCut: LOOK_SHOES,
+  extra: LOOK_EXTRAS,
+};
+
+/** Peças de um agente do escritório: as 13 de sempre mais as do visual novo. */
+export type AgentParts = AppearanceParts & LookParts;
+
 /**
  * Ordem fixa das peças: a mesma em parseAppearanceParts, partsKey e no editor (changedParts). O timelapse compara
  * por JSON, então a ordem precisa ser estável.
@@ -68,6 +114,33 @@ export function parseAppearanceParts(raw: unknown): AppearanceParts | null {
   return out as AppearanceParts;
 }
 
+/**
+ * Peças de um agente do escritório (as 13 de PART_KEYS e as do visual novo, LOOK_KEYS), na ordem das duas listas, ou
+ * null se houver algo fora do formato. O personagem do World continua com `parseAppearanceParts`.
+ */
+export function parseAgentParts(raw: unknown): AgentParts | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const src = raw as Record<string, unknown>;
+  const old: Record<string, unknown> = {};
+  const out: Record<string, string> = {};
+  for (const k of Object.keys(src)) {
+    if ((PART_KEYS as readonly string[]).includes(k)) old[k] = src[k];
+    else if (!(LOOK_KEYS as readonly string[]).includes(k)) return null;
+  }
+  const base = parseAppearanceParts(old);
+  if (!base) return null;
+  Object.assign(out, base);
+  for (const k of LOOK_KEYS) {
+    const v = src[k];
+    if (v === undefined) continue;
+    if (typeof v !== 'string') return null;
+    const allowed = LOOK_VALUES[k];
+    if (allowed ? !allowed.includes(v) : !COLOR.test(v)) return null;
+    out[k] = allowed ? v : v.toLowerCase();
+  }
+  return out as AgentParts;
+}
+
 /** Nome do personagem: NFC, sem espaços sobrando, de 1 a NAME_MAX caracteres e sem caracteres de controle. */
 export function parseCharacterName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
@@ -87,6 +160,9 @@ export function nameKey(name: string): string {
 }
 
 /** Assinatura estável de `parts` (cache de avatares e detecção de mudança). */
-export function partsKey(parts: AppearanceParts | undefined): string {
-  return parts ? PART_KEYS.map((k) => parts[k] ?? '').join(',') : '';
+export function partsKey(parts: AgentParts | undefined): string {
+  if (!parts) return '';
+  const base = PART_KEYS.map((k) => parts[k] ?? '').join(',');
+  // sem peça nova, a assinatura de sempre
+  return LOOK_KEYS.some((k) => parts[k] !== undefined) ? base + ';' + LOOK_KEYS.map((k) => parts[k] ?? '').join(',') : base;
 }

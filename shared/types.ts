@@ -4,7 +4,7 @@
 // Regra de evolução: mudanças aqui devem ser ADITIVAS (campos opcionais novos).
 // Renomear/remover campos quebra servidor, mundo e UI ao mesmo tempo.
 
-import type { AppearanceParts } from './appearance';
+import type { AgentParts } from './appearance';
 import type { RoomTv } from './presentation';
 import type { WorldMeta } from './world/api';
 
@@ -112,6 +112,8 @@ export interface AskQuestion {
   multiSelect?: boolean;
   /** `index` = posição da opção em `options` do original: é ela que volta na resposta (PermissionAnswer). */
   options: Array<{ index: number; label: string; description?: string }>;
+  /** Áudio citado na pergunta (ou numa descrição), liberado só por este pedido. */
+  audio?: { name: string; url: string };
 }
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed';
@@ -169,7 +171,14 @@ export interface AgentInfo {
   tasks: TaskItem[];
   /** Shells rodando que o agente espera: em segundo plano e o comando em primeiro plano ainda sem resultado. */
   shells?: ShellJob[];
+  /** Modelo da última resposta. */
   model?: string;
+  /** Modelo escolhido para as próximas respostas (/model do Claude Code; a escolha da sessão no OpenCode). */
+  modelChoice?: ModelChoice;
+  /** Esforço (nível de raciocínio) da sessão e de onde veio. */
+  effort?: AgentEffort;
+  /** Última resposta do modelo nesta abertura da sessão (Claude Code). */
+  replyAt?: number;
   gitBranch?: string;
   permissionMode?: string;
   startedAt: number;
@@ -180,7 +189,7 @@ export interface AgentInfo {
   /** Semente 32-bit para a aparência determinística do personagem. */
   seed: number;
   /** Peças escolhidas no editor do personagem, aplicadas por cima da aparência da `seed` (ver shared/appearance.ts). */
-  parts?: AppearanceParts;
+  parts?: AgentParts;
   /** Usa o personagem escolhido para o projeto (a sala): o painel oferece "Voltar ao sorteio". */
   custom?: true;
   /** Subagente rodando em segundo plano. */
@@ -613,7 +622,7 @@ export interface RecentSession {
 // ------------------------------------------------------------------ entregas
 
 /** Tipo de um anexo de entrega, para escolher o visualizador. */
-export type DeliveryAttachmentKind = 'image' | 'pdf' | 'video' | 'page' | 'text' | 'file';
+export type DeliveryAttachmentKind = 'image' | 'pdf' | 'video' | 'audio' | 'page' | 'text' | 'file';
 
 /** Arquivo que o agente entregou (SendUserFile, link na resposta) ou uma tela capturada no fim do trabalho. */
 export interface DeliveryAttachment {
@@ -778,6 +787,60 @@ export interface PermissionDecision {
  * queued = esperando a sessão buscar; sent = a sessão buscou e está entregando; delivered = entrou na sessão (ou
  * na fila dela, se o agente estava ocupado); failed = não entrou (`error` diz por quê).
  */
+/**
+ * De onde veio o esforço: `command` = saída do /effort nesta abertura da sessão (certo); `flag` = o --effort com que a
+ * sessão foi aberta; `settings` = o padrão do settings.json (provável); `session` = a escolha da sessão no OpenCode.
+ */
+export type EffortSource = 'command' | 'flag' | 'settings' | 'session';
+
+export interface AgentEffort {
+  level: string;
+  source: EffortSource;
+  /** Quando o /effort rodou (só `command`). */
+  at?: number;
+}
+
+export interface ModelChoice {
+  /** Nome que o Claude Code mostrou ("Sonnet 5.5") ou "provedor/modelo" no OpenCode. */
+  label: string;
+  at: number;
+}
+
+/** Troca de modelo ou esforço pela gaveta (POST /api/controls). */
+export type ControlKind = 'effort' | 'model';
+
+/**
+ * `sending` = na fila da sessão; `waiting` = entregue, esperando a sessão rodar o comando; `confirmed` = a sessão
+ * confirmou; `failed` = não entrou.
+ */
+export type ControlStatus = 'sending' | 'waiting' | 'confirmed' | 'failed';
+
+/** O que aconteceu com o padrão das sessões novas no settings.json. */
+export type ControlDefaults = 'pending' | 'restored' | 'unchanged' | 'saved' | 'restore-failed';
+
+export interface ControlState {
+  id: string;
+  agentId: string;
+  kind: ControlKind;
+  value: string;
+  variant?: string;
+  status: ControlStatus;
+  defaults?: ControlDefaults;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Modelo do OpenCode para a gaveta (GET /api/controls/models). */
+export interface ModelOption {
+  /** "provedor/modelo". */
+  id: string;
+  name: string;
+  provider: string;
+  /** Níveis de raciocínio do modelo (vazio = não tem). */
+  variants: string[];
+}
+
 export type OutboxStatus = 'queued' | 'sent' | 'delivered' | 'failed';
 
 export interface OutboxMessage {
@@ -789,6 +852,8 @@ export interface OutboxMessage {
   createdAt: number;
   /** Última mudança de status. */
   updatedAt: number;
+  /** Entrega pedida no turno em andamento; em Claude Code sem suporte, entra na fila como sempre. */
+  sendNow?: boolean;
 }
 
 /** Estado do terminal interativo (OfficeSnapshot.meta.pty). */
@@ -820,4 +885,6 @@ export interface InboxMessage {
   id: string;
   /** O texto como foi digitado: o plugin o manda à sessão como se você o tivesse digitado. */
   text: string;
+  /** Pedido de entrega no turno em andamento (só no Claude Code; ausente = entra na fila). */
+  sendNow?: boolean;
 }

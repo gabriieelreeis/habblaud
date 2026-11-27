@@ -1,6 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { checkFile, DELIVERY_FILE_MAX_BYTES, fileType, insideKnownFolder, pathProblem } from './files';
 
+describe('áudio nos arquivos de ver', () => {
+  it('accepts the audio extensions with the right content type', () => {
+    expect(fileType('/tmp/voz.WAV')).toEqual({ kind: 'audio', type: 'audio/wav' });
+    expect(fileType('/tmp/a.mp3')).toEqual({ kind: 'audio', type: 'audio/mpeg' });
+    expect(fileType('/tmp/a.ogg')).toEqual({ kind: 'audio', type: 'audio/ogg' });
+    expect(fileType('/tmp/a.opus')).toEqual({ kind: 'audio', type: 'audio/ogg' });
+    expect(fileType('/tmp/a.m4a')).toEqual({ kind: 'audio', type: 'audio/mp4' });
+    for (const p of ['/tmp/voz.wav', '/tmp/voz.mp3', '/tmp/voz.ogg', '/tmp/voz.opus', '/tmp/voz.m4a']) expect(pathProblem(p), p).toBeUndefined();
+  });
+
+  it('accepts absolute Windows paths and still refuses secrets, relative paths and large files', () => {
+    expect(pathProblem('D:/ReisCorp/voz.wav')).toBeUndefined();
+    expect(pathProblem('D:\\ReisCorp\\voz.wav')).toBeUndefined();
+    for (const bad of ['D:/Users/a/.ssh/id_rsa.wav', 'D:/Users/a/.env.wav', 'D:/a/../b.wav', 'voz.wav', 'C:voz.wav', 'D:/a/senha.wav']) {
+      expect(pathProblem(bad), bad).toBeDefined();
+    }
+    const fs = (real: string, size = 10) => ({ realpath: () => real, stat: () => ({ isFile: () => true, size }) });
+    expect(checkFile('D:/tmp/voz.wav', fs('D:\\tmp\\voz.wav'))).toEqual({ path: 'D:\\tmp\\voz.wav', size: 10 });
+    expect(checkFile('/tmp/voz.wav', fs('/tmp/voz.wav', DELIVERY_FILE_MAX_BYTES + 1))).toHaveProperty('error');
+  });
+});
+
 describe('arquivos das entregas', () => {
   it('só tipos de ver e nada com cara de segredo', () => {
     expect(fileType('/a/b.PNG')).toEqual({ kind: 'image', type: 'image/png' });

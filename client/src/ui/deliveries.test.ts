@@ -9,6 +9,8 @@ describe('entregas no navegador', () => {
     expect(list).toHaveLength(1);
     expect(list[0].attachments.map((a) => a.name)).toEqual(['a.png']);
     expect(parseDeliveries(null)).toEqual([]);
+    const audio = parseDeliveries({ deliveries: [d('2', 20, { attachments: [{ id: 'abcdef5678', name: 'voz.wav', kind: 'audio' }] })] });
+    expect(audio[0].attachments[0]).toMatchObject({ name: 'voz.wav', kind: 'audio' });
   });
   it('novas desde a última vez, chegadas para o aviso, linha do trabalho', () => {
     const list = parseDeliveries({ deliveries: [d('1', 300), d('2', 200), d('3', 100)] });

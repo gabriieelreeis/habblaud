@@ -5,6 +5,7 @@
 // Desempenho: só percorre as salas com efeito (quase sempre nenhuma); sprites em cache; o confete
 // usa o pool fixo de partículas, com taxa limitada por sala.
 import { TILE } from '../../art/api';
+import { FLOOR_MATRIX, WALL_H, isoX, isoY } from '../iso';
 import type { HeadInfo } from './renderer';
 import type { Particles } from './particles';
 import type { RoomFx } from '../sim/github';
@@ -182,12 +183,14 @@ export class RoomFxRenderer {
     // começa forte e rareia nos últimos 2 s
     const k = Math.min(1, (fx.end - now) / 2000) * (now - fx.start < 1500 ? 1.6 : 1);
     let a = (this.acc.get(id) ?? 0) + Math.min(0.1, dt) * CONFETTI_RATE * k;
+    // visão isométrica: cai do alto das paredes até um ponto sorteado do piso
     const f = rects.floor;
-    const top = rects.room.y + 4;
     while (a >= 1) {
       a -= 1;
-      const y = top + Math.random() * 6;
-      particles.confettiFall(f.x + 2 + Math.random() * (f.w - 4), y, f.y + f.h - 4 - y);
+      const fx = f.x + 2 + Math.random() * (f.w - 4);
+      const fy = f.y + 2 + Math.random() * (f.h - 4);
+      const h = WALL_H - 4 - Math.random() * 6;
+      particles.confettiFall(isoX(fx, fy), isoY(fx, fy, h), h);
     }
     this.acc.set(id, a);
   }
@@ -221,7 +224,10 @@ export class RoomFxRenderer {
     const frames = beaconFrames();
     const r = rects.room;
     const f = rects.floor;
-    const spots = [r.x + 4, r.x + r.w - 4];
+    // no alto da parede do fundo, perto das duas pontas
+    const wy = f.y;
+    const spots = [f.x + 6, f.x + f.w - 6];
+    const at = (x: number) => ({ x: isoX(x, wy), y: isoY(x, wy, WALL_H - 2) });
     // parado (prefers-reduced-motion): lâmpadas de frente, acesas, sem girar
     const ph = still ? 0 : t / SPIN_MS;
     /** Quanto a lâmpada `i` está virada para quem olha (0..1); a da direita está meia volta adiantada. */
@@ -229,6 +235,7 @@ export class RoomFxRenderer {
     // luz girando: um facho de cada lâmpada varrendo o chão da sala (em lados opostos)
     if (!still) {
       ctx.save();
+      ctx.transform(FLOOR_MATRIX[0], FLOOR_MATRIX[1], FLOOR_MATRIX[2], FLOOR_MATRIX[3], 0, 0);
       ctx.beginPath();
       ctx.rect(r.x, r.y, r.w, r.h);
       ctx.clip();
@@ -246,13 +253,15 @@ export class RoomFxRenderer {
     const glow = redGlow(48);
     for (const [i, x] of spots.entries()) {
       ctx.globalAlpha = (0.25 + 0.75 * facing(i)) * fade;
-      ctx.drawImage(glow, Math.round(x - 24), Math.round(r.y + 3 - 24));
+      const p = at(x);
+      ctx.drawImage(glow, Math.round(p.x - 24), Math.round(p.y - 4 - 24));
     }
     ctx.globalAlpha = fade;
     for (const [i, x] of spots.entries()) {
       const s = frames[still ? 0 : beaconFrame(ph + i * 0.5)];
-      const sx = Math.round(x - s.width / 2);
-      const sy = Math.round(r.y + 7 - s.height);
+      const p = at(x);
+      const sx = Math.round(p.x - s.width / 2);
+      const sy = Math.round(p.y - s.height);
       ctx.drawImage(s, sx, sy);
       // de frente para quem olha: raios curtos saindo da cúpula
       if (!still && facing(i) > 0.75) {

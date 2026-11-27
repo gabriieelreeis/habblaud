@@ -21,6 +21,8 @@ export interface RegistryEntry {
   waitingFor?: string;
   /** Agente customizado da sessão (`claude --agent frinus`). */
   agent?: string;
+  /** Sessão em segundo plano: o id curto do job em <configDir>/jobs/. */
+  jobId?: string;
   updatedAt?: number;
   statusUpdatedAt?: number;
 }
@@ -56,6 +58,7 @@ export function parseRegistryEntry(raw: string): RegistryEntry | undefined {
     ['status', str(j.status)],
     ['waitingFor', str(j.waitingFor)],
     ['agent', str(j.agent)],
+    ['jobId', str(j.jobId)],
     ['updatedAt', num(j.updatedAt)],
     ['statusUpdatedAt', num(j.statusUpdatedAt)],
   ];

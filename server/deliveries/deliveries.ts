@@ -12,7 +12,7 @@ import { tr } from '../../shared/i18n';
 import type { DeliveryAttachment, DeliveryInfo, Provider, RecentSession, TerminalEntry } from '../../shared/types';
 import type { TerminalParser } from '../sources/terminal';
 import { FileTail } from '../sources/tail';
-import { fileType, pathProblem } from './files';
+import { fileType, normalizedPath, pathProblem } from './files';
 
 /** Quanto do fim de cada transcript entra (os pedidos mais antigos de uma sessão longa ficam de fora). */
 export const TAIL_BYTES = 6 * 1024 * 1024;
@@ -149,11 +149,12 @@ export function linkedFiles(text: string, project?: string): string[] {
     }
     if (p.startsWith('file://')) p = p.slice(7);
     if (/^[a-z]+:/i.test(p)) return;
+    if (/\\/.test(p)) return;
     if (!isAbsolute(p)) {
       if (!project) return;
       p = join(project, p);
     }
-    p = normalize(p);
+    p = normalizedPath(normalize(p));
     if (!pathProblem(p)) out.add(p);
   };
   for (const m of text.matchAll(LINK_RE)) add(m[1]);

@@ -1,7 +1,7 @@
 // Geração determinística de aparência a partir de uma semente (puro, sem DOM). O sorteio e as paletas moraram aqui e
 // foram para shared/world/appearance-flat.ts (o mesmo sorteio serve o escritório e o Habblaud World); este módulo
 // re-exporta e guarda o que é só do editor do personagem.
-import { ACCESSORIES, BOTTOM_STYLES, FACIAL_HAIR, HAIR_STYLES, TOP_STYLES, type PartKey } from '../../../../shared/appearance';
+import { ACCESSORIES, BOTTOM_STYLES, FACIAL_HAIR, HAIR_STYLES, LOOK_KEYS, TOP_STYLES, type PartKey } from '../../../../shared/appearance';
 import {
   ACC_COLORS,
   BOTTOMS,
@@ -33,6 +33,8 @@ export function appearanceKey(a: Appearance): string {
   return [
     a.skin, a.hair, a.hairStyle, a.eyes, a.top, a.topAccent, a.topStyle, a.bottom, a.shoes, a.accessory,
     a.accessoryColor, a.lanyard ?? '-', a.look, a.facialHair ?? '-', a.bottomStyle ?? '-',
+    // peças do visual novo (a arte isométrica as desenha): sem elas dois visuais diferentes dividiriam o cache
+    ...LOOK_KEYS.map((k) => a.pieces?.[k] ?? '-'),
   ].join('|');
 }
 

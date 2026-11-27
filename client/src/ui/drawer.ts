@@ -6,6 +6,7 @@ import { createAvatarPlaceholder, updateAvatar } from './avatar';
 import { CharacterEditor } from './character-editor';
 import { MessageComposer } from './composer';
 import type { UiComponent, UiContext } from './context';
+import { SessionControls } from './effort';
 import { copyText, h, iconButton, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
 import {
   formatClock,
@@ -250,6 +251,8 @@ class AgentView {
   /** Mandar mensagem ao agente principal pelo Habblaud (plugin habblaud-mensagens). */
   private composer: MessageComposer;
   private msgSec: ReturnType<typeof section>;
+  private controls: SessionControls;
+  private ctlSec: ReturnType<typeof section>;
   private tasksSec: ReturnType<typeof section>;
   private tasksBar: HTMLElement;
   private tasks: KeyedList<TaskItem>;
@@ -362,6 +365,8 @@ class AgentView {
     const nowSec = section(tr('Agora'), h('div', { class: 'ui-now' }, this.actIcon, h('div', { class: 'ui-now__body' }, this.actText, this.actTime)), this.actDetails);
     this.composer = new MessageComposer(ctx, 'drawer');
     this.msgSec = section(tr('Mandar mensagem'), this.composer.el);
+    this.controls = new SessionControls(ctx);
+    this.ctlSec = section(tr('Modelo e esforço'), this.controls.el);
     // No celular a caixa fica presa no rodapé da gaveta enquanto a conversa rola (styles.css, .ui-sec--msg).
     this.msgSec.el.classList.add('ui-sec--msg');
     this.social = new SocialSection(ctx);
@@ -423,6 +428,7 @@ class AgentView {
       this.shellBox,
       this.shellsSec.el,
       nowSec.el,
+      this.ctlSec.el,
       this.msgSec.el,
       this.social.el,
       this.tasksSec.el,
@@ -623,6 +629,7 @@ class AgentView {
 
     // Mandar mensagem: só para principais presentes (com o recurso ligado e a página local; sem o plugin, a dica).
     setHidden(this.msgSec.el, this.composer.render(live, this.id) === 'off');
+    setHidden(this.ctlSec.el, !this.controls.render(live, this.composer.ready, this.composer.reason));
 
     // Vida social (personalidade, carteira, rodas): só de quem está no escritório.
     if (live) this.social.render(a.id, now);

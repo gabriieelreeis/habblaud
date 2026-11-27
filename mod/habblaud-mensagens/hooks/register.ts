@@ -9,9 +9,12 @@
 //    {session, account}. A pergunta também marca a presença da sessão: é ela que acende, no escritório, a caixa de
 //    mensagem deste agente. Fora do ar, ou respondendo qualquer coisa que não seja 2xx (403 = mensagens desligadas
 //    no Habblaud; 404 = uma versão sem a rota), passa a perguntar a cada 30 s até ele voltar.
-// 2. Cada mensagem, na ordem, vai para a sessão por `$.prompt.submit({ text, asUser: true })`: o modelo a lê como
-//    sua, sem o "The habblaud-mensagens plugin sent a message" (o registro da sessão ainda nomeia o plugin). O
-//    texto vai exatamente como chegou. `{drop}` (um hook recusou) ou exceção = falha, com o motivo.
+// 2. Cada mensagem, na ordem, entra na sessão: texto por `$.prompt.submit({ text, asUser: true })`, o modelo a lê
+//    como sua, sem o "The habblaud-mensagens plugin sent a message" (o registro ainda nomeia o plugin); comando
+//    de barra (ex.: `/effort high`) por `$.command.run({ command, args })`, que é a única chamada que o Claude
+//    Code aceita para comandos. O texto vai exatamente como chegou. `{drop}` ou exceção = falha, com o motivo.
+//    Mensagem com `sendNow` entra no turno em andamento (`$.prompt.submit` com `wait: false`); em versões do Claude
+//    Code sem esse campo, o host o ignora e a mensagem entra na fila como sempre.
 //    Com a sessão no meio de um turno, o Claude Code guarda o prompt até ela ficar livre e a chamada pode demorar a
 //    voltar: a espera por mensagem é de no máximo 2 s. Passou disso, a mensagem está na fila da sessão e conta
 //    como entregue, e as seguintes da mesma rodada vão em seguida, na ordem, sem esperar. Assim a rodada nunca
@@ -51,6 +54,8 @@ export interface InboxMessage {
   id: string
   /** O texto como foi digitado; vazio quando o servidor mandou algo que não é texto. */
   text: string
+  /** Pedido de entrega no turno em andamento; ausente = entra na fila. */
+  sendNow?: boolean
 }
 
 /** Resultado de uma mensagem, como POST /api/mod/inbox/ack recebe. */
@@ -124,6 +129,17 @@ export function portOf(raw: string | undefined): number {
   return Number.isInteger(n) && n > 0 && n < 65_536 ? n : DEFAULT_PORT
 }
 
+/** Texto que começa com `/` é comando: `$.prompt.submit` recusa, então entra na sessão por `$.command.run`. */
+export function slashCommandOf(text: string): { command: string; args: string } | undefined {
+  const m = /^\/([a-zA-Z0-9_][a-zA-Z0-9._-]*)(?:\s+([\s\S]*))?$/.exec(text)
+  return m ? { command: m[1]!, args: m[2] ?? '' } : undefined
+}
+
+/** Argumentos de `$.prompt.submit`: `wait: false` pede entrada no turno em andamento; sem ele, entra na fila. */
+export function promptArgsOf(text: string, sendNow: boolean): { text: string; asUser: true; wait?: false } {
+  return sendNow ? { text, asUser: true, wait: false } : { text, asUser: true }
+}
+
 /** Corpo de POST /api/mod/inbox: a conta só quando se sabe qual é. */
 export function inboxBody(session: string, account: string | undefined): string {
   return JSON.stringify(account ? { session, account } : { session })
@@ -154,7 +170,7 @@ export function parseInbox(text: string): InboxMessage[] | undefined {
     if (!item || typeof item !== 'object') continue
     const m = item as Record<string, unknown>
     if (typeof m.id !== 'string' || !m.id) continue
-    out.push({ id: m.id, text: typeof m.text === 'string' ? m.text : '' })
+    out.push({ id: m.id, text: typeof m.text === 'string' ? m.text : '', ...(m.sendNow === true ? { sendNow: true } : {}) })
   }
   return out
 }
@@ -222,9 +238,16 @@ async function postJson($: EngineInterface, port: number, path: string, body: st
 }
 
 /** Uma mensagem para a sessão, como se você a tivesse digitado. Nunca lança. */
-async function submitOne($: EngineInterface, text: string): Promise<Submitted> {
+async function submitOne($: EngineInterface, text: string, sendNow: boolean): Promise<Submitted> {
   try {
-    const r = await $.prompt.submit({ text, asUser: true })
+    const cmd = slashCommandOf(text)
+    if (cmd) {
+      await $.command.run({ command: cmd.command, args: cmd.args })
+      return { ok: true }
+    }
+    // Num Claude Code sem `wait`, o campo é ignorado e a sessão guarda o prompt até ficar livre.
+    const prompt = promptArgsOf(text, sendNow)
+    const r = await $.prompt.submit(prompt)
     if (typeof r?.drop === 'string') return { ok: false, error: reasonText(r.drop, 'um hook da sessão recusou a mensagem') }
     return { ok: true }
   } catch (err) {
@@ -242,7 +265,7 @@ async function deliver($: EngineInterface, messages: readonly InboxMessage[]): P
       results.push({ id: m.id, ok: false, error: 'mensagem vazia' })
       continue
     }
-    const submitted = submitOne($, m.text)
+    const submitted = submitOne($, m.text, m.sendNow === true)
     if (queued) {
       void submitted
       results.push({ id: m.id, ok: true })

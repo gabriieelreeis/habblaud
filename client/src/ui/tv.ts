@@ -73,6 +73,26 @@ export function roomMains(agents: readonly AgentInfo[], roomId: string): AgentIn
 
 // ------------------------------------------------------------------ slides (DOM seguro)
 
+/** Texto do aviso no slide quando uma imagem citada não carrega. */
+export function imageFailureText(src: string): string {
+  const name = src.split(/[\\/]/).pop() || tr('imagem');
+  return /^(?:[a-z]:[\\/]|\\\\|\/)/i.test(src)
+    ? tr('Imagem de fora da pasta ({0}) indisponível: copie o arquivo para a pasta da apresentação ou deixe o auxiliar do computador rodando.', [name])
+    : tr('Imagem {0} indisponível: copie o arquivo para a pasta da apresentação e abra de novo.', [name]);
+}
+
+/** Imagem do slide: se falhar, vira um aviso legível no lugar da quebra. */
+function imageNode(src: string, alt: string, url: string, className?: string): HTMLImageElement {
+  const node = h('img', { class: className, attrs: { alt, loading: 'lazy' } });
+  node.addEventListener('error', () => {
+    if (!node.isConnected) return;
+    const text = imageFailureText(src);
+    node.replaceWith(h('span', { class: 'ui-tv__img-error', role: 'img', attrs: { 'aria-label': text }, text: `⚠ ${text}` }));
+  });
+  node.src = url;
+  return node;
+}
+
 function inlineNodes(c: readonly Inline[], img: (src: string) => string): Node[] {
   return c.map((x) => {
     switch (x.t) {
@@ -87,7 +107,7 @@ function inlineNodes(c: readonly Inline[], img: (src: string) => string): Node[]
       case 'link':
         return h('a', { attrs: { href: x.href, target: '_blank', rel: 'noopener noreferrer' } }, ...inlineNodes(x.c, img));
       case 'img':
-        return h('img', { class: 'ui-tv__inline-img', attrs: { src: img(x.src), alt: x.alt, loading: 'lazy' } });
+        return imageNode(x.src, x.alt, img(x.src), 'ui-tv__inline-img');
     }
   });
 }
@@ -103,7 +123,7 @@ function blockNode(b: Block, img: (src: string) => string): HTMLElement {
     case 'code':
       return h('pre', { class: 'ui-tv__code' }, h('code', { text: b.v }));
     case 'img':
-      return h('figure', { class: 'ui-tv__figure' }, h('img', { attrs: { src: img(b.src), alt: b.alt, loading: 'lazy' } }), b.alt ? h('figcaption', { text: b.alt }) : null);
+      return h('figure', { class: 'ui-tv__figure' }, imageNode(b.src, b.alt, img(b.src)), b.alt ? h('figcaption', { text: b.alt }) : null);
     case 'table':
       return h(
         'div',

@@ -1,8 +1,9 @@
 // Rotas da API (/api/*). Respostas JSON; rotas desconhecidas -> 404 JSON.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { NAME_MAX, parseAppearanceParts, parseCharacterName, parseSeed } from '../../shared/appearance';
+import { NAME_MAX, parseAgentParts, parseCharacterName, parseSeed } from '../../shared/appearance';
 import type { AccessInfo, AgentInfo, ModSummary, OfficeSnapshot, SourceInfo, UpdateStatus } from '../../shared/types';
 import type { AccountsService } from '../accounts/service';
+import type { ClaudeDefaultsService } from '../claude-defaults/service';
 import { handleCodexEvent } from '../codex/http';
 import type { DayStatsService } from '../history/daystats';
 import type { Office } from '../model/office';
@@ -21,6 +22,7 @@ import type { SpawnFolder } from '../spawn/folders';
 import { AUDIO_BODY_MAX, type DictationService } from '../dictation/dictation';
 import type { DeliveryIndex } from '../deliveries/deliveries';
 import type { FileFetcher } from '../deliveries/fetcher';
+import type { QuestionAudioStore } from '../permissions/question-audio';
 import { HOST_WAIT_MS } from '../host-wait';
 import { parsePartyRequest } from '../../shared/party';
 import type { PresentationStore } from '../presentations/store';
@@ -48,12 +50,18 @@ export interface ApiDeps {
    * local (ServerConfig.terminal); a trava do Host local é conferida aqui antes de chamá-las.
    */
   permissions?: (req: IncomingMessage, res: ServerResponse, path: string) => void;
+  /** Áudio das perguntas (/api/permissions/audio/:id); a mesma trava das respostas pelo escritório. */
+  questionAudio?: QuestionAudioStore;
   /**
    * Rotas das mensagens pelo escritório (/api/messages, a caixa de entrada do plugin em /api/mod/inbox e a do auxiliar
    * do Codex em /api/codex/bridge/*, server/messages/http.ts). Só existem com ServerConfig.messages (a trava do
    * terminal e HABBLAUD_MENSAGENS); a trava do Host local é conferida aqui antes de chamá-las.
    */
   messages?: (req: IncomingMessage, res: ServerResponse, path: string) => void;
+  /** Troca de modelo e esforço pela gaveta (/api/controls*, controls/http.ts); a mesma trava das mensagens. */
+  controls?: (req: IncomingMessage, res: ServerResponse, path: string, url: URL) => void;
+  /** Padrões do Claude Code pelo auxiliar do host (/api/host/claude/*, claude-defaults/service.ts). */
+  claudeDefaults?: ClaudeDefaultsService;
   /**
    * Terminal interativo e ações nos agentes (/api/pty/*, POST /api/agents/:id/stop|takeover; http/pty.ts).
    * Ausente = desligado (sem HABBLAUD_PTY=1, Docker, sem node-pty ou sem bind local).
@@ -146,6 +154,8 @@ function isMessagesPath(path: string): boolean {
   return (
     path === '/api/messages' ||
     path.startsWith('/api/messages/') ||
+    path === '/api/controls' ||
+    path.startsWith('/api/controls/') ||
     path === '/api/mod/inbox' ||
     path === '/api/mod/inbox/ack' ||
     path === '/api/codex/bridge/poll' ||
@@ -181,17 +191,29 @@ export function sendJson(res: ServerResponse, status: number, body: unknown): vo
  * Anexo de entrega. Páginas e SVG vêm numa sandbox sem scripts (CSP), para não rodarem com o login do escritório;
  * PDF e imagens podem abrir dentro do modal (mesma origem).
  */
-function sendFile(res: ServerResponse, data: Buffer, type: string, name: string): void {
+export function sendFile(res: ServerResponse, data: Buffer, type: string, name: string, range?: string): void {
   const active = /^text\/html|^image\/svg/.test(type);
-  res.writeHead(200, {
+  const headers = {
     'Content-Type': type,
-    'Content-Length': data.length,
     'Cache-Control': 'private, max-age=300',
+    'Accept-Ranges': 'bytes',
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'SAMEORIGIN',
     'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(name)}`,
     ...(active ? { 'Content-Security-Policy': "sandbox; default-src 'none'; img-src data: blob: 'self'; style-src 'unsafe-inline'; media-src 'self'" } : {}),
-  });
+  };
+  const m = typeof range === 'string' ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+  if (m && (m[1] || m[2])) {
+    const suffix = !m[1] && !!m[2];
+    const start = suffix ? Math.max(0, data.length - Number(m[2])) : Number(m[1]);
+    const end = suffix || !m[2] ? data.length - 1 : Math.min(Number(m[2]), data.length - 1);
+    if (Number.isSafeInteger(start) && Number.isSafeInteger(end) && start <= end) {
+      res.writeHead(206, { ...headers, 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${data.length}` });
+      res.end(data.subarray(start, end + 1));
+      return;
+    }
+  }
+  res.writeHead(200, { ...headers, 'Content-Length': data.length });
   res.end(data);
 }
 
@@ -356,7 +378,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
     }
     if (sub === '/image') {
       store.image(id, url.searchParams.get('src') ?? '').then(
-        (r) => ('data' in r ? sendFile(res, r.data, r.type, r.name) : sendJson(res, r.status, { error: r.error })),
+        (r) => ('data' in r ? sendFile(res, r.data, r.type, r.name, req.headers.range) : sendJson(res, r.status, { error: r.error })),
         (err) => fail(res, err),
       );
       return;
@@ -382,7 +404,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
     const body = (await readJson(req)) as { name?: unknown; seed?: unknown; parts?: unknown } | null;
     const name = parseCharacterName(body?.name);
     const seed = parseSeed(body?.seed);
-    const parts = parseAppearanceParts(body?.parts);
+    const parts = parseAgentParts(body?.parts);
     if (!name || seed === null || !parts) {
       throw new HttpError(400, tr('esperado {name: texto de 1 a {0} caracteres, seed: inteiro de 0 a 4294967295, parts: peças da aparência}', [NAME_MAX]));
     }
@@ -544,6 +566,21 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         sendJson(res, 403, { error: tr('responder pelo escritório desligado: só funciona com o Habblaud acessível apenas pelo próprio computador') });
       } else if (!trusted(req, 'permissions')) {
         sendJson(res, 403, { error: denied(req, tr('pedidos de permissão só são respondidos pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
+      } else if (path.startsWith('/api/permissions/audio/')) {
+        let id = '';
+        try {
+          id = decodeURIComponent(path.slice('/api/permissions/audio/'.length));
+        } catch {
+          id = '';
+        }
+        const audio = id ? deps.questionAudio?.get(id) : undefined;
+        if (!audio) sendJson(res, 404, { error: tr('áudio da pergunta desconhecido') });
+        else if (!deps.files) sendJson(res, 404, { error: tr('arquivos desligados') });
+        else
+          deps.files.get(audio.path).then(
+            (r) => ('data' in r ? sendFile(res, r.data, audio.type, audio.name, req.headers.range) : sendJson(res, r.status, { error: r.error })),
+            (err) => fail(res, err),
+          );
       } else {
         deps.permissions(req, res, path);
       }
@@ -660,11 +697,11 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       else if (path.startsWith('/api/deliveries/file/')) {
         const att = deliveries.attachment(decodeURIComponent(path.slice('/api/deliveries/file/'.length)));
         if (!att) sendJson(res, 404, { error: tr('anexo desconhecido: atualize a lista de entregas') });
-        else if (att.kind === 'capture') sendFile(res, att.data, att.type, att.name);
+        else if (att.kind === 'capture') sendFile(res, att.data, att.type, att.name, req.headers.range);
         else if (!deps.files) sendJson(res, 404, { error: tr('arquivos desligados') });
         else
           deps.files.get(att.path).then(
-            (r) => ('data' in r ? sendFile(res, r.data, att.type, att.name) : sendJson(res, r.status, { error: r.error })),
+            (r) => ('data' in r ? sendFile(res, r.data, att.type, att.name, req.headers.range) : sendJson(res, r.status, { error: r.error })),
             (err) => fail(res, err),
           );
       } else sendJson(res, 404, { error: tr('rota desconhecida') });
@@ -684,6 +721,26 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         readJson(req, 36 * 1024 * 1024)
           .then((body) => {
             files.ack(body);
+            sendJson(res, 200, { ok: true });
+          })
+          .catch((err) => fail(res, err));
+      }
+      return true;
+    }
+    if (path === '/api/host/claude/poll' || path === '/api/host/claude/ack') {
+      // Só o auxiliar do host, pela porta local (nunca pela remota); fora do Docker, só pelo loopback.
+      const defaults = deps.claudeDefaults;
+      if (method !== 'POST') methodNotAllowed(res, 'POST');
+      else if (!defaults) sendJson(res, 403, { error: tr('troca de modelo e esforço desligada') });
+      else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, tr('só o auxiliar do próprio computador')) });
+      } else if (path === '/api/host/claude/poll') {
+        req.resume();
+        hostWait(res, url, (ms, signal) => defaults.pollWait(ms, signal)).then((list) => list && sendJson(res, 200, { requests: list }), (err) => fail(res, err));
+      } else {
+        readJson(req)
+          .then((body) => {
+            defaults.ack(body);
             sendJson(res, 200, { ok: true });
           })
           .catch((err) => fail(res, err));
@@ -738,6 +795,9 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         });
       } else if (!trusted(req, 'messages')) {
         sendJson(res, 403, { error: denied(req, tr('mensagens só são mandadas pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
+      } else if (path === '/api/controls' || path.startsWith('/api/controls/')) {
+        if (deps.controls) deps.controls(req, res, path, url);
+        else sendJson(res, 404, { error: tr('troca de modelo e esforço desligada') });
       } else {
         deps.messages(req, res, path);
       }
