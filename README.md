@@ -11,6 +11,8 @@
 
 <p align="center"><b>English</b> · <a href="README.pt-BR.md">Português</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a></p>
 
+> **ReisCorp fork:** this guide installs the `reiscorp/local` branch of [gabriieelreeis/habblaud](https://github.com/gabriieelreeis/habblaud), the version running in the ReisCorp office. See [What's different in our fork](#whats-different-in-our-fork).
+
 <p align="center">
   <img alt="Node.js 22.12+" src="https://img.shields.io/badge/node-%E2%89%A522.12-5fa04e?logo=node.js&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white" />
@@ -42,6 +44,7 @@ external calls.
 
 - [What it looks like](#what-it-looks-like)
 - [Installation](#installation)
+- [What's different in our fork](#whats-different-in-our-fork)
 - [How to use](#how-to-use)
 - [Accounts and usage (5-hour and weekly)](#accounts-and-usage-5-hour-and-weekly)
 - [Configuration](#configuration)
@@ -135,13 +138,16 @@ shrinks on its own.
 ### 1. Get the project
 
 ```bash
-git clone https://github.com/marmottajr/habblaud.git
+git clone https://github.com/gabriieelreeis/habblaud.git
 cd habblaud
+git checkout reiscorp/local
 npm install
 ```
 
 > `npm install` only downloads build tools (Vite, TypeScript, tsx…). The Habblaud server has no
-> runtime dependencies: it only uses Node's built-in modules.
+> runtime dependencies: it only uses Node's built-in modules. Stay on `reiscorp/local` for the office version
+> described here; the differences from the upstream project are listed in
+> [What's different in our fork](#whats-different-in-our-fork).
 
 ### 2. Start Habblaud
 
@@ -363,6 +369,30 @@ original statusline) and `npm run hooks:uninstall` (removes the permission hook)
 showing an error (and the hook, failing silently). `mod:install`, which removes the old tap and hook, and the old installers and
 uninstallers leave `settings.json.habblaud-backup-<data>` copies in each account's folder (e.g.
 `~/.claude/`); delete them if you no longer need them.
+
+## What's different in our fork
+
+This is the ReisCorp fork of the MIT-licensed [upstream project](https://github.com/marmottajr/habblaud). The
+`reiscorp/local` branch adds these browser-side changes; the server, the Claude Code, Codex and OpenCode data sources
+and the Habblaud World protocol stay the same.
+
+- **Isometric office:** rooms are drawn in three-quarter view, with diamond-shaped floors, furniture on the back
+  walls, lighting that follows local time and characters at the right depth. Clicks, the party, the TV, seasonal
+  decorations and the phone work as before. The simulation still uses four directions; the drawing uses eight.
+- **Scenery in layers:** furniture is painted once and clipped per pixel when someone walks in front, so an agent no
+  longer forces the whole room to be redrawn. Sprites for poses and directions are prepared during idle time.
+- **New characters:** larger pixel-art figures with outlined heads, eight on-screen directions, 20 poses, held items
+  and costumes. Existing names and appearances are converted automatically; the new look fields are stored separately
+  and the Habblaud World keeps receiving only the original 13 pieces. The art is original, not copied from a
+  commercial game.
+- **Visual editor:** the pencil next to the agent's name in the drawer opens tabs for body, hair, hat, glasses, top,
+  bottom, shoes and accessory, with thumbnails, colors, a preview that turns through the eight directions and a single
+  **Random** button. Saving pins the character to the project's room. World characters keep their own editor.
+- **Model, effort and immediate messages:** the drawer shows and switches each session's model and effort; the message
+  box offers **Send now** on Claude Code, falling back to the queue when that Claude version doesn't support it.
+
+Details for maintainers: [docs/dev/ISOMETRIC-VIEW.md](docs/dev/ISOMETRIC-VIEW.md) and
+[docs/dev/MODEL-EFFORT-CONTROLS.md](docs/dev/MODEL-EFFORT-CONTROLS.md).
 
 ## How to use
 
@@ -622,8 +652,10 @@ agent's details and click the pencil next to the name (**Edit character**). In t
 
 - **Name:** up to 24 characters. It can't repeat the name of someone who's in the office or the one chosen for another
   project.
-- **Randomize:** brings up another look.
-- **Pieces:** skin, hair, beard, eyes, top, bottom, shoes and accessory, with a preview next to them.
+- **Random:** brings up another complete look.
+- **Pieces:** tabs for body, hair (cut, color and beard), hat (style and color), glasses, top, bottom, shoes and
+  accessory. Each option has a thumbnail; the preview above turns through the eight directions, walks in place and can
+  also be turned by hand with the arrows.
 - **Save:** applies to the project (the room). The next session opened in it arrives as this character. With two sessions
   at the same time in the same room, the second one gets a random character.
 - **Back to random:** undoes the choice.

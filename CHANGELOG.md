@@ -12,6 +12,10 @@ do meio (0.**3**.0).
 
 ### Alterado
 
+- **READMEs dos quatro idiomas:** a instalação agora clona o fork `gabriieelreeis/habblaud` e usa a branch
+  `reiscorp/local`, a versão do escritório. Cada README ganhou uma seção com as mudanças do fork (visão isométrica,
+  cenário em camadas, personagens novos, editor de visual, modelo/esforço e Enviar agora) e o editor de personagem foi
+  atualizado para as abas e a prévia nas 8 direções.
 - **Personagens novos no escritório:** bonecos maiores, com cabeça grande e contorno, desenhados nas 8 direções (ao
   virar, o corpo passa pelo meio do giro). Todo mundo mantém as cores, o cabelo e o tipo de roupa que tinha; os
   chapéus, os óculos e os acessórios viram peças próprias. O avatar pequeno é o busto do boneco novo.

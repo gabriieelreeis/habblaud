@@ -11,6 +11,8 @@
 
 <p align="center"><a href="README.md">English</a> · <a href="README.pt-BR.md">Português</a> · <b>Español</b> · <a href="README.fr.md">Français</a></p>
 
+> **Bifurcación de ReisCorp:** esta guía instala la rama `reiscorp/local` de [gabriieelreeis/habblaud](https://github.com/gabriieelreeis/habblaud), la versión que corre en la oficina de ReisCorp. Consulta [Qué cambia en nuestro fork](#qué-cambia-en-nuestro-fork).
+
 <p align="center">
   <img alt="Node.js 22.12+" src="https://img.shields.io/badge/node-%E2%89%A522.12-5fa04e?logo=node.js&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white" />
@@ -42,6 +44,7 @@ llamadas externas.
 
 - [Cómo se ve](#cómo-se-ve)
 - [Instalación](#instalación)
+- [Qué cambia en nuestro fork](#qué-cambia-en-nuestro-fork)
 - [Cómo usar](#cómo-usar)
 - [Cuentas y uso (5 horas y semanal)](#cuentas-y-uso-5-horas-y-semanal)
 - [Configuración](#configuración)
@@ -137,13 +140,16 @@ solo.
 ### 1. Descarga el proyecto
 
 ```bash
-git clone https://github.com/marmottajr/habblaud.git
+git clone https://github.com/gabriieelreeis/habblaud.git
 cd habblaud
+git checkout reiscorp/local
 npm install
 ```
 
 > `npm install` solo descarga herramientas de compilación (Vite, TypeScript, tsx…). El servidor de Habblaud no tiene
-> dependencias de runtime: usa solo módulos nativos de Node.
+> dependencias de runtime: usa solo módulos nativos de Node. Quédate en la rama `reiscorp/local` para tener la versión
+> de la oficina descrita aquí; las diferencias con el proyecto original están en
+> [Qué cambia en nuestro fork](#qué-cambia-en-nuestro-fork).
 
 ### 2. Inicia Habblaud
 
@@ -377,6 +383,32 @@ sin ellos, el statusline de las cuentas empieza a dar error (y el hook, a fallar
 el tap y el hook antiguos, y los instaladores y desinstaladores antiguos dejan copias
 `settings.json.habblaud-backup-<data>` en la carpeta de cada cuenta (p. ej., `~/.claude/`); bórralas si ya no las
 necesitas.
+
+## Qué cambia en nuestro fork
+
+Este es el fork de ReisCorp del [proyecto original](https://github.com/marmottajr/habblaud), que es MIT. La rama
+`reiscorp/local` añade estos cambios en el navegador; el servidor, las fuentes de datos de Claude Code, Codex y
+OpenCode y el protocolo de Habblaud World siguen siendo los mismos.
+
+- **Oficina isométrica:** las salas se dibujan en tres cuartos, con suelo en rombos, muebles en las paredes del fondo,
+  luz que sigue la hora local y personajes a la profundidad correcta. Los clics, la fiesta, la TV, los adornos de
+  temporada y el teléfono funcionan como antes. La simulación sigue en cuatro direcciones; el dibujo usa ocho.
+- **Escenario por capas:** los muebles se pintan una vez y se recortan por píxel cuando alguien pasa por delante, así
+  que un agente ya no obliga a redibujar toda la sala. Los sprites de las poses y direcciones se preparan en los ratos
+  libres.
+- **Personajes nuevos:** muñecos de pixel art más grandes, con cabeza grande y contorno, ocho direcciones en pantalla,
+  20 poses, objetos en la mano y disfraces. Los nombres y apariencias existentes se convierten solos; las piezas
+  nuevas se guardan en campos aparte y Habblaud World sigue recibiendo solo las 13 piezas de antes. El arte es
+  original, no copiado de un juego comercial.
+- **Editor de apariencia:** el lápiz junto al nombre del agente, en el panel, abre pestañas de cuerpo, cabello,
+  sombrero, gafas, parte de arriba, parte de abajo, zapatos y accesorio, con miniaturas, colores, una vista previa que
+  gira en las ocho direcciones y un único botón **Al azar**. Al guardar, el personaje queda fijado en la sala del
+  proyecto. Los personajes de World conservan su editor.
+- **Modelo, esfuerzo y envío inmediato:** el panel muestra y cambia el modelo y el esfuerzo de cada sesión; el cuadro
+  de mensajes ofrece **Enviar ahora** en Claude Code, y vuelve a la cola si esa versión no admite el campo.
+
+Detalles para mantenimiento: [docs/dev/ISOMETRIC-VIEW.md](docs/dev/ISOMETRIC-VIEW.md) y
+[docs/dev/MODEL-EFFORT-CONTROLS.md](docs/dev/MODEL-EFFORT-CONTROLS.md).
 
 ## Cómo usar
 
@@ -654,9 +686,10 @@ del agente principal y haz clic en el lápiz junto al nombre (**Editar personaje
 
 - **Nombre:** hasta 24 caracteres. No puede repetir el de alguien que está en la oficina ni el elegido para otro
   proyecto.
-- **Sortear:** trae otra apariencia.
-- **Piezas:** piel, cabello, barba, ojos, parte de arriba, parte de abajo, zapatos y accesorio, con la vista previa al
-  lado.
+- **Al azar:** trae otra apariencia completa.
+- **Piezas:** pestañas de cuerpo, cabello (corte, color y barba), sombrero (modelo y color), gafas, parte de arriba,
+  parte de abajo, zapatos y accesorio. Cada opción tiene miniatura; la vista previa de arriba gira en las ocho
+  direcciones, camina en el sitio y también se puede girar a mano con las flechas.
 - **Guardar:** vale para el proyecto (la sala). La próxima sesión que se abra en él llega con ese personaje. Con dos
   sesiones al mismo tiempo en la misma sala, la segunda recibe un personaje sorteado.
 - **Volver al sorteo:** deshace la elección.
