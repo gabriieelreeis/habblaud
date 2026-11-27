@@ -11,6 +11,8 @@
 
 <p align="center"><a href="README.md">English</a> · <b>Português</b> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a></p>
 
+> **Fork da ReisCorp:** este guia instala a branch `reiscorp/local` de [gabriieelreeis/habblaud](https://github.com/gabriieelreeis/habblaud), a versão que roda no escritório da ReisCorp. Veja [O que muda no nosso fork](#o-que-muda-no-nosso-fork).
+
 <p align="center">
   <img alt="Node.js 22.12+" src="https://img.shields.io/badge/node-%E2%89%A522.12-5fa04e?logo=node.js&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white" />
@@ -41,6 +43,7 @@ para dar a letra de cada conta). Nada sai do computador: o Habblaud não lê cre
 
 - [Como é](#como-é)
 - [Instalação](#instalação)
+- [O que muda no nosso fork](#o-que-muda-no-nosso-fork)
 - [Como usar](#como-usar)
 - [Contas e uso (5 horas e semanal)](#contas-e-uso-5-horas-e-semanal)
 - [Configuração](#configuração)
@@ -133,13 +136,16 @@ ela, e o endereço antigo apaga e é desmontado. Assim o prédio não fica com b
 ### 1. Baixe o projeto
 
 ```bash
-git clone https://github.com/marmottajr/habblaud.git
+git clone https://github.com/gabriieelreeis/habblaud.git
 cd habblaud
+git checkout reiscorp/local
 npm install
 ```
 
 > O `npm install` só baixa ferramentas de compilação (Vite, TypeScript, tsx…). O servidor do Habblaud não tem
-> dependências de runtime: usa só módulos nativos do Node.
+> dependências de runtime: usa só módulos nativos do Node. Fique na branch `reiscorp/local` para ter a versão do
+> escritório descrita aqui; as diferenças em relação ao projeto original estão em
+> [O que muda no nosso fork](#o-que-muda-no-nosso-fork).
 
 ### 2. Suba o Habblaud
 
@@ -361,6 +367,30 @@ statusline original) e `npm run hooks:uninstall` (tira o hook de permissão); se
 a dar erro (e o hook, a falhar em silêncio). O `mod:install`, que tira o tap e o hook antigos, e os instaladores e
 desinstaladores antigos deixam cópias `settings.json.habblaud-backup-<data>` na pasta de cada conta (ex.:
 `~/.claude/`); apague-as se não precisar mais.
+
+## O que muda no nosso fork
+
+Este é o fork da ReisCorp do [projeto original](https://github.com/marmottajr/habblaud), que é MIT. A branch
+`reiscorp/local` acrescenta estas mudanças no navegador; o servidor, as fontes de dados do Claude Code, do Codex e do
+OpenCode e o protocolo do Habblaud World continuam os mesmos.
+
+- **Escritório isométrico:** as salas passam a ser desenhadas em três quartos, com piso em losangos, móveis nas paredes
+  do fundo, luz que segue a hora local e personagens na profundidade certa. Cliques, festa, TV, enfeites de época e
+  celular continuam funcionando. A simulação segue em quatro direções; o desenho usa oito.
+- **Cenário em camadas:** os móveis são pintados uma vez e recortados por pixel quando alguém passa na frente, então um
+  agente não obriga a redesenhar a sala inteira. Os sprites das poses e direções são preparados nas folgas.
+- **Personagens novos:** bonecos maiores em pixel art, com cabeça grande e contorno, oito direções na tela, 20 poses,
+  itens na mão e fantasias. Nomes e aparências existentes são convertidos automaticamente; as peças novas ficam em
+  campos separados e o Habblaud World continua recebendo só as 13 peças de antes. A arte é original, não copiada de
+  jogo comercial.
+- **Editor de visual:** o lápis ao lado do nome do agente, na gaveta, abre abas de corpo, cabelo, chapéu, óculos, parte
+  de cima, parte de baixo, sapatos e acessório, com miniaturas, cores, prévia que gira nas oito direções e um único
+  botão **Aleatório**. Salvar fixa o personagem na sala do projeto. Os personagens do World mantêm o editor próprio.
+- **Modelo, esforço e envio imediato:** a gaveta mostra e troca o modelo e o esforço de cada sessão; a caixa de
+  mensagem oferece **Enviar agora** no Claude Code, com volta à fila quando aquela versão não aceita o campo.
+
+Detalhes para manutenção: [docs/dev/ISOMETRIC-VIEW.md](docs/dev/ISOMETRIC-VIEW.md) e
+[docs/dev/MODEL-EFFORT-CONTROLS.md](docs/dev/MODEL-EFFORT-CONTROLS.md).
 
 ## Como usar
 
@@ -645,8 +675,10 @@ agente principal e clique no lápis ao lado do nome (**Editar personagem**). No 
 
 - **Nome:** até 24 caracteres. Não pode repetir o de alguém que está no escritório nem o escolhido para outro
   projeto.
-- **Sortear:** traz outra aparência.
-- **Peças:** pele, cabelo, barba, olhos, parte de cima, parte de baixo, sapatos e acessório, com a prévia ao lado.
+- **Aleatório:** traz outro visual completo.
+- **Peças:** abas de corpo, cabelo (corte, cor e barba), chapéu (modelo e cor), óculos, parte de cima, parte de baixo,
+  sapatos e acessório. Cada opção tem miniatura; a prévia acima gira nas oito direções, anda no lugar e também pode ser
+  girada na mão pelas setas.
 - **Salvar:** vale para o projeto (a sala). A próxima sessão aberta nele chega com esse personagem. Com duas sessões
   ao mesmo tempo na mesma sala, a segunda recebe um personagem sorteado.
 - **Voltar ao sorteio:** desfaz a escolha.
